@@ -198,10 +198,13 @@ bool init_hal_event_adapter(ServiceRuntime& runtime) noexcept {
         return false;
     }
 
-    const char* zigbee_defer_reason = runtime_ptr->has_saved_wifi_credentials()
-                                          ? "Saved Wi-Fi credentials found, Zigbee start deferred until AP bootstrap/autoconnect stage"
-                                          : "Zigbee startup deferred: no Wi-Fi credentials";
-    HAL_ADAPTER_LOGI("%s", zigbee_defer_reason);
+#ifdef ESP_PLATFORM
+    HAL_ADAPTER_LOGI(
+        "%s",
+        runtime_ptr->has_saved_wifi_credentials()
+            ? "Saved Wi-Fi credentials found, Zigbee start deferred until AP bootstrap/autoconnect stage"
+            : "Zigbee startup deferred: no Wi-Fi credentials");
+#endif
 
     return true;
 }
