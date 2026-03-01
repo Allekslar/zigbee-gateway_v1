@@ -107,11 +107,14 @@ jobs:
           echo "line_percent=${line_percent}%" >> "${GITHUB_OUTPUT}"
 
       - name: Update coverage badge
-        if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' && secrets.GIST_SECRET != '' && secrets.GIST_ID != '' }}
+        if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' && env.GIST_SECRET != '' && env.GIST_ID != '' }}
+        env:
+          GIST_SECRET: ${{ secrets.GIST_SECRET }}
+          GIST_ID: ${{ secrets.GIST_ID }}
         uses: Schneegans/dynamic-badges-action@v1.7.0
         with:
-          auth: ${{ secrets.GIST_SECRET }}
-          gistID: ${{ secrets.GIST_ID }}
+          auth: ${{ env.GIST_SECRET }}
+          gistID: ${{ env.GIST_ID }}
           filename: coverage.json
           label: coverage
           message: ${{ steps.coverage_value.outputs.line_percent }}
