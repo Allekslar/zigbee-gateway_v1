@@ -51,9 +51,11 @@ void zigbee_device_joined_cb(void* context, uint16_t short_addr) noexcept {
     }
 
     ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
-    if (!runtime->post_zigbee_join_candidate(short_addr)) {
+    const bool queued = runtime->post_zigbee_join_candidate(short_addr);
+    if (!queued) {
         HAL_ADAPTER_LOGW("Drop Zigbee join candidate short_addr=0x%04x", (unsigned)short_addr);
-    } else {
+    }
+    if (queued) {
         HAL_ADAPTER_LOGI("Accepted Zigbee join candidate short_addr=0x%04x", (unsigned)short_addr);
     }
 }
@@ -72,9 +74,11 @@ void zigbee_device_left_cb(void* context, uint16_t short_addr) noexcept {
     core::CoreEvent event{};
     event.type = core::CoreEventType::kDeviceLeft;
     event.device_short_addr = short_addr;
-    if (!runtime->post_event(event)) {
+    const bool posted = runtime->post_event(event);
+    if (!posted) {
         HAL_ADAPTER_LOGW("Drop kDeviceLeft event for short_addr=0x%04x", (unsigned)short_addr);
-    } else {
+    }
+    if (posted) {
         HAL_ADAPTER_LOGI("Posted kDeviceLeft event for short_addr=0x%04x", (unsigned)short_addr);
     }
 }
@@ -194,12 +198,10 @@ bool init_hal_event_adapter(ServiceRuntime& runtime) noexcept {
         return false;
     }
 
-    if (runtime_ptr->has_saved_wifi_credentials()) {
-        HAL_ADAPTER_LOGI(
-            "Saved Wi-Fi credentials found, Zigbee start deferred until AP bootstrap/autoconnect stage");
-    } else {
-        HAL_ADAPTER_LOGI("Zigbee startup deferred: no Wi-Fi credentials");
-    }
+    const char* zigbee_defer_reason = runtime_ptr->has_saved_wifi_credentials()
+                                          ? "Saved Wi-Fi credentials found, Zigbee start deferred until AP bootstrap/autoconnect stage"
+                                          : "Zigbee startup deferred: no Wi-Fi credentials";
+    HAL_ADAPTER_LOGI("%s", zigbee_defer_reason);
 
     return true;
 }
