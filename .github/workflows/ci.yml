@@ -30,10 +30,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set target
-        run: idf.py set-target esp32c6
+        run: . /opt/esp/idf/export.sh && idf.py set-target esp32c6
 
       - name: Build firmware
-        run: idf.py build
+        run: . /opt/esp/idf/export.sh && idf.py build
 
   host-tests:
     name: Host Unit Tests (Core)
@@ -122,10 +122,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set target (tests)
-        run: idf.py -C test/target -B build-target-tests set-target esp32c6
+        run: . /opt/esp/idf/export.sh && idf.py -C test/target -B build-target-tests set-target esp32c6
 
       - name: Build target HAL tests firmware
-        run: idf.py -C test/target -B build-target-tests build
+        run: . /opt/esp/idf/export.sh && idf.py -C test/target -B build-target-tests build
 
   target-hal-tests-hil-smoke:
     name: Target HAL Tests HIL Smoke (ESP32-C6)
