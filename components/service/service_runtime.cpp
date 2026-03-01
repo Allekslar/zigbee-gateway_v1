@@ -661,9 +661,9 @@ bool ServiceRuntime::drain_network_requests() noexcept {
 }
 
 uint32_t ServiceRuntime::monotonic_now_ms() const noexcept {
-    const uint32_t tick = last_tick_ms_.load(std::memory_order_acquire);
-    if (tick != 0U) {
-        return tick;
+    const uint32_t last_tick = last_tick_ms_.load(std::memory_order_acquire);
+    if (last_tick != 0U) {
+        return last_tick;
     }
 #ifdef ESP_PLATFORM
     return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);

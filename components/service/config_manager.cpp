@@ -51,9 +51,7 @@ bool ConfigManager::load() noexcept {
     }
 
     schema_version_ = persisted_schema;
-    if (!load_current_values()) {
-        return false;
-    }
+    load_current_values();
 
     dirty_ = false;
     return true;
@@ -160,7 +158,7 @@ bool ConfigManager::migrate_to_current(uint32_t from_version) noexcept {
     return true;
 }
 
-bool ConfigManager::load_current_values() noexcept {
+void ConfigManager::load_current_values() noexcept {
     uint32_t timeout_ms = kDefaultCommandTimeoutMs;
     if (hal_nvs_get_u32(kKeyTimeoutMs, &timeout_ms) == HAL_NVS_STATUS_OK && is_valid_timeout_ms(timeout_ms)) {
         command_timeout_ms_ = timeout_ms;
@@ -175,7 +173,6 @@ bool ConfigManager::load_current_values() noexcept {
         max_command_retries_ = kDefaultMaxCommandRetries;
     }
 
-    return true;
 }
 
 }  // namespace service

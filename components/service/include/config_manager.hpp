@@ -25,7 +25,7 @@ public:
 
 private:
     bool migrate_to_current(uint32_t from_version) noexcept;
-    bool load_current_values() noexcept;
+    void load_current_values() noexcept;
 
     uint32_t schema_version_{kCurrentSchemaVersion};
     uint32_t command_timeout_ms_{kDefaultCommandTimeoutMs};
