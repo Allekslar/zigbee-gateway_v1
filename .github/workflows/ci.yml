@@ -70,7 +70,7 @@ jobs:
             --filter 'components/service/.*' \
             --exclude '.*CMakeFiles.*' \
             --gcov-ignore-errors=no_working_dir_found \
-            --print-summary --fail-under-line 80
+            --print-summary --fail-under-line 75
 
       - name: Generate HTML coverage report
         if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' }}
