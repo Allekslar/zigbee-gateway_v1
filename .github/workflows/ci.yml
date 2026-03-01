@@ -99,16 +99,22 @@ jobs:
             --gcov-ignore-errors=no_working_dir_found \
             --json-summary -o coverage-summary.json
 
-      - name: Update coverage badge
+      - name: Read coverage summary value
+        id: coverage_value
         if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' }}
+        run: |
+          line_percent="$(jq -r '.line_percent' coverage-summary.json)"
+          echo "line_percent=${line_percent}%" >> "${GITHUB_OUTPUT}"
+
+      - name: Update coverage badge
+        if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' && secrets.GIST_SECRET != '' && secrets.GIST_ID != '' }}
         uses: Schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_SECRET }}
           gistID: ${{ secrets.GIST_ID }}
           filename: coverage.json
           label: coverage
-          query: $.summary.lines.percent
-          url: file://${{ github.workspace }}/coverage-summary.json
+          message: ${{ steps.coverage_value.outputs.line_percent }}
           valColorRange: 70 80 90 100
 
   target-hal-tests-build:
