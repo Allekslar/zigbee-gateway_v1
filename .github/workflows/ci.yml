@@ -380,7 +380,7 @@ jobs:
 
   deploy-pages:
     name: Deploy Coverage to Pages
-    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' }}
+    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' && vars.ENABLE_PAGES_DEPLOY == 'true' }}
     needs: host-tests
     runs-on: ubuntu-latest
     permissions:
