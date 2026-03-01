@@ -515,10 +515,8 @@ hal_zigbee_status_t hal_zigbee_init(void) {
         }
     }
 #else
-    if (!hal_zigbee_stack_adapter_linked()) {
-        ESP_LOGE(kTag, "Real Zigbee target adapter is not linked (hal_zigbee_init)");
-        return HAL_ZIGBEE_STATUS_NOT_LINKED;
-    }
+    ESP_LOGE(kTag, "Real Zigbee target adapter is not linked (hal_zigbee_init)");
+    return HAL_ZIGBEE_STATUS_NOT_LINKED;
 #endif
 #endif
     return HAL_ZIGBEE_STATUS_OK;

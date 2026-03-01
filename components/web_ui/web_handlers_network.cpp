@@ -242,7 +242,7 @@ esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::N
                 sizeof(response),
                 "{\"ready\":true,\"ok\":true,\"operation\":\"credentials_status\","
                 "\"saved\":%s,\"has_password\":%s,\"ssid\":\"%s\"}",
-                result.saved ? "true" : "false",
+                "true",
                 result.has_password ? "true" : "false",
                 escaped_ssid);
         } else {
@@ -251,7 +251,7 @@ esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::N
                 sizeof(response),
                 "{\"ready\":true,\"ok\":true,\"operation\":\"credentials_status\","
                 "\"saved\":%s,\"has_password\":%s}",
-                result.saved ? "true" : "false",
+                "false",
                 result.has_password ? "true" : "false");
         }
         if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
@@ -277,7 +277,7 @@ esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::N
                 "{\"ready\":true,\"ok\":true,\"operation\":\"credentials_raw_debug\","
                 "\"ssid_present\":%s,\"ssid_len\":%u,\"ssid\":\"%s\","
                 "\"password_present\":%s,\"password_len\":%u}",
-                result.debug_ssid_present ? "true" : "false",
+                "true",
                 static_cast<unsigned>(result.debug_ssid_len),
                 escaped_ssid,
                 result.debug_password_present ? "true" : "false",
@@ -289,7 +289,7 @@ esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::N
                 "{\"ready\":true,\"ok\":true,\"operation\":\"credentials_raw_debug\","
                 "\"ssid_present\":%s,\"ssid_len\":%u,"
                 "\"password_present\":%s,\"password_len\":%u}",
-                result.debug_ssid_present ? "true" : "false",
+                "false",
                 static_cast<unsigned>(result.debug_ssid_len),
                 result.debug_password_present ? "true" : "false",
                 static_cast<unsigned>(result.debug_password_len));

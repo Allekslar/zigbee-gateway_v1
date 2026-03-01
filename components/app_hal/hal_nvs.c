@@ -189,7 +189,7 @@ hal_nvs_status_t hal_nvs_get_u32(const char* key, uint32_t* value_out) {
     }
     return HAL_NVS_STATUS_ERR;
 #else
-    host_u32_entry_t* entry = host_find_u32_entry(key, false);
+    const host_u32_entry_t* entry = host_find_u32_entry(key, false);
     if (entry == NULL || !entry->used) {
         return HAL_NVS_STATUS_NOT_FOUND;
     }
@@ -265,7 +265,7 @@ hal_nvs_status_t hal_nvs_get_str(const char* key, char* value_out, uint32_t valu
     }
     return HAL_NVS_STATUS_ERR;
 #else
-    host_str_entry_t* entry = host_find_str_entry(key, false);
+    const host_str_entry_t* entry = host_find_str_entry(key, false);
     if (entry == NULL || !entry->used) {
         return HAL_NVS_STATUS_NOT_FOUND;
     }
