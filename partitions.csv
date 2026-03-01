@@ -1,0 +1,10 @@
+# Name,      Type, SubType, Offset,   Size,   Flags
+# ESP32-C6 baseline: 8MB flash, custom table for Zigbee gateway.
+# Note: if you increase bootloader size, verify offsets to avoid overlap.
+nvs,         data, nvs,     0x9000,   0x6000,
+phy_init,    data, phy,     0xf000,   0x1000,
+factory,     app,  factory, 0x10000,  5M,
+zb_storage,  data, fat,     ,         64K,
+zb_fct,      data, fat,     ,         16K,
+coredump,    data, coredump,,         64K,
+storage,     data, spiffs,  ,         2864K,

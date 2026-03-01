@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Zigbee Gateway Contributors
+
+# ESP-IDF / firmware build artifacts
+build/
+build-*/
+*.bin
+*.elf
+*.map
+flasher_args.json
+flash_args
+*.ota_data_initial.bin
+
+# ESP-IDF generated config
+sdkconfig
+sdkconfig.old
+
+# CMake / CTest artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+Makefile
+
+# Host test build outputs
+build-host/
+
+# ESP-IDF component manager (generated)
+managed_components/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs and temp files
+*.log
+*.tmp
+Fix.md
+Plan.md
+arh/
+
+
+# Editors/IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

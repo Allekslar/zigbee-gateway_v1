@@ -1,0 +1,162 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 Alex.K. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zigbee Gateway</title>
+    <link rel="stylesheet" href="style.css?v=20260222-2" />
+  </head>
+  <body>
+    <div id="toast-message" class="toast-message" aria-live="polite" hidden></div>
+    <main class="page">
+      <header class="page-header">
+        <div>
+          <h1>Zigbee Gateway</h1>
+          <p class="subtitle">Phase 1 control panel</p>
+        </div>
+        <button id="refresh-all-btn" type="button">Refresh All</button>
+      </header>
+
+      <section class="card" aria-labelledby="network-title">
+        <h2 id="network-title">Network</h2>
+        <div class="grid-2">
+          <div>
+            <span class="label">Connected:</span>
+            <strong id="network-connected">-</strong>
+          </div>
+          <div>
+            <span class="label">Revision:</span>
+            <strong id="network-revision">-</strong>
+          </div>
+          <div>
+            <span class="label">Credentials:</span>
+            <strong id="wifi-credentials-status">-</strong>
+          </div>
+          <div>
+            <span class="label">Saved SSID:</span>
+            <strong id="wifi-credentials-ssid">-</strong>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="network-refresh-btn" type="button">Refresh Network</button>
+          <button id="network-scan-btn" type="button" class="secondary">Scan Wi-Fi</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>SSID</th>
+                <th>RSSI</th>
+                <th>Open</th>
+              </tr>
+            </thead>
+            <tbody id="wifi-scan-body">
+              <tr>
+                <td colspan="3">Not scanned</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <form id="wifi-connect-form">
+          <div class="form-grid">
+            <label>
+              SSID
+              <input id="wifi-ssid" name="ssid" type="text" maxlength="32" autocomplete="username" required />
+            </label>
+            <label>
+              Password
+              <input id="wifi-password" name="password" type="password" maxlength="64" autocomplete="current-password" />
+            </label>
+          </div>
+          <label class="inline-checkbox">
+            <input id="wifi-save-credentials" type="checkbox" checked />
+            Save credentials in NVS
+          </label>
+          <div class="actions">
+            <button type="submit">Connect Wi-Fi</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card" aria-labelledby="devices-title">
+        <h2 id="devices-title">Devices</h2>
+        <form id="device-join-form">
+          <div class="form-grid">
+            <label>
+              Join Window (seconds)
+              <input id="device-join-duration" name="duration_seconds" type="number" min="1" max="255" step="1" value="30" required />
+            </label>
+          </div>
+          <div class="actions">
+            <button id="device-join-btn" type="button">Join Device</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Short Addr</th>
+                <th>Online</th>
+                <th>Power</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="devices-body">
+              <tr>
+                <td colspan="4">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="config-title">
+        <h2 id="config-title">Config</h2>
+        <form id="config-form">
+          <div class="form-grid">
+            <label>
+              Command Timeout (ms)
+              <input id="config-timeout" name="command_timeout_ms" type="number" min="1" step="1" required />
+            </label>
+            <label>
+              Max Command Retries
+              <input id="config-retries" name="max_command_retries" type="number" min="0" max="5" step="1" required />
+            </label>
+          </div>
+          <div class="actions">
+            <button type="submit">Save Config</button>
+          </div>
+        </form>
+        <div class="grid-2">
+          <div>
+            <span class="label">Last Command Status:</span>
+            <strong id="config-last-status">-</strong>
+          </div>
+          <div>
+            <span class="label">Revision:</span>
+            <strong id="config-revision">-</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="status-title">
+        <h2 id="status-title">Status</h2>
+        <p id="status-line" class="status-line">Ready</p>
+        <div id="remove-confirm-box" class="confirm-box" hidden>
+          <p id="remove-confirm-text" class="confirm-text">Confirm action</p>
+          <label id="remove-force-row" class="inline-checkbox">
+            <input id="remove-force-checkbox" type="checkbox" />
+            Force remove if leave indication does not arrive
+          </label>
+          <div class="actions">
+            <button id="remove-confirm-btn" type="button">Confirm</button>
+            <button id="remove-cancel-btn" type="button" class="secondary">Cancel</button>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="app.js?v=20260222-17"></script>
+  </body>
+</html>

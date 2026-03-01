@@ -1,0 +1,91 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Alex.K. */
+
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+
+#include "core_state.hpp"
+
+namespace {
+
+const core::CoreDeviceRecord* find_device(const core::CoreState& state, uint16_t short_addr) {
+    for (std::size_t i = 0; i < state.devices.size(); ++i) {
+        if (state.devices[i].short_addr == short_addr) {
+            return &state.devices[i];
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+int main() {
+    core::CoreState base{};
+
+    core::CoreEvent joined{};
+    joined.type = core::CoreEventType::kDeviceJoined;
+    joined.device_short_addr = 0x1234;
+
+    const core::CoreReduceResult joined_result = core::core_reduce(base, joined);
+    assert(joined_result.next.revision == 1);
+    assert(joined_result.next.device_count == 1);
+    assert(joined_result.effects.count == 2);
+    assert(joined_result.effects.items[0].type == core::CoreEffectType::kPersistState);
+    assert(joined_result.effects.items[1].type == core::CoreEffectType::kPublishTelemetry);
+
+    const core::CoreDeviceRecord* joined_device = find_device(joined_result.next, 0x1234);
+    assert(joined_device != nullptr);
+    assert(joined_device->online);
+    assert(!joined_device->power_on);
+
+    const core::CoreReduceResult joined_result_repeat = core::core_reduce(base, joined);
+    assert(joined_result_repeat.next.revision == joined_result.next.revision);
+    assert(joined_result_repeat.next.device_count == joined_result.next.device_count);
+    assert(joined_result_repeat.effects.count == joined_result.effects.count);
+    assert(joined_result_repeat.effects.items[0].type == joined_result.effects.items[0].type);
+    assert(joined_result_repeat.effects.items[1].type == joined_result.effects.items[1].type);
+
+    core::CoreEvent onoff_report{};
+    onoff_report.type = core::CoreEventType::kAttributeReported;
+    onoff_report.device_short_addr = 0x1234;
+    onoff_report.cluster_id = 0x0006;
+    onoff_report.attribute_id = 0x0000;
+    onoff_report.value_bool = true;
+
+    const core::CoreReduceResult reported = core::core_reduce(joined_result.next, onoff_report);
+    assert(reported.next.revision == joined_result.next.revision + 1);
+    assert(reported.effects.count == 2);
+    joined_device = find_device(reported.next, 0x1234);
+    assert(joined_device != nullptr);
+    assert(joined_device->power_on);
+
+    core::CoreEvent power_command{};
+    power_command.type = core::CoreEventType::kCommandSetDevicePowerRequested;
+    power_command.correlation_id = 77;
+    power_command.device_short_addr = 0x1234;
+    power_command.value_bool = false;
+
+    const core::CoreReduceResult command_result = core::core_reduce(reported.next, power_command);
+    assert(command_result.next.revision == reported.next.revision);
+    assert(command_result.effects.count == 1);
+    assert(command_result.effects.items[0].type == core::CoreEffectType::kSendZigbeeOnOff);
+    assert(command_result.effects.items[0].correlation_id == 77);
+    assert(command_result.effects.items[0].device_short_addr == 0x1234);
+    assert(!command_result.effects.items[0].arg_bool);
+
+    core::CoreEvent timeout_event{};
+    timeout_event.type = core::CoreEventType::kCommandResultTimeout;
+    timeout_event.correlation_id = 77;
+    timeout_event.device_short_addr = 0x1234;
+
+    const core::CoreReduceResult timeout_result = core::core_reduce(command_result.next, timeout_event);
+    assert(timeout_result.next.revision == command_result.next.revision + 1);
+    assert(timeout_result.next.last_command_status == 2);
+    assert(timeout_result.effects.count == 1);
+    assert(timeout_result.effects.items[0].type == core::CoreEffectType::kEmitCommandResult);
+    assert(timeout_result.effects.items[0].correlation_id == 77);
+    assert(!timeout_result.effects.items[0].arg_bool);
+
+    return 0;
+}

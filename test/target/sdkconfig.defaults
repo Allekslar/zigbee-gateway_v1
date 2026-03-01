@@ -1,0 +1,18 @@
+# Partition table for target tests: use project custom layout with Zigbee NVRAM partitions.
+# CONFIG_PARTITION_TABLE_SINGLE_APP is not set
+# CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE is not set
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# Target board uses 8MB flash; keep image header and flashing config aligned.
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+CONFIG_ESPTOOLPY_HEADER_FLASHSIZE_UPDATE=y
+# Target test suite exercises HTTP + runtime paths in app_main context.
+# Increase main task stack to avoid stack-protection resets in Unity runs.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Enable native Zigbee stack in target-test firmware so HAL Zigbee tests run on real path.
+CONFIG_ZB_ENABLED=y
+CONFIG_ZB_ZCZR=y
+CONFIG_ZB_RADIO_NATIVE=y

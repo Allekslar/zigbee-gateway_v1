@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html class="theme-green">
+
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <title>GCC Code Coverage Report</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <link rel="stylesheet" href="index.css"/>
+  </head>
+
+  <body>
+    <header>
+      <h1>GCC Code Coverage Report</h1>
+
+      <hr/>
+
+      <div class="summary">
+<div>
+  <table class="legend">
+    <tr>
+      <th scope="row">Directory:</th>
+      <td>components/</td>
+    </tr>
+    <tr>
+      <th scope="row">Date:</th>
+      <td>2026-02-25 21:49:19</td>
+    </tr>
+  </table>
+</div>
+
+<div>
+  <table class="coverage">
+    <tr>
+      <th></th>
+      <th scope="col">Exec</th>
+      <th scope="col">Total</th>
+      <th scope="col">Coverage</th>
+    </tr>
+    <tr>
+      <th scope="row">Lines:</th>
+      <td>909</td>
+      <td>1513</td>
+      <td class="coverage-low">60.1%</td>
+    </tr>
+    <tr>
+      <th scope="row">Functions:</th>
+      <td>107</td>
+      <td>134</td>
+      <td class="coverage-medium">79.9%</td>
+    </tr>
+    <tr>
+      <th scope="row">Branches:</th>
+      <td>370</td>
+      <td>869</td>
+      <td class="coverage-low">42.6%</td>
+    </tr>
+  </table>
+</div>
+      </div>
+
+      <hr/>
+    </header>
+
+    <nav>
+    </nav>
+
+    <main>
+<table class="listOfFunctions">
+  <tr>
+    <th>Function (File:Line)</th>
+    <th>Call count</th>
+    <th>Block coverage</th>
+  </tr>
+  <tr><td><a href="index.core_reducer.cpp.5274544016cea924447bc0d0ed37af29.html#l47">core::(anonymous namespace)::apply_onoff_attribute(core::CoreReduceResult*, core::CoreEvent const&amp;, bool*) (components/core/core_reducer.cpp:47)</a></td><td>called 2 times, returned 2 times</td><td>73.0%</td></tr>
+  <tr><td><a href="index.core_reducer.cpp.5274544016cea924447bc0d0ed37af29.html#l7">core::(anonymous namespace)::find_device_index(core::CoreState const&amp;, unsigned short) (components/core/core_reducer.cpp:7)</a></td><td>called 10 times, returned 10 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.core_reducer.cpp.5274544016cea924447bc0d0ed37af29.html#l16">core::(anonymous namespace)::find_free_slot(core::CoreState const&amp;) (components/core/core_reducer.cpp:16)</a></td><td>called 7 times, returned 7 times</td><td>90.0%</td></tr>
+  <tr><td><a href="index.core_command_dispatcher.cpp.86c1aec31429c6a67e69f21d2e284381.html#l7">core::(anonymous namespace)::is_supported_command(core::CoreCommandType) (components/core/core_command_dispatcher.cpp:7)</a></td><td>called 8 times, returned 8 times</td><td>75.0%</td></tr>
+  <tr><td><a href="index.core_command_dispatcher.cpp.86c1aec31429c6a67e69f21d2e284381.html#l18">core::(anonymous namespace)::map_result_to_event(core::CoreCommandResultType) (components/core/core_command_dispatcher.cpp:18)</a></td><td>called 4 times, returned 4 times</td><td>80.0%</td></tr>
+  <tr><td><a href="index.core_reducer.cpp.5274544016cea924447bc0d0ed37af29.html#l25">core::(anonymous namespace)::push_state_persist_and_telemetry(core::CoreReduceResult*) (components/core/core_reducer.cpp:25)</a></td><td>called 12 times, returned 12 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.core_command_dispatcher.cpp.86c1aec31429c6a67e69f21d2e284381.html#l121">core::CoreCommandDispatcher::expire_timeouts(unsigned int, unsigned int, core::CoreEvent*, unsigned long) (components/core/core_command_dispatcher.cpp:121)</a></td><td>called 3 times, returned 3 times</td><td>95.0%</td></tr>
+  <tr><td><a href="index.core_command_dispatcher.cpp.86c1aec31429c6a67e69f21d2e284381.html#l159">core::CoreCommandDispatcher::pending_count() const (components/core/core_command_dispatcher.cpp:159)</a></td><td>called 18 times, returned 18 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.core_command_dispatcher.cpp.86c1aec31429c6a67e69f21d2e284381.html#l92">core::CoreCommandDispatcher::resolve(core::CoreCommandResult const&amp;, core::CoreEvent*) (components/core/core_command_dispatcher.cpp:92)</a></td><td>called 5 times, returned 5 times</td><td>94.0%</td></tr>
+  <tr><td><a href="index.core_command_dispatcher.cpp.86c1aec31429c6a67e69f21d2e284381.html#l55">core::CoreCommandDispatcher::submit(core::CoreCommand const&amp;, core::CoreEvent*) (components/core/core_command_dispatcher.cpp:55)</a></td><td>called 9 times, returned 9 times</td><td>91.0%</td></tr>
+  <tr><td><a href="index.core_state.hpp.d8476f50a27afb0a5e255d82eb483f32.html#l33">core::CoreEffectList::push(core::CoreEffect const&amp;) (components/core/include/core_state.hpp:33)</a></td><td>called 33 times, returned 33 times</td><td>86.0%</td></tr>
+  <tr><td><a href="index.core_event_bus.cpp.8244f1fada9c13c650ce46b643523bbc.html#l56">core::CoreEventBus::publish(core::CoreEvent const&amp;) const (components/core/core_event_bus.cpp:56)</a></td><td>called 16 times, returned 16 times</td><td>78.0%</td></tr>
+  <tr><td><a href="index.core_event_bus.cpp.8244f1fada9c13c650ce46b643523bbc.html#l5">core::CoreEventBus::subscribe(void (*)(core::CoreEvent const&amp;, void*) noexcept, void*, unsigned short*) (components/core/core_event_bus.cpp:5)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.core_event_bus.cpp.8244f1fada9c13c650ce46b643523bbc.html#l67">core::CoreEventBus::subscriber_count() const (components/core/core_event_bus.cpp:67)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.core_event_bus.cpp.8244f1fada9c13c650ce46b643523bbc.html#l35">core::CoreEventBus::unsubscribe(unsigned short) (components/core/core_event_bus.cpp:35)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.core_registry.cpp.841c72d1206bbfaf295e016268e7add2.html#l5">core::CoreRegistry::CoreRegistry() (components/core/core_registry.cpp:5)</a></td><td>called 6 times, returned 6 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.core_registry.hpp.25da16ea28e63fae9ed2a5c3b4db1c89.html#l24">core::CoreRegistry::SnapshotRef::valid() const (components/core/include/core_registry.hpp:24)</a></td><td>called 119 times, returned 119 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.core_registry.cpp.841c72d1206bbfaf295e016268e7add2.html#l62">core::CoreRegistry::current_revision() const (components/core/core_registry.cpp:62)</a></td><td>called 24 times, returned 24 times</td><td>86.0%</td></tr>
+  <tr><td><a href="index.core_registry.cpp.841c72d1206bbfaf295e016268e7add2.html#l58">core::CoreRegistry::current_snapshot_id() const (components/core/core_registry.cpp:58)</a></td><td>called 43 times, returned 43 times</td><td>68.0%</td></tr>
+  <tr><td><a href="index.core_registry.cpp.841c72d1206bbfaf295e016268e7add2.html#l10">core::CoreRegistry::pin_current(core::CoreRegistry::SnapshotRef*) const (components/core/core_registry.cpp:10)</a></td><td>called 116 times, returned 116 times</td><td>65.0%</td></tr>
+  <tr><td><a href="index.core_registry.cpp.841c72d1206bbfaf295e016268e7add2.html#l73">core::CoreRegistry::publish(core::CoreState const&amp;) (components/core/core_registry.cpp:73)</a></td><td>called 43 times, returned 43 times</td><td>69.0%</td></tr>
+  <tr><td><a href="index.core_registry.cpp.841c72d1206bbfaf295e016268e7add2.html#l31">core::CoreRegistry::release_snapshot(core::CoreRegistry::SnapshotRef*) const (components/core/core_registry.cpp:31)</a></td><td>called 116 times, returned 116 times</td><td>31.0%</td></tr>
+  <tr><td><a href="index.core_registry.cpp.841c72d1206bbfaf295e016268e7add2.html#l47">core::CoreRegistry::snapshot_copy() const (components/core/core_registry.cpp:47)</a></td><td>called 65 times, returned 65 times</td><td>60.0%</td></tr>
+  <tr><td><a href="index.core_command_dispatcher.cpp.86c1aec31429c6a67e69f21d2e284381.html#l32">core::command_to_event(core::CoreCommand const&amp;) (components/core/core_command_dispatcher.cpp:32)</a></td><td>called 7 times, returned 7 times</td><td>83.0%</td></tr>
+  <tr><td><a href="index.core_reducer.cpp.5274544016cea924447bc0d0ed37af29.html#l70">core::core_reduce(core::CoreState const&amp;, core::CoreEvent const&amp;) (components/core/core_reducer.cpp:70)</a></td><td>called 21 times, returned 21 times</td><td>86.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l35">service::(anonymous namespace)::SpinLockGuard::SpinLockGuard(std::atomic_flag&amp;) (components/service/service_runtime.cpp:35)</a></td><td>called 348 times, returned 348 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l44">service::(anonymous namespace)::SpinLockGuard::~SpinLockGuard() (components/service/service_runtime.cpp:44)</a></td><td>called 348 times, returned 348 times</td><td>62.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l72">service::(anonymous namespace)::clamp_force_remove_timeout(unsigned int) (components/service/service_runtime.cpp:72)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l82">service::(anonymous namespace)::is_deadline_reached(unsigned int, unsigned int) (components/service/service_runtime.cpp:82)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l22">service::(anonymous namespace)::is_valid_max_retries(unsigned int) (components/service/config_manager.cpp:22)</a></td><td>called 15 times, returned 15 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l18">service::(anonymous namespace)::is_valid_timeout_ms(unsigned int) (components/service/config_manager.cpp:18)</a></td><td>called 15 times, returned 15 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.hal_event_adapter.cpp.4ae5f158ea57206bc57357ea39e22245.html#l28">service::(anonymous namespace)::map_zigbee_result(hal_zigbee_result_t) (components/service/hal_event_adapter.cpp:28)</a></td><td>called 1 time, returned 1 time</td><td>60.0%</td></tr>
+  <tr><td><a href="index.hal_event_adapter.cpp.4ae5f158ea57206bc57357ea39e22245.html#l151">service::(anonymous namespace)::nvs_u32_written_cb(void*, char const*, unsigned int) (components/service/hal_event_adapter.cpp:151)</a></td><td>called 28 times, returned 28 times</td><td>75.0%</td></tr>
+  <tr><td><a href="index.hal_event_adapter.cpp.4ae5f158ea57206bc57357ea39e22245.html#l138">service::(anonymous namespace)::wifi_network_down_cb(void*) (components/service/hal_event_adapter.cpp:138)</a></td><td>called 1 time, returned 1 time</td><td>83.0%</td></tr>
+  <tr><td><a href="index.hal_event_adapter.cpp.4ae5f158ea57206bc57357ea39e22245.html#l125">service::(anonymous namespace)::wifi_network_up_cb(void*) (components/service/hal_event_adapter.cpp:125)</a></td><td>called 1 time, returned 1 time</td><td>83.0%</td></tr>
+  <tr><td><a href="index.hal_event_adapter.cpp.4ae5f158ea57206bc57357ea39e22245.html#l79">service::(anonymous namespace)::zigbee_attribute_report_cb(void*, unsigned short, unsigned short, unsigned short, bool, unsigned int) (components/service/hal_event_adapter.cpp:79)</a></td><td>called 1 time, returned 1 time</td><td>83.0%</td></tr>
+  <tr><td><a href="index.hal_event_adapter.cpp.4ae5f158ea57206bc57357ea39e22245.html#l107">service::(anonymous namespace)::zigbee_command_result_cb(void*, unsigned int, hal_zigbee_result_t) (components/service/hal_event_adapter.cpp:107)</a></td><td>called 1 time, returned 1 time</td><td>86.0%</td></tr>
+  <tr><td><a href="index.hal_event_adapter.cpp.4ae5f158ea57206bc57357ea39e22245.html#l40">service::(anonymous namespace)::zigbee_device_joined_cb(void*, unsigned short) (components/service/hal_event_adapter.cpp:40)</a></td><td>called 6 times, returned 6 times</td><td>71.0%</td></tr>
+  <tr><td><a href="index.hal_event_adapter.cpp.4ae5f158ea57206bc57357ea39e22245.html#l58">service::(anonymous namespace)::zigbee_device_left_cb(void*, unsigned short) (components/service/hal_event_adapter.cpp:58)</a></td><td>called 1 time, returned 1 time</td><td>67.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l93">service::ConfigManager::command_timeout_ms() const (components/service/config_manager.cpp:93)</a></td><td>called 9 times, returned 9 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l115">service::ConfigManager::dirty() const (components/service/config_manager.cpp:115)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l28">service::ConfigManager::load() (components/service/config_manager.cpp:28)</a></td><td>called 8 times, returned 8 times</td><td>88.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l160">service::ConfigManager::load_current_values() (components/service/config_manager.cpp:160)</a></td><td>called 7 times, returned 7 times</td><td>80.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l111">service::ConfigManager::max_command_retries() const (components/service/config_manager.cpp:111)</a></td><td>called 10 times, returned 10 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l119">service::ConfigManager::migrate_to_current(unsigned int) (components/service/config_manager.cpp:119)</a></td><td>called 7 times, returned 7 times</td><td>83.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l59">service::ConfigManager::save() (components/service/config_manager.cpp:59)</a></td><td>called 9 times, returned 9 times</td><td>73.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l75">service::ConfigManager::schema_version() const (components/service/config_manager.cpp:75)</a></td><td>called 2 times, returned 2 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l79">service::ConfigManager::set_command_timeout_ms(unsigned int) (components/service/config_manager.cpp:79)</a></td><td>called 1 time, returned 1 time</td><td>71.0%</td></tr>
+  <tr><td><a href="index.config_manager.cpp.aaec25b9253129fa8322e6cf47258a31.html#l97">service::ConfigManager::set_max_command_retries(unsigned char) (components/service/config_manager.cpp:97)</a></td><td>called 1 time, returned 1 time</td><td>71.0%</td></tr>
+  <tr><td><a href="index.effect_executor.cpp.abd915609dbf03f49f44cd56192a0b0d.html#l10">service::EffectExecutor::execute(core::CoreEffect const&amp;) (components/service/effect_executor.cpp:10)</a></td><td>called 25 times, returned 25 times</td><td>71.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l88">service::ServiceRuntime::ServiceRuntime(core::CoreRegistry&amp;, service::EffectExecutor&amp;) (components/service/service_runtime.cpp:88)</a></td><td>called 5 times, returned 5 times</td><td>80.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l404">service::ServiceRuntime::allocate_tracked_command() (components/service/service_runtime.cpp:404)</a></td><td>called 3 times, returned 3 times</td><td>80.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1010">service::ServiceRuntime::apply_managers(core::CoreEvent const&amp;) (components/service/service_runtime.cpp:1010)</a></td><td>called 16 times, returned 16 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l873">service::ServiceRuntime::autoconnect_from_saved_credentials() (components/service/service_runtime.cpp:873)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l701">service::ServiceRuntime::build_devices_api_snapshot(unsigned int, service::ServiceRuntime::DevicesApiSnapshot*) const (components/service/service_runtime.cpp:701)</a></td><td>called 1 time, returned 1 time</td><td>72.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l660">service::ServiceRuntime::build_devices_runtime_snapshot(core::CoreState const&amp;, unsigned int, service::ServiceRuntime::DevicesRuntimeSnapshot*) const (components/service/service_runtime.cpp:660)</a></td><td>called 1 time, returned 1 time</td><td>75.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1543">service::ServiceRuntime::clear_join_candidate(unsigned short) (components/service/service_runtime.cpp:1543)</a></td><td>called 1 time, returned 1 time</td><td>93.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1703">service::ServiceRuntime::clear_pending_force_remove(unsigned short) (components/service/service_runtime.cpp:1703)</a></td><td>called 1 time, returned 1 time</td><td>82.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l814">service::ServiceRuntime::clear_scan_request_in_progress_for_test() (components/service/service_runtime.cpp:814)</a></td><td>called 2 times, returned 2 times</td><td>64.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1199">service::ServiceRuntime::config_manager() (components/service/service_runtime.cpp:1199)</a></td><td>called 2 times, returned 2 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1171">service::ServiceRuntime::config_snapshot() const (components/service/service_runtime.cpp:1171)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1218">service::ServiceRuntime::drain_command_requests() (components/service/service_runtime.cpp:1218)</a></td><td>called 40 times, returned 40 times</td><td>89.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1203">service::ServiceRuntime::drain_command_results() (components/service/service_runtime.cpp:1203)</a></td><td>called 40 times, returned 40 times</td><td>89.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1248">service::ServiceRuntime::drain_config_writes() (components/service/service_runtime.cpp:1248)</a></td><td>called 40 times, returned 40 times</td><td>7.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1278">service::ServiceRuntime::drain_network_requests() (components/service/service_runtime.cpp:1278)</a></td><td>called 40 times, returned 40 times</td><td>27.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1233">service::ServiceRuntime::drain_nvs_writes() (components/service/service_runtime.cpp:1233)</a></td><td>called 40 times, returned 40 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l828">service::ServiceRuntime::ensure_wifi_mode_for_scan() (components/service/service_runtime.cpp:828)</a></td><td>called 1 time, returned 1 time</td><td>58.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l847">service::ServiceRuntime::ensure_wifi_mode_for_sta_connect() (components/service/service_runtime.cpp:847)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l914">service::ServiceRuntime::ensure_zigbee_started() (components/service/service_runtime.cpp:914)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1014">service::ServiceRuntime::execute_effects(core::CoreEffectList const&amp;) (components/service/service_runtime.cpp:1014)</a></td><td>called 16 times, returned 16 times</td><td>90.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l389">service::ServiceRuntime::find_tracked_command(unsigned int) (components/service/service_runtime.cpp:389)</a></td><td>called 8 times, returned 8 times</td><td>92.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l724">service::ServiceRuntime::get_force_remove_remaining_ms(unsigned short, unsigned int, unsigned int*) const (components/service/service_runtime.cpp:724)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l648">service::ServiceRuntime::get_join_window_status(unsigned short*) const (components/service/service_runtime.cpp:648)</a></td><td>called 3 times, returned 3 times</td><td>68.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l487">service::ServiceRuntime::handle_command_result(core::CoreCommandResult const&amp;) (components/service/service_runtime.cpp:487)</a></td><td>called 2 times, returned 2 times</td><td>56.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l905">service::ServiceRuntime::has_saved_wifi_credentials() (components/service/service_runtime.cpp:905)</a></td><td>called 2 times, returned 2 times</td><td>75.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l824">service::ServiceRuntime::initialize_hal_adapter() (components/service/service_runtime.cpp:824)</a></td><td>called 2 times, returned 2 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1508">service::ServiceRuntime::is_duplicate_join_candidate(unsigned short, unsigned int) (components/service/service_runtime.cpp:1508)</a></td><td>called 6 times, returned 6 times</td><td>88.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l783">service::ServiceRuntime::is_scan_request_in_progress(unsigned int) const (components/service/service_runtime.cpp:783)</a></td><td>called 5 times, returned 5 times</td><td>70.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l756">service::ServiceRuntime::is_scan_request_queued(unsigned int) const (components/service/service_runtime.cpp:756)</a></td><td>called 2 times, returned 2 times</td><td>58.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l910">service::ServiceRuntime::mark_wifi_credentials_available() (components/service/service_runtime.cpp:910)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1557">service::ServiceRuntime::maybe_auto_close_join_window_after_first_join(unsigned short) (components/service/service_runtime.cpp:1557)</a></td><td>called 3 times, returned 3 times</td><td>50.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1499">service::ServiceRuntime::monotonic_now_ms() const (components/service/service_runtime.cpp:1499)</a></td><td>called 6 times, returned 6 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1155">service::ServiceRuntime::on_nvs_u32_written(char const*, unsigned int) (components/service/service_runtime.cpp:1155)</a></td><td>called 28 times, returned 28 times</td><td>67.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1188">service::ServiceRuntime::pending_commands() const (components/service/service_runtime.cpp:1188)</a></td><td>called 7 times, returned 7 times</td><td>73.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1182">service::ServiceRuntime::pending_events() const (components/service/service_runtime.cpp:1182)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l216">service::ServiceRuntime::pop_command_request(service::ServiceRuntime::CommandIngressNotification*) (components/service/service_runtime.cpp:216)</a></td><td>called 43 times, returned 43 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l240">service::ServiceRuntime::pop_command_result(core::CoreCommandResult*) (components/service/service_runtime.cpp:240)</a></td><td>called 42 times, returned 42 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l288">service::ServiceRuntime::pop_config_write(service::ServiceRuntime::ConfigWriteNotification*) (components/service/service_runtime.cpp:288)</a></td><td>called 40 times, returned 40 times</td><td>78.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l188">service::ServiceRuntime::pop_event(core::CoreEvent*) (components/service/service_runtime.cpp:188)</a></td><td>called 40 times, returned 40 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l312">service::ServiceRuntime::pop_network_request(service::ServiceRuntime::NetworkRequestNotification*) (components/service/service_runtime.cpp:312)</a></td><td>called 41 times, returned 41 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l264">service::ServiceRuntime::pop_nvs_write(service::ServiceRuntime::NvsWriteNotification*) (components/service/service_runtime.cpp:264)</a></td><td>called 68 times, returned 68 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l355">service::ServiceRuntime::pop_scan_worker_request(service::ServiceRuntime::ScanWorkerRequest*) (components/service/service_runtime.cpp:355)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l795">service::ServiceRuntime::pop_scan_worker_request_for_test(unsigned int*) (components/service/service_runtime.cpp:795)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l424">service::ServiceRuntime::post_command(core::CoreCommand const&amp;) (components/service/service_runtime.cpp:424)</a></td><td>called 3 times, returned 3 times</td><td>64.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l500">service::ServiceRuntime::post_config_write(service::ServiceRuntime::ConfigWriteRequest const&amp;) (components/service/service_runtime.cpp:500)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l200">service::ServiceRuntime::post_event(core::CoreEvent const&amp;) (components/service/service_runtime.cpp:200)</a></td><td>called 6 times, returned 6 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l530">service::ServiceRuntime::post_network_connect(unsigned int, char const*, char const*, bool) (components/service/service_runtime.cpp:530)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l570">service::ServiceRuntime::post_network_credentials_raw_debug(unsigned int) (components/service/service_runtime.cpp:570)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l555">service::ServiceRuntime::post_network_credentials_status(unsigned int) (components/service/service_runtime.cpp:555)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l515">service::ServiceRuntime::post_network_scan(unsigned int) (components/service/service_runtime.cpp:515)</a></td><td>called 1 time, returned 1 time</td><td>60.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l585">service::ServiceRuntime::post_open_join_window(unsigned int, unsigned short) (components/service/service_runtime.cpp:585)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l626">service::ServiceRuntime::post_remove_device(unsigned int, unsigned short, bool, unsigned int) (components/service/service_runtime.cpp:626)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l601">service::ServiceRuntime::post_zigbee_join_candidate(unsigned short) (components/service/service_runtime.cpp:601)</a></td><td>called 6 times, returned 6 times</td><td>86.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1784">service::ServiceRuntime::process_force_remove_timeouts(unsigned int) (components/service/service_runtime.cpp:1784)</a></td><td>called 2 times, returned 2 times</td><td>52.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1029">service::ServiceRuntime::process_pending() (components/service/service_runtime.cpp:1029)</a></td><td>called 17 times, returned 17 times</td><td>91.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1748">service::ServiceRuntime::process_pending_sta_connect(unsigned int) (components/service/service_runtime.cpp:1748)</a></td><td>called 2 times, returned 2 times</td><td>17.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1623">service::ServiceRuntime::process_zigbee_network_policy(unsigned int) (components/service/service_runtime.cpp:1623)</a></td><td>called 2 times, returned 2 times</td><td>11.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l175">service::ServiceRuntime::push_event(core::CoreEvent const&amp;) (components/service/service_runtime.cpp:175)</a></td><td>called 16 times, returned 16 times</td><td>70.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l819">service::ServiceRuntime::push_network_result_for_test(service::ServiceRuntime::NetworkResult const&amp;) (components/service/service_runtime.cpp:819)</a></td><td>called 1 time, returned 1 time</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l204">service::ServiceRuntime::queue_command_request(service::ServiceRuntime::CommandIngressNotification const&amp;) (components/service/service_runtime.cpp:204)</a></td><td>called 3 times, returned 3 times</td><td>88.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l228">service::ServiceRuntime::queue_command_result(core::CoreCommandResult const&amp;) (components/service/service_runtime.cpp:228)</a></td><td>called 2 times, returned 2 times</td><td>88.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l276">service::ServiceRuntime::queue_config_write(service::ServiceRuntime::ConfigWriteNotification const&amp;) (components/service/service_runtime.cpp:276)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l300">service::ServiceRuntime::queue_network_request(service::ServiceRuntime::NetworkRequestNotification const&amp;) (components/service/service_runtime.cpp:300)</a></td><td>called 1 time, returned 1 time</td><td>88.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l324">service::ServiceRuntime::queue_network_result(service::ServiceRuntime::NetworkResult const&amp;) (components/service/service_runtime.cpp:324)</a></td><td>called 2 times, returned 2 times</td><td>50.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l252">service::ServiceRuntime::queue_nvs_write(service::ServiceRuntime::NvsWriteNotification const&amp;) (components/service/service_runtime.cpp:252)</a></td><td>called 28 times, returned 28 times</td><td>88.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l338">service::ServiceRuntime::queue_scan_worker_request(service::ServiceRuntime::ScanWorkerRequest const&amp;) (components/service/service_runtime.cpp:338)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1193">service::ServiceRuntime::refresh_pending_commands_cache() (components/service/service_runtime.cpp:1193)</a></td><td>called 12 times, returned 12 times</td><td>64.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l417">service::ServiceRuntime::release_tracked_command(unsigned int) (components/service/service_runtime.cpp:417)</a></td><td>called 3 times, returned 3 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1582">service::ServiceRuntime::request_join_window_open(unsigned short) (components/service/service_runtime.cpp:1582)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l470">service::ServiceRuntime::resolve_command_result(core::CoreCommandResult const&amp;) (components/service/service_runtime.cpp:470)</a></td><td>called 2 times, returned 2 times</td><td>82.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1719">service::ServiceRuntime::schedule_force_remove(unsigned short, unsigned int) (components/service/service_runtime.cpp:1719)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l97">service::ServiceRuntime::set_join_window_cache(bool, unsigned short) (components/service/service_runtime.cpp:97)</a></td><td>called 7 times, returned 7 times</td><td>64.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l809">service::ServiceRuntime::set_scan_request_in_progress_for_test(unsigned int) (components/service/service_runtime.cpp:809)</a></td><td>called 2 times, returned 2 times</td><td>64.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l965">service::ServiceRuntime::start() (components/service/service_runtime.cpp:965)</a></td><td>called 2 times, returned 2 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l866">service::ServiceRuntime::start_provisioning_ap(char const*, char const*) (components/service/service_runtime.cpp:866)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1178">service::ServiceRuntime::state() const (components/service/service_runtime.cpp:1178)</a></td><td>called 12 times, returned 12 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1167">service::ServiceRuntime::stats() const (components/service/service_runtime.cpp:1167)</a></td><td>called 4 times, returned 4 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l439">service::ServiceRuntime::submit_command(core::CoreCommand const&amp;) (components/service/service_runtime.cpp:439)</a></td><td>called 3 times, returned 3 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l444">service::ServiceRuntime::submit_command_internal(core::CoreCommand const&amp;) (components/service/service_runtime.cpp:444)</a></td><td>called 3 times, returned 3 times</td><td>81.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l751">service::ServiceRuntime::take_network_result(unsigned int, service::ServiceRuntime::NetworkResult*) (components/service/service_runtime.cpp:751)</a></td><td>called 2 times, returned 2 times</td><td>100.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l368">service::ServiceRuntime::take_network_result_locked(unsigned int, service::ServiceRuntime::NetworkResult*) (components/service/service_runtime.cpp:368)</a></td><td>called 2 times, returned 2 times</td><td>61.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l1114">service::ServiceRuntime::tick(unsigned int) (components/service/service_runtime.cpp:1114)</a></td><td>called 2 times, returned 2 times</td><td>94.0%</td></tr>
+  <tr><td><a href="index.service_runtime.cpp.5a16d2025cae707eeab5c88636b7c8b1.html#l961">service::ServiceRuntime::zigbee_started() const (components/service/service_runtime.cpp:961)</a></td><td>not called</td><td>0.0%</td></tr>
+  <tr><td><a href="index.hal_event_adapter.cpp.4ae5f158ea57206bc57357ea39e22245.html#l162">service::init_hal_event_adapter(service::ServiceRuntime&amp;) (components/service/hal_event_adapter.cpp:162)</a></td><td>called 2 times, returned 2 times</td><td>84.0%</td></tr>
+</table>
+
+      <hr/>
+    </main>
+
+    <footer>
+      Generated by: <a href="http://gcovr.com/en/7.0">GCOVR (Version 7.0)</a>
+    </footer>
+  </body>
+</html>

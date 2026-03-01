@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Zigbee Gateway Contributors
+
+---
+# Stable clang-tidy baseline for embedded C++ (ESP32/ESP-IDF project).
+# Focus: correctness first, then low-noise maintainability checks.
+Checks: >-
+  -*,
+  clang-analyzer-*,
+  bugprone-argument-comment,
+  bugprone-branch-clone,
+  bugprone-macro-parentheses,
+  bugprone-misplaced-widening-cast,
+  bugprone-narrowing-conversions,
+  bugprone-sizeof-expression,
+  bugprone-string-constructor,
+  bugprone-too-small-loop-variable,
+  bugprone-undefined-memory-manipulation,
+  bugprone-use-after-move,
+  performance-for-range-copy,
+  performance-inefficient-vector-operation,
+  performance-move-const-arg,
+  portability-std-allocator-const,
+  readability-redundant-control-flow,
+  readability-simplify-boolean-expr,
+  modernize-use-nullptr
+WarningsAsErrors: '*'
+HeaderFilterRegex: '^(components|main|test)/'
+FormatStyle: none
+...

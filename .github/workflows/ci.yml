@@ -1,0 +1,386 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Zigbee Gateway Contributors
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  schedule:
+    # Nightly HIL run for target HAL tests.
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware-build:
+    name: Firmware Build (ESP32-C6)
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set target
+        run: idf.py set-target esp32c6
+
+      - name: Build firmware
+        run: idf.py build
+
+  host-tests:
+    name: Host Unit Tests (Core)
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install coverage tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcovr
+
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Configure host tests
+        run: cmake -S test/host -B build-host -DCMAKE_CXX_FLAGS="--coverage" -DCMAKE_C_FLAGS="--coverage" -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+
+      - name: Build host tests
+        run: cmake --build build-host --parallel
+
+      - name: Run host tests
+        run: ctest --test-dir build-host --output-on-failure
+
+      - name: Check code coverage
+        run: |
+          gcovr --root . --object-directory build-host \
+            --filter 'components/core/.*' \
+            --filter 'components/service/.*' \
+            --exclude '.*CMakeFiles.*' \
+            --gcov-ignore-errors=no_working_dir_found \
+            --print-summary --fail-under-line 80
+
+      - name: Generate HTML coverage report
+        if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' }}
+        run: |
+          mkdir -p coverage-report
+          gcovr --root . --object-directory build-host \
+            --filter 'components/core/.*' \
+            --filter 'components/service/.*' \
+            --exclude '.*CMakeFiles.*' \
+            --gcov-ignore-errors=no_working_dir_found \
+            --html-details coverage-report/index.html
+
+      - name: Upload Pages artifact
+        if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: coverage-report
+
+      - name: Generate coverage summary for badge
+        if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' }}
+        run: |
+          gcovr --root . --object-directory build-host \
+            --filter 'components/core/.*' \
+            --filter 'components/service/.*' \
+            --exclude '.*CMakeFiles.*' \
+            --gcov-ignore-errors=no_working_dir_found \
+            --json-summary -o coverage-summary.json
+
+      - name: Update coverage badge
+        if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' }}
+        uses: Schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: ${{ secrets.GIST_ID }}
+          filename: coverage.json
+          label: coverage
+          query: $.summary.lines.percent
+          url: file://${{ github.workspace }}/coverage-summary.json
+          valColorRange: 70 80 90 100
+
+  target-hal-tests-build:
+    name: Target HAL Tests Build (ESP32-C6)
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set target (tests)
+        run: idf.py -C test/target -B build-target-tests set-target esp32c6
+
+      - name: Build target HAL tests firmware
+        run: idf.py -C test/target -B build-target-tests build
+
+  target-hal-tests-hil-smoke:
+    name: Target HAL Tests HIL Smoke (ESP32-C6)
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false) }}
+    runs-on:
+      - self-hosted
+      - esp32c6-hil
+    timeout-minutes: 25
+    env:
+      ESPPORT: ${{ vars.HIL_ESPPORT || '/dev/ttyUSB0' }}
+      IDF_TARGET: esp32c6
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate runner prerequisites
+        run: |
+          set -euxo pipefail
+          command -v idf.py
+          python --version
+          test -n "${ESPPORT}"
+          test -e "${ESPPORT}"
+          idf.py --version
+
+      - name: Set target (tests)
+        run: idf.py -C test/target -B build-target-tests set-target "${IDF_TARGET}"
+
+      - name: Build target HAL tests firmware
+        run: idf.py -C test/target -B build-target-tests build
+
+      - name: Flash and run target HAL smoke tests on hardware
+        run: |
+          set -euo pipefail
+          LOG_PATH="${GITHUB_WORKSPACE}/hil-target-hal-smoke.log"
+          set +e
+          timeout 180s idf.py -C test/target -B build-target-tests -p "${ESPPORT}" flash monitor > "${LOG_PATH}" 2>&1
+          status=$?
+          set -e
+
+          # timeout=124 is expected because monitor is interactive; test outcome is parsed from Unity summary.
+          if [ "${status}" -ne 0 ] && [ "${status}" -ne 124 ]; then
+            echo "flash/monitor command failed with status=${status}"
+            tail -n 200 "${LOG_PATH}" || true
+            exit "${status}"
+          fi
+
+          if ! grep -Eq "[0-9]+ Tests 0 Failures 0 Ignored" "${LOG_PATH}"; then
+            echo "Unity summary indicates failure or not found"
+            tail -n 200 "${LOG_PATH}" || true
+            exit 1
+          fi
+
+          if ! grep -q "OK" "${LOG_PATH}"; then
+            echo "Unity OK marker not found in monitor log"
+            tail -n 200 "${LOG_PATH}" || true
+            exit 1
+          fi
+
+      - name: Upload HIL smoke monitor log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hil-target-hal-smoke-log
+          path: hil-target-hal-smoke.log
+          if-no-files-found: warn
+
+  target-hal-tests-hil:
+    name: Target HAL Tests HIL Full (ESP32-C6)
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on:
+      - self-hosted
+      - esp32c6-hil
+    timeout-minutes: 40
+    env:
+      ESPPORT: ${{ vars.HIL_ESPPORT || '/dev/ttyUSB0' }}
+      IDF_TARGET: esp32c6
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate runner prerequisites
+        run: |
+          set -euxo pipefail
+          command -v idf.py
+          python --version
+          test -n "${ESPPORT}"
+          test -e "${ESPPORT}"
+          idf.py --version
+
+      - name: Set target (tests)
+        run: idf.py -C test/target -B build-target-tests set-target "${IDF_TARGET}"
+
+      - name: Build target HAL tests firmware
+        run: idf.py -C test/target -B build-target-tests build
+
+      - name: Flash and run target HAL tests on hardware
+        run: |
+          set -euo pipefail
+          LOG_PATH="${GITHUB_WORKSPACE}/hil-target-hal-tests.log"
+          set +e
+          timeout 300s idf.py -C test/target -B build-target-tests -p "${ESPPORT}" flash monitor > "${LOG_PATH}" 2>&1
+          status=$?
+          set -e
+
+          # timeout=124 is expected because monitor is interactive; test outcome is parsed from Unity summary.
+          if [ "${status}" -ne 0 ] && [ "${status}" -ne 124 ]; then
+            echo "flash/monitor command failed with status=${status}"
+            tail -n 200 "${LOG_PATH}" || true
+            exit "${status}"
+          fi
+
+          if ! grep -Eq "[0-9]+ Tests 0 Failures 0 Ignored" "${LOG_PATH}"; then
+            echo "Unity summary indicates failure or not found"
+            tail -n 200 "${LOG_PATH}" || true
+            exit 1
+          fi
+
+          if ! grep -q "OK" "${LOG_PATH}"; then
+            echo "Unity OK marker not found in monitor log"
+            tail -n 200 "${LOG_PATH}" || true
+            exit 1
+          fi
+
+      - name: Upload HIL monitor log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hil-target-hal-tests-log
+          path: hil-target-hal-tests.log
+          if-no-files-found: warn
+
+  architecture-invariants:
+    name: Architecture Invariants
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check architectural invariants
+        env:
+          ARCH_BLOCKING_SEVERITIES: high,medium
+        run: bash ./check_arch_invariants.sh
+
+      - name: Configure host tests (migration smoke)
+        run: cmake -S test/host -B build-host
+
+      - name: Build migration smoke test
+        run: cmake --build build-host --target test_config_manager_migration --parallel
+
+      - name: Run migration smoke test
+        run: ctest --test-dir build-host --output-on-failure -R test_config_manager_migration
+
+  static-analysis:
+    name: Static Analysis (clang-tidy + cppcheck)
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy cppcheck
+
+      - name: Configure host project (compile_commands.json)
+        run: cmake -S test/host -B build-host -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run clang-tidy
+        run: |
+          clang-tidy \
+            -p ../../build-host \
+            ../../components/core/core_event_bus.cpp \
+            ../../components/core/core_registry.cpp \
+            ../../components/core/core_reducer.cpp \
+            ../../components/core/core_command_dispatcher.cpp \
+            ../../components/service/device_manager.cpp \
+            ../../components/service/network_manager.cpp \
+            ../../components/service/config_manager.cpp \
+            ../../components/service/effect_executor.cpp \
+            ../../components/service/service_runtime.cpp \
+            ../../components/service/hal_event_adapter.cpp \
+            test_core_registry.cpp \
+            test_core_reducer.cpp \
+            test_core_effects.cpp \
+            --warnings-as-errors='*' \
+            --extra-arg=-std=c++17
+        working-directory: test/host
+
+      - name: Run cppcheck (core + service)
+        run: |
+          cppcheck \
+            --std=c++17 \
+            --enable=warning,style,performance,portability \
+            --error-exitcode=1 \
+            --inline-suppr \
+            --quiet \
+            --suppress=missingIncludeSystem \
+            -I components/core/include \
+            -I components/service/include \
+            -I components/common/include \
+            components/core \
+            components/service
+
+      - name: Run cppcheck (critical app_hal)
+        run: |
+          cppcheck \
+            --std=c11 \
+            --enable=warning,style,performance,portability \
+            --error-exitcode=1 \
+            --inline-suppr \
+            --quiet \
+            --suppress=missingIncludeSystem \
+            -I components/app_hal/include \
+            -I components/common/include \
+            components/app_hal/hal_wifi.c \
+            components/app_hal/hal_zigbee.c \
+            components/app_hal/hal_nvs.c
+
+      - name: Run cppcheck (web_ui)
+        run: |
+          cppcheck \
+            --std=c++17 \
+            --enable=warning,style,performance,portability \
+            --error-exitcode=1 \
+            --inline-suppr \
+            --quiet \
+            --suppress=missingIncludeSystem \
+            -I components/web_ui/include \
+            -I components/service/include \
+            -I components/core/include \
+            -I components/common/include \
+            components/web_ui/web_server.cpp \
+            components/web_ui/web_routes.cpp \
+            components/web_ui/web_handlers_device.cpp \
+            components/web_ui/web_handlers_network.cpp \
+            components/web_ui/web_handlers_config.cpp
+
+  deploy-pages:
+    name: Deploy Coverage to Pages
+    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' }}
+    needs: host-tests
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

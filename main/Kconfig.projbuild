@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Alex.K.
+
+menu "Zigbee Gateway"
+
+config ZGW_ENABLE_DEBUG_LOGS
+    bool "Enable debug logs"
+    default y
+
+endmenu
