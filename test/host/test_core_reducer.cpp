@@ -38,6 +38,15 @@ int main() {
     assert(joined_device != nullptr);
     assert(joined_device->online);
     assert(!joined_device->power_on);
+    assert(joined_device->reporting_state == core::CoreReportingState::kUnknown);
+    assert(joined_device->last_report_at_ms == 0);
+    assert(!joined_device->stale);
+    assert(!joined_device->has_temperature);
+    assert(!joined_device->has_battery);
+    assert(!joined_device->has_lqi);
+    assert(!joined_device->has_rssi);
+    assert(joined_device->occupancy_state == core::CoreOccupancyState::kUnknown);
+    assert(joined_device->contact_state == core::CoreContactState::kUnknown);
 
     const core::CoreReduceResult joined_result_repeat = core::core_reduce(base, joined);
     assert(joined_result_repeat.next.revision == joined_result.next.revision);
@@ -87,27 +96,60 @@ int main() {
     assert(timeout_result.effects.items[0].correlation_id == 77);
     assert(!timeout_result.effects.items[0].arg_bool);
 
-    const core::CoreEventType reporting_events[] = {
-        core::CoreEventType::kDeviceInterviewCompleted,
-        core::CoreEventType::kDeviceBindingReady,
-        core::CoreEventType::kDeviceReportingConfigured,
-        core::CoreEventType::kDeviceTelemetryUpdated,
-        core::CoreEventType::kDeviceStale,
-    };
-    for (const core::CoreEventType event_type : reporting_events) {
-        core::CoreEvent reporting_event{};
-        reporting_event.type = event_type;
-        reporting_event.device_short_addr = 0x1234;
-        reporting_event.value_u32 = 42;
-        reporting_event.value_bool = true;
+    core::CoreEvent interview_completed{};
+    interview_completed.type = core::CoreEventType::kDeviceInterviewCompleted;
+    interview_completed.device_short_addr = 0x1234;
+    const core::CoreReduceResult interview_result = core::core_reduce(timeout_result.next, interview_completed);
+    assert(interview_result.next.revision == timeout_result.next.revision + 1);
+    assert(interview_result.effects.count == 2);
+    const core::CoreDeviceRecord* device = find_device(interview_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->reporting_state == core::CoreReportingState::kInterviewCompleted);
+    assert(!device->stale);
 
-        const core::CoreReduceResult reporting_result = core::core_reduce(timeout_result.next, reporting_event);
-        assert(reporting_result.next.revision == timeout_result.next.revision);
-        assert(reporting_result.next.device_count == timeout_result.next.device_count);
-        assert(reporting_result.next.network_connected == timeout_result.next.network_connected);
-        assert(reporting_result.next.last_command_status == timeout_result.next.last_command_status);
-        assert(reporting_result.effects.count == 0);
-    }
+    core::CoreEvent binding_ready{};
+    binding_ready.type = core::CoreEventType::kDeviceBindingReady;
+    binding_ready.device_short_addr = 0x1234;
+    const core::CoreReduceResult binding_result = core::core_reduce(interview_result.next, binding_ready);
+    assert(binding_result.next.revision == interview_result.next.revision + 1);
+    assert(binding_result.effects.count == 2);
+    device = find_device(binding_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->reporting_state == core::CoreReportingState::kBindingReady);
+
+    core::CoreEvent reporting_configured{};
+    reporting_configured.type = core::CoreEventType::kDeviceReportingConfigured;
+    reporting_configured.device_short_addr = 0x1234;
+    const core::CoreReduceResult configured_result = core::core_reduce(binding_result.next, reporting_configured);
+    assert(configured_result.next.revision == binding_result.next.revision + 1);
+    assert(configured_result.effects.count == 2);
+    device = find_device(configured_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->reporting_state == core::CoreReportingState::kReportingConfigured);
+
+    core::CoreEvent telemetry_updated{};
+    telemetry_updated.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    telemetry_updated.device_short_addr = 0x1234;
+    telemetry_updated.value_u32 = 4242;
+    const core::CoreReduceResult telemetry_result = core::core_reduce(configured_result.next, telemetry_updated);
+    assert(telemetry_result.next.revision == configured_result.next.revision + 1);
+    assert(telemetry_result.effects.count == 2);
+    device = find_device(telemetry_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->reporting_state == core::CoreReportingState::kReportingActive);
+    assert(!device->stale);
+    assert(device->last_report_at_ms == 4242);
+
+    core::CoreEvent stale_event{};
+    stale_event.type = core::CoreEventType::kDeviceStale;
+    stale_event.device_short_addr = 0x1234;
+    const core::CoreReduceResult stale_result = core::core_reduce(telemetry_result.next, stale_event);
+    assert(stale_result.next.revision == telemetry_result.next.revision + 1);
+    assert(stale_result.effects.count == 2);
+    device = find_device(stale_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->reporting_state == core::CoreReportingState::kStale);
+    assert(device->stale);
 
     return 0;
 }

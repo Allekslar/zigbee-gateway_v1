@@ -15,10 +15,44 @@ namespace core {
 inline constexpr std::size_t kMaxDevices = 64;
 inline constexpr std::size_t kMaxEffectsPerReduce = 4;
 
+enum class CoreReportingState : uint8_t {
+    kUnknown = 0,
+    kInterviewCompleted,
+    kBindingReady,
+    kReportingConfigured,
+    kReportingActive,
+    kStale,
+};
+
+enum class CoreOccupancyState : uint8_t {
+    kUnknown = 0,
+    kNotOccupied,
+    kOccupied,
+};
+
+enum class CoreContactState : uint8_t {
+    kUnknown = 0,
+    kClosed,
+    kOpen,
+};
+
 struct CoreDeviceRecord {
     uint16_t short_addr{kUnknownDeviceShortAddr};
     bool online{false};
     bool power_on{false};
+    CoreReportingState reporting_state{CoreReportingState::kUnknown};
+    uint32_t last_report_at_ms{0};
+    bool stale{false};
+    int16_t temperature_centi_c{0};
+    bool has_temperature{false};
+    CoreOccupancyState occupancy_state{CoreOccupancyState::kUnknown};
+    CoreContactState contact_state{CoreContactState::kUnknown};
+    uint8_t battery_percent{0};
+    bool has_battery{false};
+    uint8_t lqi{0};
+    bool has_lqi{false};
+    int8_t rssi_dbm{0};
+    bool has_rssi{false};
 };
 
 struct CoreState {

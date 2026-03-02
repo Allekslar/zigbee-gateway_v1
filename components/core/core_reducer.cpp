@@ -68,6 +68,62 @@ void apply_onoff_attribute(CoreReduceResult* out, const CoreEvent& event, bool* 
     }
 }
 
+bool apply_reporting_state(CoreReduceResult* out,
+                           uint16_t short_addr,
+                           CoreReportingState reporting_state,
+                           bool stale) noexcept {
+    if (short_addr == kUnknownDeviceShortAddr) {
+        return false;
+    }
+
+    const int index = find_device_index(out->next, short_addr);
+    if (index < 0) {
+        return false;
+    }
+
+    CoreDeviceRecord& device = out->next.devices[static_cast<std::size_t>(index)];
+    bool changed = false;
+    if (device.reporting_state != reporting_state) {
+        device.reporting_state = reporting_state;
+        changed = true;
+    }
+    if (device.stale != stale) {
+        device.stale = stale;
+        changed = true;
+    }
+    return changed;
+}
+
+bool apply_telemetry_update(CoreReduceResult* out,
+                            uint16_t short_addr,
+                            uint32_t reported_at_ms) noexcept {
+    if (short_addr == kUnknownDeviceShortAddr) {
+        return false;
+    }
+
+    const int index = find_device_index(out->next, short_addr);
+    if (index < 0) {
+        return false;
+    }
+
+    CoreDeviceRecord& device = out->next.devices[static_cast<std::size_t>(index)];
+    bool changed = false;
+    if (device.reporting_state != CoreReportingState::kReportingActive) {
+        device.reporting_state = CoreReportingState::kReportingActive;
+        changed = true;
+    }
+    if (device.stale) {
+        device.stale = false;
+        changed = true;
+    }
+    if (device.last_report_at_ms != reported_at_ms) {
+        device.last_report_at_ms = reported_at_ms;
+        changed = true;
+    }
+
+    return changed;
+}
+
 }  // namespace
 
 CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noexcept {
@@ -210,10 +266,56 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
             break;
 
         case CoreEventType::kDeviceInterviewCompleted:
+            state_changed = apply_reporting_state(
+                &out,
+                event.device_short_addr,
+                CoreReportingState::kInterviewCompleted,
+                false);
+            if (state_changed) {
+                push_state_persist_and_telemetry(&out);
+            }
+            break;
+
         case CoreEventType::kDeviceBindingReady:
+            state_changed = apply_reporting_state(
+                &out,
+                event.device_short_addr,
+                CoreReportingState::kBindingReady,
+                false);
+            if (state_changed) {
+                push_state_persist_and_telemetry(&out);
+            }
+            break;
+
         case CoreEventType::kDeviceReportingConfigured:
+            state_changed = apply_reporting_state(
+                &out,
+                event.device_short_addr,
+                CoreReportingState::kReportingConfigured,
+                false);
+            if (state_changed) {
+                push_state_persist_and_telemetry(&out);
+            }
+            break;
+
         case CoreEventType::kDeviceTelemetryUpdated:
+            state_changed = apply_telemetry_update(&out, event.device_short_addr, event.value_u32);
+            if (state_changed) {
+                push_state_persist_and_telemetry(&out);
+            }
+            break;
+
         case CoreEventType::kDeviceStale:
+            state_changed = apply_reporting_state(
+                &out,
+                event.device_short_addr,
+                CoreReportingState::kStale,
+                true);
+            if (state_changed) {
+                push_state_persist_and_telemetry(&out);
+            }
+            break;
+
         case CoreEventType::kUnknown:
         default:
             break;

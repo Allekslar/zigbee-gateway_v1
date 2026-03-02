@@ -17,6 +17,9 @@ int main() {
     assert(initial_ref.state->revision == 0);
     assert(initial_ref.state->device_count == 0);
     assert(!initial_ref.state->network_connected);
+    assert(initial_ref.state->devices[0].reporting_state == core::CoreReportingState::kUnknown);
+    assert(initial_ref.state->devices[0].last_report_at_ms == 0);
+    assert(!initial_ref.state->devices[0].stale);
     registry.release_snapshot(&initial_ref);
     assert(!initial_ref.valid());
 
