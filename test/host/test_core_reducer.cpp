@@ -87,5 +87,27 @@ int main() {
     assert(timeout_result.effects.items[0].correlation_id == 77);
     assert(!timeout_result.effects.items[0].arg_bool);
 
+    const core::CoreEventType reporting_events[] = {
+        core::CoreEventType::kDeviceInterviewCompleted,
+        core::CoreEventType::kDeviceBindingReady,
+        core::CoreEventType::kDeviceReportingConfigured,
+        core::CoreEventType::kDeviceTelemetryUpdated,
+        core::CoreEventType::kDeviceStale,
+    };
+    for (const core::CoreEventType event_type : reporting_events) {
+        core::CoreEvent reporting_event{};
+        reporting_event.type = event_type;
+        reporting_event.device_short_addr = 0x1234;
+        reporting_event.value_u32 = 42;
+        reporting_event.value_bool = true;
+
+        const core::CoreReduceResult reporting_result = core::core_reduce(timeout_result.next, reporting_event);
+        assert(reporting_result.next.revision == timeout_result.next.revision);
+        assert(reporting_result.next.device_count == timeout_result.next.device_count);
+        assert(reporting_result.next.network_connected == timeout_result.next.network_connected);
+        assert(reporting_result.next.last_command_status == timeout_result.next.last_command_status);
+        assert(reporting_result.effects.count == 0);
+    }
+
     return 0;
 }

@@ -209,6 +209,11 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
             });
             break;
 
+        case CoreEventType::kDeviceInterviewCompleted:
+        case CoreEventType::kDeviceBindingReady:
+        case CoreEventType::kDeviceReportingConfigured:
+        case CoreEventType::kDeviceTelemetryUpdated:
+        case CoreEventType::kDeviceStale:
         case CoreEventType::kUnknown:
         default:
             break;

@@ -22,6 +22,11 @@ enum class CoreEventType : uint8_t {
     kCommandResultSuccess,
     kCommandResultTimeout,
     kCommandResultFailed,
+    kDeviceInterviewCompleted,
+    kDeviceBindingReady,
+    kDeviceReportingConfigured,
+    kDeviceTelemetryUpdated,
+    kDeviceStale,
     kDeviceAdded = kDeviceJoined,
     kDeviceRemoved = kDeviceLeft,
 };
