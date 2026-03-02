@@ -34,6 +34,7 @@ set(SERVICE_SOURCES
     ../../components/service/network_manager.cpp
     ../../components/service/network_policy_manager.cpp
     ../../components/service/persistence_manager.cpp
+    ../../components/service/reporting_manager.cpp
     ../../components/service/scan_manager.cpp
     ../../components/service/service_runtime.cpp
     ../../components/service/hal_event_adapter.cpp
@@ -181,3 +182,8 @@ add_executable(test_web_handlers_network_routes test_web_handlers_network_routes
 target_link_libraries(test_web_handlers_network_routes PRIVATE service_host web_ui_host)
 zg_apply_component_compile_policy(test_web_handlers_network_routes)
 add_test(NAME test_web_handlers_network_routes COMMAND test_web_handlers_network_routes)
+
+add_executable(test_service_reporting_manager test_service_reporting_manager.cpp)
+target_link_libraries(test_service_reporting_manager PRIVATE service_host)
+zg_apply_component_compile_policy(test_service_reporting_manager)
+add_test(NAME test_service_reporting_manager COMMAND test_service_reporting_manager)

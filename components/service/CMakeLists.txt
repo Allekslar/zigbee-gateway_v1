@@ -13,6 +13,7 @@ idf_component_register(
         "network_manager.cpp"
         "network_policy_manager.cpp"
         "persistence_manager.cpp"
+        "reporting_manager.cpp"
         "scan_manager.cpp"
         "service_runtime.cpp"
         "hal_event_adapter.cpp"
