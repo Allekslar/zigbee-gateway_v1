@@ -30,9 +30,10 @@ int main() {
     const core::CoreReduceResult joined_result = core::core_reduce(base, joined);
     assert(joined_result.next.revision == 1);
     assert(joined_result.next.device_count == 1);
-    assert(joined_result.effects.count == 2);
+    assert(joined_result.effects.count == 3);
     assert(joined_result.effects.items[0].type == core::CoreEffectType::kPersistState);
     assert(joined_result.effects.items[1].type == core::CoreEffectType::kPublishTelemetry);
+    assert(joined_result.effects.items[2].type == core::CoreEffectType::kZigbeeInterview);
 
     const core::CoreDeviceRecord* joined_device = find_device(joined_result.next, 0x1234);
     assert(joined_device != nullptr);
@@ -101,7 +102,8 @@ int main() {
     interview_completed.device_short_addr = 0x1234;
     const core::CoreReduceResult interview_result = core::core_reduce(timeout_result.next, interview_completed);
     assert(interview_result.next.revision == timeout_result.next.revision + 1);
-    assert(interview_result.effects.count == 2);
+    assert(interview_result.effects.count == 3);
+    assert(interview_result.effects.items[2].type == core::CoreEffectType::kZigbeeBind);
     const core::CoreDeviceRecord* device = find_device(interview_result.next, 0x1234);
     assert(device != nullptr);
     assert(device->reporting_state == core::CoreReportingState::kInterviewCompleted);
@@ -112,7 +114,8 @@ int main() {
     binding_ready.device_short_addr = 0x1234;
     const core::CoreReduceResult binding_result = core::core_reduce(interview_result.next, binding_ready);
     assert(binding_result.next.revision == interview_result.next.revision + 1);
-    assert(binding_result.effects.count == 2);
+    assert(binding_result.effects.count == 3);
+    assert(binding_result.effects.items[2].type == core::CoreEffectType::kZigbeeConfigureReporting);
     device = find_device(binding_result.next, 0x1234);
     assert(device != nullptr);
     assert(device->reporting_state == core::CoreReportingState::kBindingReady);
@@ -122,7 +125,8 @@ int main() {
     reporting_configured.device_short_addr = 0x1234;
     const core::CoreReduceResult configured_result = core::core_reduce(binding_result.next, reporting_configured);
     assert(configured_result.next.revision == binding_result.next.revision + 1);
-    assert(configured_result.effects.count == 2);
+    assert(configured_result.effects.count == 3);
+    assert(configured_result.effects.items[2].type == core::CoreEffectType::kZigbeeReadAttributes);
     device = find_device(configured_result.next, 0x1234);
     assert(device != nullptr);
     assert(device->reporting_state == core::CoreReportingState::kReportingConfigured);

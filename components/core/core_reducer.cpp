@@ -161,6 +161,13 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
 
             if (state_changed) {
                 push_state_persist_and_telemetry(&out);
+                out.effects.push(CoreEffect{
+                    CoreEffectType::kZigbeeInterview,
+                    kNoCorrelationId,
+                    event.device_short_addr,
+                    0,
+                    false,
+                });
             }
             break;
         }
@@ -273,6 +280,13 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
                 false);
             if (state_changed) {
                 push_state_persist_and_telemetry(&out);
+                out.effects.push(CoreEffect{
+                    CoreEffectType::kZigbeeBind,
+                    kNoCorrelationId,
+                    event.device_short_addr,
+                    0,
+                    false,
+                });
             }
             break;
 
@@ -284,6 +298,13 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
                 false);
             if (state_changed) {
                 push_state_persist_and_telemetry(&out);
+                out.effects.push(CoreEffect{
+                    CoreEffectType::kZigbeeConfigureReporting,
+                    kNoCorrelationId,
+                    event.device_short_addr,
+                    0,
+                    false,
+                });
             }
             break;
 
@@ -295,6 +316,13 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
                 false);
             if (state_changed) {
                 push_state_persist_and_telemetry(&out);
+                out.effects.push(CoreEffect{
+                    CoreEffectType::kZigbeeReadAttributes,
+                    kNoCorrelationId,
+                    event.device_short_addr,
+                    0,
+                    false,
+                });
             }
             break;
 

@@ -27,6 +27,14 @@ bool EffectExecutor::execute(const core::CoreEffect& effect) noexcept {
             return hal_wifi_refresh() == HAL_WIFI_STATUS_OK;
         case core::CoreEffectType::kEmitCommandResult:
             return true;
+        case core::CoreEffectType::kZigbeeInterview:
+            return true;
+        case core::CoreEffectType::kZigbeeBind:
+            return true;
+        case core::CoreEffectType::kZigbeeConfigureReporting:
+            return true;
+        case core::CoreEffectType::kZigbeeReadAttributes:
+            return true;
         default:
             return false;
     }

@@ -17,6 +17,10 @@ enum class CoreEffectType : uint8_t {
     kSendZigbeeOnOff,
     kRefreshNetwork,
     kEmitCommandResult,
+    kZigbeeInterview,
+    kZigbeeBind,
+    kZigbeeConfigureReporting,
+    kZigbeeReadAttributes,
 };
 
 struct CoreEffect {

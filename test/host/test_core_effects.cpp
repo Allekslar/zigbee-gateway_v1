@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "core_commands.hpp"
+#include "core_state.hpp"
 
 int main() {
     core::CoreCommandDispatcher dispatcher;
@@ -85,6 +86,35 @@ int main() {
     unknown.correlation_id = 999;
     unknown.type = core::CoreCommandResultType::kSuccess;
     assert(dispatcher.resolve(unknown, &completion) == core::CoreError::kNotFound);
+
+    core::CoreState base{};
+    core::CoreEvent joined{};
+    joined.type = core::CoreEventType::kDeviceJoined;
+    joined.device_short_addr = 0x3344;
+    const core::CoreReduceResult joined_reduce = core::core_reduce(base, joined);
+    assert(joined_reduce.effects.count == 3);
+    assert(joined_reduce.effects.items[2].type == core::CoreEffectType::kZigbeeInterview);
+
+    core::CoreEvent interview_done{};
+    interview_done.type = core::CoreEventType::kDeviceInterviewCompleted;
+    interview_done.device_short_addr = 0x3344;
+    const core::CoreReduceResult bind_reduce = core::core_reduce(joined_reduce.next, interview_done);
+    assert(bind_reduce.effects.count == 3);
+    assert(bind_reduce.effects.items[2].type == core::CoreEffectType::kZigbeeBind);
+
+    core::CoreEvent bind_done{};
+    bind_done.type = core::CoreEventType::kDeviceBindingReady;
+    bind_done.device_short_addr = 0x3344;
+    const core::CoreReduceResult cfg_reduce = core::core_reduce(bind_reduce.next, bind_done);
+    assert(cfg_reduce.effects.count == 3);
+    assert(cfg_reduce.effects.items[2].type == core::CoreEffectType::kZigbeeConfigureReporting);
+
+    core::CoreEvent cfg_done{};
+    cfg_done.type = core::CoreEventType::kDeviceReportingConfigured;
+    cfg_done.device_short_addr = 0x3344;
+    const core::CoreReduceResult read_reduce = core::core_reduce(cfg_reduce.next, cfg_done);
+    assert(read_reduce.effects.count == 3);
+    assert(read_reduce.effects.items[2].type == core::CoreEffectType::kZigbeeReadAttributes);
 
     return 0;
 }
