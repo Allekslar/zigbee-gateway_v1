@@ -51,6 +51,28 @@ hal_zigbee_status_t hal_zigbee_set_primary_channel_mask(uint32_t channel_mask);
 hal_zigbee_status_t hal_zigbee_set_max_children(uint8_t max_children);
 hal_zigbee_status_t hal_zigbee_register_callbacks(const hal_zigbee_callbacks_t* callbacks, void* context);
 hal_zigbee_status_t hal_zigbee_send_on_off(uint32_t correlation_id, uint16_t short_addr, bool on);
+hal_zigbee_status_t hal_zigbee_request_interview(uint32_t correlation_id, uint16_t short_addr);
+hal_zigbee_status_t hal_zigbee_request_bind(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    uint8_t src_endpoint,
+    uint16_t cluster_id,
+    uint8_t dst_endpoint);
+hal_zigbee_status_t hal_zigbee_request_configure_reporting(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    uint8_t endpoint,
+    uint16_t cluster_id,
+    uint16_t attribute_id,
+    uint16_t min_interval_seconds,
+    uint16_t max_interval_seconds,
+    uint32_t reportable_change);
+hal_zigbee_status_t hal_zigbee_request_read_attribute(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    uint8_t endpoint,
+    uint16_t cluster_id,
+    uint16_t attribute_id);
 hal_zigbee_status_t hal_zigbee_start_network_formation(void);
 hal_zigbee_status_t hal_zigbee_open_network(uint16_t duration_seconds);
 hal_zigbee_status_t hal_zigbee_close_network(void);

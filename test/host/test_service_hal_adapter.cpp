@@ -58,6 +58,13 @@ int main() {
     assert(runtime.process_pending() == 1);
     assert(!runtime.state().network_connected);
 
+    // HAL request contracts remain thin in host mode and return immediate status only.
+    assert(hal_zigbee_request_interview(1001U, 0x2201) == HAL_ZIGBEE_STATUS_OK);
+    assert(hal_zigbee_request_bind(1002U, 0x2201, 1U, 0x0006U, 1U) == HAL_ZIGBEE_STATUS_OK);
+    assert(hal_zigbee_request_configure_reporting(1003U, 0x2201, 1U, 0x0402U, 0x0000U, 5U, 300U, 10U) ==
+           HAL_ZIGBEE_STATUS_OK);
+    assert(hal_zigbee_request_read_attribute(1004U, 0x2201, 1U, 0x0402U, 0x0000U) == HAL_ZIGBEE_STATUS_OK);
+
     // Test Device Left scenario
     hal_zigbee_simulate_device_left(0x2201);
     assert(runtime.process_pending() == 1);

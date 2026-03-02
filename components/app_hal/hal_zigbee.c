@@ -643,6 +643,174 @@ hal_zigbee_status_t hal_zigbee_send_on_off(uint32_t correlation_id, uint16_t sho
 #endif
 }
 
+hal_zigbee_status_t hal_zigbee_request_interview(uint32_t correlation_id, uint16_t short_addr) {
+    if (correlation_id == 0U || short_addr == 0xFFFFU || short_addr == 0x0000U) {
+        return HAL_ZIGBEE_STATUS_INVALID_ARG;
+    }
+
+#ifdef ESP_PLATFORM
+#if HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    if (!s_stack_started || !esp_zb_is_started()) {
+        return HAL_ZIGBEE_STATUS_NOT_STARTED;
+    }
+    ESP_LOGI(
+        kTag,
+        "Interview requested short_addr=0x%04x correlation_id=%lu",
+        (unsigned)short_addr,
+        (unsigned long)correlation_id);
+    return HAL_ZIGBEE_STATUS_OK;
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    return HAL_ZIGBEE_STATUS_NOT_LINKED;
+#endif
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    return HAL_ZIGBEE_STATUS_OK;
+#endif
+}
+
+hal_zigbee_status_t hal_zigbee_request_bind(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    uint8_t src_endpoint,
+    uint16_t cluster_id,
+    uint8_t dst_endpoint) {
+    if (correlation_id == 0U || short_addr == 0xFFFFU || short_addr == 0x0000U || src_endpoint == 0U ||
+        dst_endpoint == 0U) {
+        return HAL_ZIGBEE_STATUS_INVALID_ARG;
+    }
+
+#ifdef ESP_PLATFORM
+#if HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    if (!s_stack_started || !esp_zb_is_started()) {
+        return HAL_ZIGBEE_STATUS_NOT_STARTED;
+    }
+    ESP_LOGI(
+        kTag,
+        "Bind requested short_addr=0x%04x src_ep=%u cluster=0x%04x dst_ep=%u correlation_id=%lu",
+        (unsigned)short_addr,
+        (unsigned)src_endpoint,
+        (unsigned)cluster_id,
+        (unsigned)dst_endpoint,
+        (unsigned long)correlation_id);
+    return HAL_ZIGBEE_STATUS_OK;
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    (void)src_endpoint;
+    (void)cluster_id;
+    (void)dst_endpoint;
+    return HAL_ZIGBEE_STATUS_NOT_LINKED;
+#endif
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    (void)src_endpoint;
+    (void)cluster_id;
+    (void)dst_endpoint;
+    return HAL_ZIGBEE_STATUS_OK;
+#endif
+}
+
+hal_zigbee_status_t hal_zigbee_request_configure_reporting(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    uint8_t endpoint,
+    uint16_t cluster_id,
+    uint16_t attribute_id,
+    uint16_t min_interval_seconds,
+    uint16_t max_interval_seconds,
+    uint32_t reportable_change) {
+    if (correlation_id == 0U || short_addr == 0xFFFFU || short_addr == 0x0000U || endpoint == 0U ||
+        min_interval_seconds > max_interval_seconds) {
+        return HAL_ZIGBEE_STATUS_INVALID_ARG;
+    }
+
+#ifdef ESP_PLATFORM
+#if HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    if (!s_stack_started || !esp_zb_is_started()) {
+        return HAL_ZIGBEE_STATUS_NOT_STARTED;
+    }
+    ESP_LOGI(
+        kTag,
+        "Configure reporting requested short_addr=0x%04x ep=%u cluster=0x%04x attr=0x%04x min=%u max=%u change=%lu corr=%lu",
+        (unsigned)short_addr,
+        (unsigned)endpoint,
+        (unsigned)cluster_id,
+        (unsigned)attribute_id,
+        (unsigned)min_interval_seconds,
+        (unsigned)max_interval_seconds,
+        (unsigned long)reportable_change,
+        (unsigned long)correlation_id);
+    return HAL_ZIGBEE_STATUS_OK;
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    (void)endpoint;
+    (void)cluster_id;
+    (void)attribute_id;
+    (void)min_interval_seconds;
+    (void)max_interval_seconds;
+    (void)reportable_change;
+    return HAL_ZIGBEE_STATUS_NOT_LINKED;
+#endif
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    (void)endpoint;
+    (void)cluster_id;
+    (void)attribute_id;
+    (void)min_interval_seconds;
+    (void)max_interval_seconds;
+    (void)reportable_change;
+    return HAL_ZIGBEE_STATUS_OK;
+#endif
+}
+
+hal_zigbee_status_t hal_zigbee_request_read_attribute(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    uint8_t endpoint,
+    uint16_t cluster_id,
+    uint16_t attribute_id) {
+    if (correlation_id == 0U || short_addr == 0xFFFFU || short_addr == 0x0000U || endpoint == 0U) {
+        return HAL_ZIGBEE_STATUS_INVALID_ARG;
+    }
+
+#ifdef ESP_PLATFORM
+#if HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    if (!s_stack_started || !esp_zb_is_started()) {
+        return HAL_ZIGBEE_STATUS_NOT_STARTED;
+    }
+    ESP_LOGI(
+        kTag,
+        "Read attribute requested short_addr=0x%04x ep=%u cluster=0x%04x attr=0x%04x correlation_id=%lu",
+        (unsigned)short_addr,
+        (unsigned)endpoint,
+        (unsigned)cluster_id,
+        (unsigned)attribute_id,
+        (unsigned long)correlation_id);
+    return HAL_ZIGBEE_STATUS_OK;
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    (void)endpoint;
+    (void)cluster_id;
+    (void)attribute_id;
+    return HAL_ZIGBEE_STATUS_NOT_LINKED;
+#endif
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    (void)endpoint;
+    (void)cluster_id;
+    (void)attribute_id;
+    return HAL_ZIGBEE_STATUS_OK;
+#endif
+}
+
 hal_zigbee_status_t hal_zigbee_start_network_formation(void) {
 #ifdef ESP_PLATFORM
 #if HAL_ZIGBEE_HAS_ESP_ZB_SDK

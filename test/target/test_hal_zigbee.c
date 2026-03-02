@@ -56,6 +56,11 @@ static void on_command_result(void* context, uint32_t correlation_id, hal_zigbee
     capture->result = result;
 }
 
+static bool is_valid_request_status(hal_zigbee_status_t status) {
+    return status == HAL_ZIGBEE_STATUS_OK || status == HAL_ZIGBEE_STATUS_NOT_STARTED ||
+           status == HAL_ZIGBEE_STATUS_NOT_LINKED;
+}
+
 void test_hal_zigbee_init_contract(void) {
     const hal_zigbee_status_t init_status = hal_zigbee_init();
     TEST_ASSERT_TRUE(
@@ -108,4 +113,37 @@ void test_hal_zigbee_rejects_null_callbacks(void) {
     }
     TEST_ASSERT_EQUAL_INT(HAL_ZIGBEE_STATUS_OK, init_status);
     TEST_ASSERT_NOT_EQUAL(HAL_ZIGBEE_STATUS_OK, hal_zigbee_register_callbacks(0, 0));
+}
+
+void test_hal_zigbee_request_api_contract(void) {
+    const hal_zigbee_status_t init_status = hal_zigbee_init();
+    if (init_status == HAL_ZIGBEE_STATUS_NOT_LINKED) {
+        TEST_IGNORE_MESSAGE("Real Zigbee adapter is not linked in this target test build");
+    }
+    TEST_ASSERT_EQUAL_INT(HAL_ZIGBEE_STATUS_OK, init_status);
+
+    TEST_ASSERT_EQUAL_INT(HAL_ZIGBEE_STATUS_INVALID_ARG, hal_zigbee_request_interview(0, 0x2201));
+    TEST_ASSERT_EQUAL_INT(HAL_ZIGBEE_STATUS_INVALID_ARG, hal_zigbee_request_interview(1, 0xFFFF));
+
+    TEST_ASSERT_EQUAL_INT(
+        HAL_ZIGBEE_STATUS_INVALID_ARG, hal_zigbee_request_bind(0, 0x2201, 1, 0x0006, 1));
+    TEST_ASSERT_EQUAL_INT(
+        HAL_ZIGBEE_STATUS_INVALID_ARG, hal_zigbee_request_bind(1, 0x2201, 0, 0x0006, 1));
+
+    TEST_ASSERT_EQUAL_INT(
+        HAL_ZIGBEE_STATUS_INVALID_ARG,
+        hal_zigbee_request_configure_reporting(1, 0x2201, 1, 0x0402, 0x0000, 30, 10, 1));
+    TEST_ASSERT_EQUAL_INT(
+        HAL_ZIGBEE_STATUS_INVALID_ARG,
+        hal_zigbee_request_configure_reporting(1, 0x2201, 0, 0x0402, 0x0000, 5, 10, 1));
+
+    TEST_ASSERT_EQUAL_INT(
+        HAL_ZIGBEE_STATUS_INVALID_ARG,
+        hal_zigbee_request_read_attribute(1, 0x2201, 0, 0x0402, 0x0000));
+
+    TEST_ASSERT_TRUE(is_valid_request_status(hal_zigbee_request_interview(1, 0x2201)));
+    TEST_ASSERT_TRUE(is_valid_request_status(hal_zigbee_request_bind(2, 0x2201, 1, 0x0006, 1)));
+    TEST_ASSERT_TRUE(is_valid_request_status(
+        hal_zigbee_request_configure_reporting(3, 0x2201, 1, 0x0402, 0x0000, 5, 300, 10)));
+    TEST_ASSERT_TRUE(is_valid_request_status(hal_zigbee_request_read_attribute(4, 0x2201, 1, 0x0402, 0x0000)));
 }
