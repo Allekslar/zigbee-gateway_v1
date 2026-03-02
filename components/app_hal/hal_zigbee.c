@@ -1284,6 +1284,42 @@ void hal_zigbee_notify_command_result(uint32_t correlation_id, hal_zigbee_result
     }
 }
 
+void hal_zigbee_notify_interview_result(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result) {
+    if (s_callbacks.on_interview_result != 0) {
+        s_callbacks.on_interview_result(s_context, correlation_id, short_addr, result);
+    }
+}
+
+void hal_zigbee_notify_bind_result(uint32_t correlation_id, uint16_t short_addr, hal_zigbee_result_t result) {
+    if (s_callbacks.on_bind_result != 0) {
+        s_callbacks.on_bind_result(s_context, correlation_id, short_addr, result);
+    }
+}
+
+void hal_zigbee_notify_configure_reporting_result(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result) {
+    if (s_callbacks.on_configure_reporting_result != 0) {
+        s_callbacks.on_configure_reporting_result(s_context, correlation_id, short_addr, result);
+    }
+}
+
+void hal_zigbee_notify_attribute_report_raw(const hal_zigbee_raw_attribute_report_t* report) {
+    if (report == NULL) {
+        return;
+    }
+    if (report->payload_len > 0U && report->payload == NULL) {
+        return;
+    }
+    if (s_callbacks.on_attribute_report_raw != 0) {
+        s_callbacks.on_attribute_report_raw(s_context, report);
+    }
+}
+
 void hal_zigbee_simulate_device_joined(uint16_t short_addr) {
 #ifndef ESP_PLATFORM
     // TEMP MOCK PATH (!ESP_PLATFORM): explicit simulation helper for host tests.
