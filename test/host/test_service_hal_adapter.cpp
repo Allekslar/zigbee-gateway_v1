@@ -25,16 +25,47 @@ int main() {
     hal_zigbee_simulate_attribute_report(0x2201, 0x0006, 0x0000, true, 1);
     assert(runtime.process_pending() == 2);
 
+    hal_zigbee_notify_interview_result(1101U, 0x2201, HAL_ZIGBEE_RESULT_SUCCESS);
+    hal_zigbee_notify_bind_result(1102U, 0x2201, HAL_ZIGBEE_RESULT_SUCCESS);
+    hal_zigbee_notify_configure_reporting_result(1103U, 0x2201, HAL_ZIGBEE_RESULT_SUCCESS);
+    assert(runtime.process_pending() == 3);
+
     const auto state = runtime.state();
     assert(state.device_count == 1);
     bool found = false;
     for (const auto& dev : state.devices) {
         if (dev.short_addr == 0x2201 && dev.online) {
             assert(dev.power_on);
+            assert(dev.reporting_state == core::CoreReportingState::kReportingConfigured);
             found = true;
         }
     }
     assert(found);
+
+    // Failed lifecycle results must not mutate Core state directly.
+    hal_zigbee_notify_bind_result(1104U, 0x2201, HAL_ZIGBEE_RESULT_FAILED);
+    assert(runtime.process_pending() == 0);
+
+    const uint8_t raw_off_payload[] = {0x00U};
+    const hal_zigbee_raw_attribute_report_t raw_off = {
+        .short_addr = 0x2201,
+        .endpoint = 1U,
+        .cluster_id = 0x0006U,
+        .attribute_id = 0x0000U,
+        .zcl_data_type = 0x10U,
+        .payload = raw_off_payload,
+        .payload_len = 1U,
+    };
+    hal_zigbee_notify_attribute_report_raw(&raw_off);
+    assert(runtime.process_pending() == 1);
+    bool power_off_seen = false;
+    for (const auto& dev : runtime.state().devices) {
+        if (dev.short_addr == 0x2201) {
+            assert(!dev.power_on);
+            power_off_seen = true;
+        }
+    }
+    assert(power_off_seen);
 
     core::CoreCommand cmd{};
     cmd.type = core::CoreCommandType::kSetDevicePower;

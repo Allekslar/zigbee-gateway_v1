@@ -21,6 +21,7 @@
 #include "persistence_manager.hpp"
 #include "reporting_manager.hpp"
 #include "scan_manager.hpp"
+#include "hal_zigbee.h"
 
 namespace service {
 
@@ -92,6 +93,19 @@ public:
     bool post_network_credentials_raw_debug(uint32_t request_id) noexcept;
     bool post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept;
     bool post_zigbee_join_candidate(uint16_t short_addr) noexcept;
+    bool post_zigbee_interview_result(
+        uint32_t correlation_id,
+        uint16_t short_addr,
+        hal_zigbee_result_t result) noexcept;
+    bool post_zigbee_bind_result(
+        uint32_t correlation_id,
+        uint16_t short_addr,
+        hal_zigbee_result_t result) noexcept;
+    bool post_zigbee_configure_reporting_result(
+        uint32_t correlation_id,
+        uint16_t short_addr,
+        hal_zigbee_result_t result) noexcept;
+    bool post_zigbee_attribute_report_raw(const hal_zigbee_raw_attribute_report_t& report) noexcept;
     bool post_remove_device(
         uint32_t request_id,
         uint16_t short_addr,

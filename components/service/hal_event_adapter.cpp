@@ -129,6 +129,80 @@ void zigbee_command_result_cb(void* context, uint32_t correlation_id, hal_zigbee
     }
 }
 
+void zigbee_interview_result_cb(
+    void* context,
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result) noexcept {
+    if (context == nullptr) {
+        return;
+    }
+
+    ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
+    if (!runtime->post_zigbee_interview_result(correlation_id, short_addr, result)) {
+        HAL_ADAPTER_LOGW(
+            "Drop interview result short_addr=0x%04x correlation_id=%lu result=%u",
+            static_cast<unsigned>(short_addr),
+            static_cast<unsigned long>(correlation_id),
+            static_cast<unsigned>(result));
+    }
+}
+
+void zigbee_bind_result_cb(
+    void* context,
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result) noexcept {
+    if (context == nullptr) {
+        return;
+    }
+
+    ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
+    if (!runtime->post_zigbee_bind_result(correlation_id, short_addr, result)) {
+        HAL_ADAPTER_LOGW(
+            "Drop bind result short_addr=0x%04x correlation_id=%lu result=%u",
+            static_cast<unsigned>(short_addr),
+            static_cast<unsigned long>(correlation_id),
+            static_cast<unsigned>(result));
+    }
+}
+
+void zigbee_configure_reporting_result_cb(
+    void* context,
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result) noexcept {
+    if (context == nullptr) {
+        return;
+    }
+
+    ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
+    if (!runtime->post_zigbee_configure_reporting_result(correlation_id, short_addr, result)) {
+        HAL_ADAPTER_LOGW(
+            "Drop configure-reporting result short_addr=0x%04x correlation_id=%lu result=%u",
+            static_cast<unsigned>(short_addr),
+            static_cast<unsigned long>(correlation_id),
+            static_cast<unsigned>(result));
+    }
+}
+
+void zigbee_attribute_report_raw_cb(void* context, const hal_zigbee_raw_attribute_report_t* report) noexcept {
+    if (context == nullptr || report == nullptr) {
+        return;
+    }
+
+    ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
+    if (!runtime->post_zigbee_attribute_report_raw(*report)) {
+        HAL_ADAPTER_LOGW(
+            "Drop raw attribute report short_addr=0x%04x cluster=0x%04x attr=0x%04x type=0x%02x len=%u",
+            static_cast<unsigned>(report->short_addr),
+            static_cast<unsigned>(report->cluster_id),
+            static_cast<unsigned>(report->attribute_id),
+            static_cast<unsigned>(report->zcl_data_type),
+            static_cast<unsigned>(report->payload_len));
+    }
+}
+
 void wifi_network_up_cb(void* context) noexcept {
     if (context == nullptr) {
         return;
@@ -177,7 +251,11 @@ bool init_hal_event_adapter(ServiceRuntime& runtime) noexcept {
     zigbee_callbacks.on_device_joined = &zigbee_device_joined_cb;
     zigbee_callbacks.on_device_left = &zigbee_device_left_cb;
     zigbee_callbacks.on_attribute_report = &zigbee_attribute_report_cb;
+    zigbee_callbacks.on_attribute_report_raw = &zigbee_attribute_report_raw_cb;
     zigbee_callbacks.on_command_result = &zigbee_command_result_cb;
+    zigbee_callbacks.on_interview_result = &zigbee_interview_result_cb;
+    zigbee_callbacks.on_bind_result = &zigbee_bind_result_cb;
+    zigbee_callbacks.on_configure_reporting_result = &zigbee_configure_reporting_result_cb;
 
     hal_wifi_callbacks_t wifi_callbacks{};
     wifi_callbacks.on_network_up = &wifi_network_up_cb;

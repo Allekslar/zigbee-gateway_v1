@@ -74,6 +74,27 @@ uint32_t clamp_force_remove_timeout(uint32_t timeout_ms) noexcept {
     return timeout_ms;
 }
 
+bool decode_raw_u32_le(const hal_zigbee_raw_attribute_report_t& report, uint32_t* out_value) noexcept {
+    if (out_value == nullptr) {
+        return false;
+    }
+
+    *out_value = 0U;
+    if (report.payload_len == 0U) {
+        return true;
+    }
+    if (report.payload == nullptr || report.payload_len > 4U) {
+        return false;
+    }
+
+    uint32_t value = 0U;
+    for (uint8_t i = 0; i < report.payload_len; ++i) {
+        value |= static_cast<uint32_t>(report.payload[i]) << (8U * i);
+    }
+    *out_value = value;
+    return true;
+}
+
 }  // namespace
 
 ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& effect_executor) noexcept
@@ -283,6 +304,71 @@ bool ServiceRuntime::post_zigbee_join_candidate(uint16_t short_addr) noexcept {
 
     maybe_auto_close_join_window_after_first_join(short_addr);
     return true;
+}
+
+bool ServiceRuntime::post_zigbee_interview_result(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result) noexcept {
+    (void)correlation_id;
+    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || result != HAL_ZIGBEE_RESULT_SUCCESS) {
+        return false;
+    }
+
+    core::CoreEvent event{};
+    event.type = core::CoreEventType::kDeviceInterviewCompleted;
+    event.device_short_addr = short_addr;
+    return push_event(event);
+}
+
+bool ServiceRuntime::post_zigbee_bind_result(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result) noexcept {
+    (void)correlation_id;
+    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || result != HAL_ZIGBEE_RESULT_SUCCESS) {
+        return false;
+    }
+
+    core::CoreEvent event{};
+    event.type = core::CoreEventType::kDeviceBindingReady;
+    event.device_short_addr = short_addr;
+    return push_event(event);
+}
+
+bool ServiceRuntime::post_zigbee_configure_reporting_result(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result) noexcept {
+    (void)correlation_id;
+    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || result != HAL_ZIGBEE_RESULT_SUCCESS) {
+        return false;
+    }
+
+    core::CoreEvent event{};
+    event.type = core::CoreEventType::kDeviceReportingConfigured;
+    event.device_short_addr = short_addr;
+    return push_event(event);
+}
+
+bool ServiceRuntime::post_zigbee_attribute_report_raw(const hal_zigbee_raw_attribute_report_t& report) noexcept {
+    if (report.short_addr == core::kUnknownDeviceShortAddr || report.short_addr == 0x0000U) {
+        return false;
+    }
+
+    uint32_t decoded_u32 = 0U;
+    if (!decode_raw_u32_le(report, &decoded_u32)) {
+        return false;
+    }
+
+    core::CoreEvent event{};
+    event.type = core::CoreEventType::kAttributeReported;
+    event.device_short_addr = report.short_addr;
+    event.cluster_id = report.cluster_id;
+    event.attribute_id = report.attribute_id;
+    event.value_u32 = decoded_u32;
+    event.value_bool = (decoded_u32 != 0U);
+    return push_event(event);
 }
 
 bool ServiceRuntime::post_remove_device(
