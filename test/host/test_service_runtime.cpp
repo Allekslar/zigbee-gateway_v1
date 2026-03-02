@@ -21,6 +21,9 @@ int main() {
     assert(runtime.post_event(joined));
     assert(runtime.process_pending() == 1);
     assert(runtime.state().device_count == 1);
+    assert(runtime.stats().reporting_retries == 1);
+    assert(runtime.stats().reporting_failures == 0);
+    assert(runtime.stats().stale_devices == 0);
 
     service::ServiceRuntime::DevicesApiSnapshot devices_snapshot{};
     assert(runtime.build_devices_api_snapshot(1000U, &devices_snapshot));
@@ -78,6 +81,22 @@ int main() {
     assert(runtime.process_pending() == 1);
     assert(runtime.state().last_command_status == 1);
     assert(runtime.pending_commands() == 0);
+
+    core::CoreEvent stale{};
+    stale.type = core::CoreEventType::kDeviceStale;
+    stale.device_short_addr = 0x3301;
+    assert(runtime.post_event(stale));
+    assert(runtime.process_pending() == 1);
+    assert(runtime.stats().reporting_failures == 1);
+    assert(runtime.stats().stale_devices == 1);
+
+    core::CoreEvent telemetry{};
+    telemetry.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    telemetry.device_short_addr = 0x3301;
+    telemetry.value_u32 = 7000;
+    assert(runtime.post_event(telemetry));
+    assert(runtime.process_pending() == 1);
+    assert(runtime.stats().stale_devices == 0);
 
     return 0;
 }

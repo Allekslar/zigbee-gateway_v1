@@ -480,6 +480,18 @@ bool ServiceRuntime::start() noexcept {
 }
 
 void ServiceRuntime::apply_managers(const core::CoreEvent& event) noexcept {
+    const ReportingManager::RuntimeActions reporting_actions = reporting_manager_.handle_event(event);
+    if (reporting_actions.mark_degraded) {
+        ++stats_.reporting_failures;
+    }
+    if (reporting_actions.request_interview || reporting_actions.request_bind ||
+        reporting_actions.request_configure_reporting) {
+        // Retry/backoff orchestration is introduced in RPT-006.
+        // For RPT-005 we keep the counter observable and deterministic.
+        ++stats_.reporting_retries;
+    }
+    stats_.stale_devices = reporting_manager_.degraded_count();
+
     (void)device_manager_.handle_event(event);
     (void)network_manager_.handle_event(event);
     stats_.network_refresh_requests = network_manager_.refresh_count();
@@ -584,6 +596,7 @@ std::size_t ServiceRuntime::process_pending() noexcept {
 }
 
 std::size_t ServiceRuntime::tick(uint32_t now_ms) noexcept {
+    stats_.stale_devices = reporting_manager_.degraded_count();
     last_tick_ms_.store(now_ms, std::memory_order_release);
     process_zigbee_network_policy(now_ms);
     std::size_t queued = command_manager_.process_timeouts(*this, now_ms);

@@ -31,6 +31,7 @@ public:
 
     RuntimeActions handle_event(const core::CoreEvent& event) noexcept;
     bool get_state(uint16_t short_addr, State* out) const noexcept;
+    uint32_t degraded_count() const noexcept;
 
 private:
     struct Entry {

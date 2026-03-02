@@ -19,6 +19,7 @@
 #include "network_manager.hpp"
 #include "network_policy_manager.hpp"
 #include "persistence_manager.hpp"
+#include "reporting_manager.hpp"
 #include "scan_manager.hpp"
 
 namespace service {
@@ -37,6 +38,9 @@ public:
         uint32_t failed_effects{0};
         uint32_t command_retries{0};
         uint32_t command_timeouts{0};
+        uint32_t reporting_retries{0};
+        uint32_t reporting_failures{0};
+        uint32_t stale_devices{0};
         uint32_t autoconnect_failures{0};
         uint32_t current_backoff_ms{0};
         uint32_t nvs_writes{0};
@@ -177,6 +181,7 @@ private:
     CommandManager command_manager_{};
     ConnectivityManager connectivity_manager_{};
     PersistenceManager persistence_manager_{};
+    ReportingManager reporting_manager_{};
     DeviceManager device_manager_{};
     NetworkManager network_manager_{};
     NetworkPolicyManager network_policy_manager_{};

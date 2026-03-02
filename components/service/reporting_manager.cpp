@@ -115,4 +115,14 @@ bool ReportingManager::get_state(uint16_t short_addr, State* out) const noexcept
     return true;
 }
 
+uint32_t ReportingManager::degraded_count() const noexcept {
+    uint32_t count = 0;
+    for (const Entry& entry : entries_) {
+        if (entry.state == State::kDegraded) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 }  // namespace service
