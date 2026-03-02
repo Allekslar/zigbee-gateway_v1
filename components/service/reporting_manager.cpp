@@ -29,6 +29,54 @@ int ReportingManager::find_free_index(const std::array<Entry, core::kMaxDevices>
     return -1;
 }
 
+bool ReportingManager::is_retryable_reason(FailureReason reason) noexcept {
+    switch (reason) {
+        case FailureReason::kTimeout:
+        case FailureReason::kNetworkError:
+            return true;
+        case FailureReason::kNone:
+        case FailureReason::kNotSupported:
+        case FailureReason::kUnsupportedAttr:
+        default:
+            return false;
+    }
+}
+
+uint32_t ReportingManager::compute_backoff_ms(uint8_t attempt) noexcept {
+    if (attempt == 0U) {
+        return kBaseBackoffMs;
+    }
+
+    uint32_t delay = kBaseBackoffMs;
+    for (uint8_t i = 1U; i < attempt; ++i) {
+        if (delay >= (kMaxBackoffMs / 2U)) {
+            delay = kMaxBackoffMs;
+            break;
+        }
+        delay *= 2U;
+    }
+    if (delay > kMaxBackoffMs) {
+        delay = kMaxBackoffMs;
+    }
+    return delay;
+}
+
+bool ReportingManager::is_due(uint32_t now_ms, uint32_t deadline_ms) noexcept {
+    return static_cast<uint32_t>(now_ms - deadline_ms) < 0x80000000U;
+}
+
+void ReportingManager::clear_retry_state(Entry* entry) noexcept {
+    if (entry == nullptr) {
+        return;
+    }
+
+    entry->retry_target = RetryTarget::kNone;
+    entry->last_failure_reason = FailureReason::kNone;
+    entry->retry_attempt = 0U;
+    entry->next_retry_at_ms = 0U;
+    entry->retry_pending = false;
+}
+
 ReportingManager::RuntimeActions ReportingManager::handle_event(const core::CoreEvent& event) noexcept {
     RuntimeActions actions{};
     if (!valid_short_addr(event.device_short_addr) && event.type != core::CoreEventType::kUnknown) {
@@ -58,6 +106,7 @@ ReportingManager::RuntimeActions ReportingManager::handle_event(const core::Core
             break;
 
         case core::CoreEventType::kDeviceInterviewCompleted:
+            clear_retry_state(&entry);
             if (entry.state != State::kPendingBind) {
                 entry.state = State::kPendingBind;
                 actions.request_bind = true;
@@ -65,6 +114,7 @@ ReportingManager::RuntimeActions ReportingManager::handle_event(const core::Core
             break;
 
         case core::CoreEventType::kDeviceBindingReady:
+            clear_retry_state(&entry);
             if (entry.state != State::kPendingConfigureReporting) {
                 entry.state = State::kPendingConfigureReporting;
                 actions.request_configure_reporting = true;
@@ -73,6 +123,7 @@ ReportingManager::RuntimeActions ReportingManager::handle_event(const core::Core
 
         case core::CoreEventType::kDeviceReportingConfigured:
         case core::CoreEventType::kDeviceTelemetryUpdated:
+            clear_retry_state(&entry);
             entry.state = State::kReportingActive;
             break;
 
@@ -81,6 +132,7 @@ ReportingManager::RuntimeActions ReportingManager::handle_event(const core::Core
                 entry.state = State::kDegraded;
                 actions.mark_degraded = true;
             }
+            clear_retry_state(&entry);
             break;
 
         case core::CoreEventType::kDeviceLeft:
@@ -103,6 +155,74 @@ ReportingManager::RuntimeActions ReportingManager::handle_event(const core::Core
     return actions;
 }
 
+ReportingManager::RuntimeActions ReportingManager::report_operation_failure(
+    uint16_t short_addr,
+    RetryTarget target,
+    FailureReason reason,
+    uint32_t now_ms) noexcept {
+    RuntimeActions actions{};
+    if (!valid_short_addr(short_addr) || target == RetryTarget::kNone || reason == FailureReason::kNone) {
+        return actions;
+    }
+
+    const int index = find_index(entries_, short_addr);
+    if (index < 0) {
+        return actions;
+    }
+
+    Entry& entry = entries_[static_cast<std::size_t>(index)];
+    entry.retry_target = target;
+    entry.last_failure_reason = reason;
+
+    if (!is_retryable_reason(reason)) {
+        entry.state = State::kDegraded;
+        entry.retry_pending = false;
+        actions.mark_degraded = true;
+        return actions;
+    }
+
+    if (entry.retry_attempt >= kMaxRetryAttempts) {
+        entry.state = State::kDegraded;
+        entry.retry_pending = false;
+        actions.mark_degraded = true;
+        return actions;
+    }
+
+    ++entry.retry_attempt;
+    entry.retry_pending = true;
+    entry.next_retry_at_ms = now_ms + compute_backoff_ms(entry.retry_attempt);
+    return actions;
+}
+
+ReportingManager::RuntimeActions ReportingManager::process_timeouts(uint32_t now_ms) noexcept {
+    RuntimeActions actions{};
+    for (Entry& entry : entries_) {
+        if (entry.short_addr == core::kUnknownDeviceShortAddr || !entry.retry_pending) {
+            continue;
+        }
+        if (!is_due(now_ms, entry.next_retry_at_ms)) {
+            continue;
+        }
+
+        entry.retry_pending = false;
+        switch (entry.retry_target) {
+            case RetryTarget::kBind:
+                actions.request_bind = true;
+                entry.state = State::kPendingBind;
+                break;
+            case RetryTarget::kConfigureReporting:
+                actions.request_configure_reporting = true;
+                entry.state = State::kPendingConfigureReporting;
+                break;
+            case RetryTarget::kNone:
+            default:
+                break;
+        }
+    }
+
+    return actions;
+}
+
 bool ReportingManager::get_state(uint16_t short_addr, State* out) const noexcept {
     if (out == nullptr || !valid_short_addr(short_addr)) {
         return false;
@@ -114,6 +234,25 @@ bool ReportingManager::get_state(uint16_t short_addr, State* out) const noexcept
     }
 
     *out = entries_[static_cast<std::size_t>(index)].state;
+    return true;
+}
+
+bool ReportingManager::get_retry_status(uint16_t short_addr, RetryStatus* out) const noexcept {
+    if (out == nullptr || !valid_short_addr(short_addr)) {
+        return false;
+    }
+
+    const int index = find_index(entries_, short_addr);
+    if (index < 0) {
+        return false;
+    }
+
+    const Entry& entry = entries_[static_cast<std::size_t>(index)];
+    out->target = entry.retry_target;
+    out->reason = entry.last_failure_reason;
+    out->attempt = entry.retry_attempt;
+    out->next_retry_at_ms = entry.next_retry_at_ms;
+    out->pending = entry.retry_pending;
     return true;
 }
 
