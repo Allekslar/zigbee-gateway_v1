@@ -3,6 +3,8 @@
 
 #include "reporting_manager.hpp"
 
+#include <algorithm>
+
 namespace service {
 
 bool ReportingManager::valid_short_addr(uint16_t short_addr) noexcept {
@@ -116,13 +118,10 @@ bool ReportingManager::get_state(uint16_t short_addr, State* out) const noexcept
 }
 
 uint32_t ReportingManager::degraded_count() const noexcept {
-    uint32_t count = 0;
-    for (const Entry& entry : entries_) {
-        if (entry.state == State::kDegraded) {
-            ++count;
-        }
-    }
-    return count;
+    return static_cast<uint32_t>(std::count_if(
+        entries_.begin(),
+        entries_.end(),
+        [](const Entry& entry) noexcept { return entry.state == State::kDegraded; }));
 }
 
 }  // namespace service
