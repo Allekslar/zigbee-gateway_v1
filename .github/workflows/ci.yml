@@ -138,7 +138,8 @@ jobs:
 
   target-hal-tests-hil-smoke:
     name: Target HAL Tests HIL Smoke (ESP32-C6)
-    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false) }}
+    # Safe fallback: require explicit opt-in to avoid stuck jobs when no self-hosted HIL runner is configured.
+    if: ${{ vars.ENABLE_HIL_RUNNERS == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false)) }}
     runs-on:
       - self-hosted
       - esp32c6-hil
@@ -204,7 +205,8 @@ jobs:
 
   target-hal-tests-hil:
     name: Target HAL Tests HIL Full (ESP32-C6)
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    # Keep nightly/manual HIL disabled by default unless runner availability is explicitly enabled.
+    if: ${{ vars.ENABLE_HIL_RUNNERS == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on:
       - self-hosted
       - esp32c6-hil
