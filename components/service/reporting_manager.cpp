@@ -103,6 +103,7 @@ ReportingManager::RuntimeActions ReportingManager::handle_event(const core::Core
                 entry.state = State::kPendingInterview;
                 actions.request_interview = true;
             }
+            entry.stale_pending = false;
             break;
 
         case core::CoreEventType::kDeviceInterviewCompleted:
@@ -122,9 +123,18 @@ ReportingManager::RuntimeActions ReportingManager::handle_event(const core::Core
             break;
 
         case core::CoreEventType::kDeviceReportingConfigured:
+            clear_retry_state(&entry);
+            entry.state = State::kReportingActive;
+            entry.stale_pending = false;
+            break;
+
         case core::CoreEventType::kDeviceTelemetryUpdated:
             clear_retry_state(&entry);
             entry.state = State::kReportingActive;
+            entry.stale_pending = false;
+            if (event.value_u32 != 0U) {
+                entry.last_report_at_ms = event.value_u32;
+            }
             break;
 
         case core::CoreEventType::kDeviceStale:
@@ -133,6 +143,7 @@ ReportingManager::RuntimeActions ReportingManager::handle_event(const core::Core
                 actions.mark_degraded = true;
             }
             clear_retry_state(&entry);
+            entry.stale_pending = false;
             break;
 
         case core::CoreEventType::kDeviceLeft:
@@ -221,6 +232,52 @@ ReportingManager::RuntimeActions ReportingManager::process_timeouts(uint32_t now
     }
 
     return actions;
+}
+
+std::size_t ReportingManager::collect_stale_candidates(
+    uint32_t now_ms,
+    uint32_t max_silence_window_ms,
+    std::array<uint16_t, core::kMaxDevices>* out_short_addrs) noexcept {
+    if (out_short_addrs == nullptr || max_silence_window_ms == 0U) {
+        return 0;
+    }
+
+    std::size_t count = 0;
+    for (Entry& entry : entries_) {
+        if (entry.short_addr == core::kUnknownDeviceShortAddr) {
+            continue;
+        }
+        if (entry.state != State::kReportingActive || entry.last_report_at_ms == 0U || entry.stale_pending) {
+            continue;
+        }
+
+        const uint32_t stale_deadline = entry.last_report_at_ms + max_silence_window_ms;
+        if (!is_due(now_ms, stale_deadline)) {
+            continue;
+        }
+        if (count >= out_short_addrs->size()) {
+            break;
+        }
+
+        (*out_short_addrs)[count++] = entry.short_addr;
+        entry.stale_pending = true;
+    }
+
+    return count;
+}
+
+bool ReportingManager::set_stale_pending(uint16_t short_addr, bool pending) noexcept {
+    if (!valid_short_addr(short_addr)) {
+        return false;
+    }
+
+    const int index = find_index(entries_, short_addr);
+    if (index < 0) {
+        return false;
+    }
+
+    entries_[static_cast<std::size_t>(index)].stale_pending = pending;
+    return true;
 }
 
 bool ReportingManager::get_state(uint16_t short_addr, State* out) const noexcept {

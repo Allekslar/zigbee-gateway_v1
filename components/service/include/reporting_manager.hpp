@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include "core_events.hpp"
@@ -16,6 +17,7 @@ public:
     static constexpr uint8_t kMaxRetryAttempts = 3U;
     static constexpr uint32_t kBaseBackoffMs = 1000U;
     static constexpr uint32_t kMaxBackoffMs = 8000U;
+    static constexpr uint32_t kDefaultMaxSilenceWindowMs = 15000U;
 
     enum class State : uint8_t {
         kUnknown = 0,
@@ -62,6 +64,11 @@ public:
         FailureReason reason,
         uint32_t now_ms) noexcept;
     RuntimeActions process_timeouts(uint32_t now_ms) noexcept;
+    std::size_t collect_stale_candidates(
+        uint32_t now_ms,
+        uint32_t max_silence_window_ms,
+        std::array<uint16_t, core::kMaxDevices>* out_short_addrs) noexcept;
+    bool set_stale_pending(uint16_t short_addr, bool pending) noexcept;
     bool get_state(uint16_t short_addr, State* out) const noexcept;
     bool get_retry_status(uint16_t short_addr, RetryStatus* out) const noexcept;
     uint32_t degraded_count() const noexcept;
@@ -75,6 +82,8 @@ private:
         uint8_t retry_attempt{0};
         uint32_t next_retry_at_ms{0};
         bool retry_pending{false};
+        uint32_t last_report_at_ms{0};
+        bool stale_pending{false};
     };
 
     static bool valid_short_addr(uint16_t short_addr) noexcept;

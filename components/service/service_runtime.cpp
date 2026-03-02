@@ -601,6 +601,21 @@ std::size_t ServiceRuntime::tick(uint32_t now_ms) noexcept {
     process_zigbee_network_policy(now_ms);
     std::size_t queued = command_manager_.process_timeouts(*this, now_ms);
 
+    std::array<uint16_t, core::kMaxDevices> stale_short_addrs{};
+    const std::size_t stale_count =
+        reporting_manager_.collect_stale_candidates(now_ms, ReportingManager::kDefaultMaxSilenceWindowMs, &stale_short_addrs);
+    for (std::size_t i = 0; i < stale_count; ++i) {
+        core::CoreEvent stale_event{};
+        stale_event.type = core::CoreEventType::kDeviceStale;
+        stale_event.device_short_addr = stale_short_addrs[i];
+        if (push_event(stale_event)) {
+            ++queued;
+        } else {
+            ++stats_.dropped_events;
+            (void)reporting_manager_.set_stale_pending(stale_short_addrs[i], false);
+        }
+    }
+
     queued += process_pending_sta_connect(now_ms);
     queued += process_force_remove_timeouts(now_ms);
 
