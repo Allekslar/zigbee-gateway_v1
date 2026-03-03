@@ -64,24 +64,80 @@ run_case() {
   local name="$1"
   local timeout_sec="$2"
   local log_path="hil-target-hal-${name}.local.log"
+  local status=0
+  local parse_unity_from_log=1
+  local heartbeat_pid=0
 
   echo "=== Running ${name} (timeout ${timeout_sec}s) on ${ESPPORT} ==="
-  local status=0
+  rm -f "${log_path}"
+
+  start_heartbeat() {
+    (
+      while true; do
+        sleep 10
+        echo "[${name}] running flash+monitor... (${timeout_sec}s timeout)"
+      done
+    ) &
+    heartbeat_pid=$!
+  }
+
+  stop_heartbeat() {
+    if [[ "${heartbeat_pid}" -gt 0 ]]; then
+      kill "${heartbeat_pid}" >/dev/null 2>&1 || true
+      wait "${heartbeat_pid}" 2>/dev/null || true
+    fi
+  }
+
+  echo "--- Starting flash+monitor (timeout ${timeout_sec}s)..."
   if [[ -t 0 ]]; then
-    # Local interactive terminal: keep stdin as TTY for idf_monitor.
+    # Interactive mode with live logs and auto-stop after Unity summary.
+    parse_unity_from_log=1
+    rm -f "${log_path}"
+    touch "${log_path}"
+
     set +e
-    timeout "${timeout_sec}" \
-      idf.py -C test/target -B build-target-tests -p "${ESPPORT}" flash monitor \
-      2>&1 | tee "${log_path}"
-    status=${PIPESTATUS[0]}
+    idf.py -C test/target -B build-target-tests -p "${ESPPORT}" flash monitor \
+      2>&1 | tee "${log_path}" &
+    local monitor_pid=$!
+
+    (
+      # Stop after either PASS summary or FAIL summary appears.
+      tail -n 0 -F "${log_path}" | grep -m1 -E "[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored"
+    ) >/dev/null 2>&1 &
+    local watcher_pid=$!
+
+    (
+      sleep "${timeout_sec}"
+      kill "${monitor_pid}" >/dev/null 2>&1 || true
+    ) &
+    local timer_pid=$!
+
+    wait "${watcher_pid}"
+    local watcher_status=$?
+
+    kill "${timer_pid}" >/dev/null 2>&1 || true
+    wait "${timer_pid}" 2>/dev/null || true
+
+    kill "${monitor_pid}" >/dev/null 2>&1 || true
+    wait "${monitor_pid}"
+    local monitor_status=$?
+
+    # If watcher timed out/not found summary, preserve monitor status.
+    if [[ "${watcher_status}" -ne 0 ]]; then
+      status="${monitor_status}"
+    else
+      status=0
+    fi
     set -e
   else
-    # Non-interactive shell: use pseudo-TTY wrapper.
+    start_heartbeat
     set +e
     timeout "${timeout_sec}" \
-      script -q -e -c "idf.py -C test/target -B build-target-tests -p ${ESPPORT} flash monitor" "${log_path}"
+      script -q -e -c "idf.py -C test/target -B build-target-tests -p ${ESPPORT} flash monitor" /dev/null \
+      > "${log_path}" 2>&1
     status=$?
     set -e
+    stop_heartbeat
   fi
 
   if [[ "${status}" -ne 0 && "${status}" -ne 124 ]]; then
@@ -90,19 +146,20 @@ run_case() {
     exit "${status}"
   fi
 
-  if ! grep -Eq "[0-9]+ Tests 0 Failures 0 Ignored" "${log_path}"; then
-    echo "${name}: Unity summary indicates failure or not found" >&2
-    tail -n 200 "${log_path}" || true
-    exit 1
-  fi
+  if [[ "${parse_unity_from_log}" -eq 1 ]]; then
+    if ! grep -Eq "[0-9]+ Tests 0 Failures 0 Ignored" "${log_path}"; then
+      echo "${name}: Unity summary indicates failure or not found" >&2
+      tail -n 200 "${log_path}" || true
+      exit 1
+    fi
 
-  if ! grep -q "OK" "${log_path}"; then
-    echo "${name}: Unity OK marker not found" >&2
-    tail -n 200 "${log_path}" || true
-    exit 1
+    if ! grep -q "OK" "${log_path}"; then
+      echo "${name}: Unity OK marker not found" >&2
+      tail -n 200 "${log_path}" || true
+      exit 1
+    fi
+    echo "${name}: PASS (log: ${log_path})"
   fi
-
-  echo "${name}: PASS (log: ${log_path})"
 }
 
 ensure_idf_env
