@@ -66,12 +66,23 @@ run_case() {
   local log_path="hil-target-hal-${name}.local.log"
 
   echo "=== Running ${name} (timeout ${timeout_sec}s) on ${ESPPORT} ==="
-  set +e
-  timeout "${timeout_sec}" \
-    script -q -e -c "idf.py -C test/target -B build-target-tests -p ${ESPPORT} flash monitor" "${log_path}" \
-    >/dev/null 2>&1
-  local status=$?
-  set -e
+  local status=0
+  if [[ -t 0 ]]; then
+    # Local interactive terminal: keep stdin as TTY for idf_monitor.
+    set +e
+    timeout "${timeout_sec}" \
+      idf.py -C test/target -B build-target-tests -p "${ESPPORT}" flash monitor \
+      2>&1 | tee "${log_path}"
+    status=${PIPESTATUS[0]}
+    set -e
+  else
+    # Non-interactive shell: use pseudo-TTY wrapper.
+    set +e
+    timeout "${timeout_sec}" \
+      script -q -e -c "idf.py -C test/target -B build-target-tests -p ${ESPPORT} flash monitor" "${log_path}"
+    status=$?
+    set -e
+  fi
 
   if [[ "${status}" -ne 0 && "${status}" -ne 124 ]]; then
     echo "${name}: flash/monitor failed with status=${status}" >&2
