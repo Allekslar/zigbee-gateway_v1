@@ -67,6 +67,10 @@ run_case() {
   local status=0
   local parse_unity_from_log=1
   local heartbeat_pid=0
+  local tty_state=""
+  if [[ -t 0 ]]; then
+    tty_state="$(stty -g 2>/dev/null || true)"
+  fi
 
   echo "=== Running ${name} (timeout ${timeout_sec}s) on ${ESPPORT} ==="
   rm -f "${log_path}"
@@ -85,6 +89,17 @@ run_case() {
     if [[ "${heartbeat_pid}" -gt 0 ]]; then
       kill "${heartbeat_pid}" >/dev/null 2>&1 || true
       wait "${heartbeat_pid}" 2>/dev/null || true
+    fi
+  }
+
+  restore_terminal() {
+    if [[ ! -t 0 ]]; then
+      return
+    fi
+    if [[ -n "${tty_state}" ]]; then
+      stty "${tty_state}" 2>/dev/null || stty sane 2>/dev/null || true
+    else
+      stty sane 2>/dev/null || true
     fi
   }
 
@@ -128,6 +143,7 @@ run_case() {
     else
       status=0
     fi
+    restore_terminal
     set -e
   else
     start_heartbeat
