@@ -32,6 +32,9 @@ bool WebServer::start() noexcept {
     // Route count can exceed 16 in debug builds (extra raw-debug endpoint).
     // Keep headroom for future API additions.
     config.max_uri_handlers = 24;
+    // Some handlers format multi-field JSON responses and can overflow
+    // default 4KB HTTPD stack on ESP32-C6 under test load.
+    config.stack_size = 8192;
 
     httpd_handle_t handle = nullptr;
     if (httpd_start(&handle, &config) != ESP_OK) {
