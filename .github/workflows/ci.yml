@@ -217,7 +217,7 @@ jobs:
           . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1
           LOG_PATH="${GITHUB_WORKSPACE}/hil-target-hal-smoke.log"
           set +e
-          timeout 180s idf.py -C test/target -B build-target-tests -p "${ESPPORT}" flash monitor > "${LOG_PATH}" 2>&1
+          timeout 180s script -q -e -c "idf.py -C test/target -B build-target-tests -p \"${ESPPORT}\" flash monitor" /dev/null > "${LOG_PATH}" 2>&1
           status=$?
           set -e
 
@@ -329,7 +329,7 @@ jobs:
           . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1
           LOG_PATH="${GITHUB_WORKSPACE}/hil-target-hal-tests.log"
           set +e
-          timeout 300s idf.py -C test/target -B build-target-tests -p "${ESPPORT}" flash monitor > "${LOG_PATH}" 2>&1
+          timeout 300s script -q -e -c "idf.py -C test/target -B build-target-tests -p \"${ESPPORT}\" flash monitor" /dev/null > "${LOG_PATH}" 2>&1
           status=$?
           set -e
 
