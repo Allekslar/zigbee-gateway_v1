@@ -147,6 +147,7 @@ jobs:
     env:
       ESPPORT: ${{ vars.HIL_ESPPORT || '/dev/ttyUSB0' }}
       IDF_TARGET: esp32c6
+      IDF_EXPORT_SCRIPT: ${{ vars.HIL_IDF_EXPORT_SCRIPT || '' }}
 
     steps:
       - name: Checkout
@@ -156,17 +157,32 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          found_export=""
           for candidate in \
             "${IDF_EXPORT_SCRIPT:-}" \
             "/opt/esp/idf/export.sh" \
+            "/opt/esp/esp-idf/export.sh" \
+            "/home/alex/esp/esp-idf/export.sh" \
             "${HOME}/esp/esp-idf/export.sh"; do
             if [ -n "${candidate}" ] && [ -f "${candidate}" ]; then
+              found_export="${candidate}"
               # shellcheck disable=SC1090
               . "${candidate}"
               echo "Using ESP-IDF export script: ${candidate}"
               break
             fi
           done
+
+          if [ -z "${found_export}" ]; then
+            echo "ESP-IDF export.sh not found. Set repo variable HIL_IDF_EXPORT_SCRIPT to an absolute path on runner host."
+            echo "Checked candidates:"
+            echo "  ${IDF_EXPORT_SCRIPT:-<empty>}"
+            echo "  /opt/esp/idf/export.sh"
+            echo "  /opt/esp/esp-idf/export.sh"
+            echo "  /home/alex/esp/esp-idf/export.sh"
+            echo "  ${HOME}/esp/esp-idf/export.sh"
+            exit 1
+          fi
 
           command -v idf.py
           idf_path="$(dirname "$(dirname "$(command -v idf.py)")")"
@@ -235,6 +251,7 @@ jobs:
     env:
       ESPPORT: ${{ vars.HIL_ESPPORT || '/dev/ttyUSB0' }}
       IDF_TARGET: esp32c6
+      IDF_EXPORT_SCRIPT: ${{ vars.HIL_IDF_EXPORT_SCRIPT || '' }}
 
     steps:
       - name: Checkout
@@ -244,17 +261,32 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          found_export=""
           for candidate in \
             "${IDF_EXPORT_SCRIPT:-}" \
             "/opt/esp/idf/export.sh" \
+            "/opt/esp/esp-idf/export.sh" \
+            "/home/alex/esp/esp-idf/export.sh" \
             "${HOME}/esp/esp-idf/export.sh"; do
             if [ -n "${candidate}" ] && [ -f "${candidate}" ]; then
+              found_export="${candidate}"
               # shellcheck disable=SC1090
               . "${candidate}"
               echo "Using ESP-IDF export script: ${candidate}"
               break
             fi
           done
+
+          if [ -z "${found_export}" ]; then
+            echo "ESP-IDF export.sh not found. Set repo variable HIL_IDF_EXPORT_SCRIPT to an absolute path on runner host."
+            echo "Checked candidates:"
+            echo "  ${IDF_EXPORT_SCRIPT:-<empty>}"
+            echo "  /opt/esp/idf/export.sh"
+            echo "  /opt/esp/esp-idf/export.sh"
+            echo "  /home/alex/esp/esp-idf/export.sh"
+            echo "  ${HOME}/esp/esp-idf/export.sh"
+            exit 1
+          fi
 
           command -v idf.py
           idf_path="$(dirname "$(dirname "$(command -v idf.py)")")"
