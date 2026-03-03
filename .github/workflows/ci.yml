@@ -188,6 +188,9 @@ jobs:
           idf_path="$(dirname "$(dirname "$(command -v idf.py)")")"
           echo "IDF_PATH=${idf_path}" >> "${GITHUB_ENV}"
           echo "$(dirname "$(command -v idf.py)")" >> "${GITHUB_PATH}"
+          mkdir -p "${RUNNER_TEMP}/ci-bin"
+          ln -sf "$(command -v python3)" "${RUNNER_TEMP}/ci-bin/python"
+          echo "${RUNNER_TEMP}/ci-bin" >> "${GITHUB_PATH}"
 
       - name: Validate runner prerequisites
         run: |
@@ -293,6 +296,9 @@ jobs:
           idf_path="$(dirname "$(dirname "$(command -v idf.py)")")"
           echo "IDF_PATH=${idf_path}" >> "${GITHUB_ENV}"
           echo "$(dirname "$(command -v idf.py)")" >> "${GITHUB_PATH}"
+          mkdir -p "${RUNNER_TEMP}/ci-bin"
+          ln -sf "$(command -v python3)" "${RUNNER_TEMP}/ci-bin/python"
+          echo "${RUNNER_TEMP}/ci-bin" >> "${GITHUB_PATH}"
 
       - name: Validate runner prerequisites
         run: |
