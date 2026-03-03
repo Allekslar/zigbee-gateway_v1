@@ -193,7 +193,8 @@ jobs:
         run: |
           set -euxo pipefail
           command -v idf.py
-          python --version
+          command -v python3
+          python3 --version
           test -n "${ESPPORT}"
           test -e "${ESPPORT}"
           idf.py --version
@@ -297,7 +298,8 @@ jobs:
         run: |
           set -euxo pipefail
           command -v idf.py
-          python --version
+          command -v python3
+          python3 --version
           test -n "${ESPPORT}"
           test -e "${ESPPORT}"
           idf.py --version
