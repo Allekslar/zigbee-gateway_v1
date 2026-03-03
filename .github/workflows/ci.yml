@@ -184,11 +184,7 @@ jobs:
             exit 1
           fi
 
-          # Ensure every next bash step runs inside ESP-IDF environment.
-          bash_env_file="${BASH_ENV:-${RUNNER_TEMP}/hil_bash_env}"
-          touch "${bash_env_file}"
-          echo ". \"${found_export}\" >/dev/null 2>&1" >> "${bash_env_file}"
-          echo "BASH_ENV=${bash_env_file}" >> "${GITHUB_ENV}"
+          echo "HIL_IDF_EXPORT_RESOLVED=${found_export}" >> "${GITHUB_ENV}"
 
           command -v idf.py
           idf_path="$(dirname "$(dirname "$(command -v idf.py)")")"
@@ -201,6 +197,7 @@ jobs:
       - name: Validate runner prerequisites
         run: |
           set -euxo pipefail
+          . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1
           command -v idf.py
           command -v python3
           python3 --version
@@ -209,14 +206,15 @@ jobs:
           idf.py --version
 
       - name: Set target (tests)
-        run: idf.py -C test/target -B build-target-tests set-target "${IDF_TARGET}"
+        run: . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1 && idf.py -C test/target -B build-target-tests set-target "${IDF_TARGET}"
 
       - name: Build target HAL tests firmware
-        run: idf.py -C test/target -B build-target-tests build
+        run: . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1 && idf.py -C test/target -B build-target-tests build
 
       - name: Flash and run target HAL smoke tests on hardware
         run: |
           set -euo pipefail
+          . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1
           LOG_PATH="${GITHUB_WORKSPACE}/hil-target-hal-smoke.log"
           set +e
           timeout 180s idf.py -C test/target -B build-target-tests -p "${ESPPORT}" flash monitor > "${LOG_PATH}" 2>&1
@@ -298,11 +296,7 @@ jobs:
             exit 1
           fi
 
-          # Ensure every next bash step runs inside ESP-IDF environment.
-          bash_env_file="${BASH_ENV:-${RUNNER_TEMP}/hil_bash_env}"
-          touch "${bash_env_file}"
-          echo ". \"${found_export}\" >/dev/null 2>&1" >> "${bash_env_file}"
-          echo "BASH_ENV=${bash_env_file}" >> "${GITHUB_ENV}"
+          echo "HIL_IDF_EXPORT_RESOLVED=${found_export}" >> "${GITHUB_ENV}"
 
           command -v idf.py
           idf_path="$(dirname "$(dirname "$(command -v idf.py)")")"
@@ -315,6 +309,7 @@ jobs:
       - name: Validate runner prerequisites
         run: |
           set -euxo pipefail
+          . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1
           command -v idf.py
           command -v python3
           python3 --version
@@ -323,14 +318,15 @@ jobs:
           idf.py --version
 
       - name: Set target (tests)
-        run: idf.py -C test/target -B build-target-tests set-target "${IDF_TARGET}"
+        run: . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1 && idf.py -C test/target -B build-target-tests set-target "${IDF_TARGET}"
 
       - name: Build target HAL tests firmware
-        run: idf.py -C test/target -B build-target-tests build
+        run: . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1 && idf.py -C test/target -B build-target-tests build
 
       - name: Flash and run target HAL tests on hardware
         run: |
           set -euo pipefail
+          . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1
           LOG_PATH="${GITHUB_WORKSPACE}/hil-target-hal-tests.log"
           set +e
           timeout 300s idf.py -C test/target -B build-target-tests -p "${ESPPORT}" flash monitor > "${LOG_PATH}" 2>&1
