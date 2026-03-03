@@ -152,6 +152,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup ESP-IDF environment
+        shell: bash
+        run: |
+          set -euxo pipefail
+          for candidate in \
+            "${IDF_EXPORT_SCRIPT:-}" \
+            "/opt/esp/idf/export.sh" \
+            "${HOME}/esp/esp-idf/export.sh"; do
+            if [ -n "${candidate}" ] && [ -f "${candidate}" ]; then
+              # shellcheck disable=SC1090
+              . "${candidate}"
+              echo "Using ESP-IDF export script: ${candidate}"
+              break
+            fi
+          done
+
+          command -v idf.py
+          idf_path="$(dirname "$(dirname "$(command -v idf.py)")")"
+          echo "IDF_PATH=${idf_path}" >> "${GITHUB_ENV}"
+          echo "$(dirname "$(command -v idf.py)")" >> "${GITHUB_PATH}"
+
       - name: Validate runner prerequisites
         run: |
           set -euxo pipefail
@@ -218,6 +239,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup ESP-IDF environment
+        shell: bash
+        run: |
+          set -euxo pipefail
+          for candidate in \
+            "${IDF_EXPORT_SCRIPT:-}" \
+            "/opt/esp/idf/export.sh" \
+            "${HOME}/esp/esp-idf/export.sh"; do
+            if [ -n "${candidate}" ] && [ -f "${candidate}" ]; then
+              # shellcheck disable=SC1090
+              . "${candidate}"
+              echo "Using ESP-IDF export script: ${candidate}"
+              break
+            fi
+          done
+
+          command -v idf.py
+          idf_path="$(dirname "$(dirname "$(command -v idf.py)")")"
+          echo "IDF_PATH=${idf_path}" >> "${GITHUB_ENV}"
+          echo "$(dirname "$(command -v idf.py)")" >> "${GITHUB_PATH}"
 
       - name: Validate runner prerequisites
         run: |
