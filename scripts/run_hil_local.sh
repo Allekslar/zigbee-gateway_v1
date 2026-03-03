@@ -68,8 +68,8 @@ run_case() {
   echo "=== Running ${name} (timeout ${timeout_sec}s) on ${ESPPORT} ==="
   set +e
   timeout "${timeout_sec}" \
-    script -q -e -c "idf.py -C test/target -B build-target-tests -p ${ESPPORT} flash monitor" /dev/null \
-    > "${log_path}" 2>&1
+    script -q -e -c "idf.py -C test/target -B build-target-tests -p ${ESPPORT} flash monitor" "${log_path}" \
+    >/dev/null 2>&1
   local status=$?
   set -e
 
