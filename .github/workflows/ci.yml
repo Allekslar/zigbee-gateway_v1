@@ -184,6 +184,9 @@ jobs:
             exit 1
           fi
 
+          # Ensure every next bash step runs inside ESP-IDF environment.
+          echo ". \"${found_export}\" >/dev/null 2>&1" >> "${BASH_ENV}"
+
           command -v idf.py
           idf_path="$(dirname "$(dirname "$(command -v idf.py)")")"
           echo "IDF_PATH=${idf_path}" >> "${GITHUB_ENV}"
@@ -291,6 +294,9 @@ jobs:
             echo "  ${HOME}/esp/esp-idf/export.sh"
             exit 1
           fi
+
+          # Ensure every next bash step runs inside ESP-IDF environment.
+          echo ". \"${found_export}\" >/dev/null 2>&1" >> "${BASH_ENV}"
 
           command -v idf.py
           idf_path="$(dirname "$(dirname "$(command -v idf.py)")")"
