@@ -37,6 +37,7 @@ __pycache__/
 
 # Logs and temp files
 *.log
+*.log.*
 *.tmp
 Fix.md
 Plan.md
