@@ -48,7 +48,9 @@ bool ConnectivityManager::ensure_wifi_mode_for_scan() noexcept {
         case HAL_WIFI_MODE_APSTA:
             return true;
         case HAL_WIFI_MODE_AP:
-            return hal_wifi_set_mode(HAL_WIFI_MODE_APSTA) == HAL_WIFI_STATUS_OK;
+            // Keep provisioning AP session stable during scan.
+            // Switching AP -> APSTA can drop connected browser clients.
+            return true;
         case HAL_WIFI_MODE_NULL:
             return hal_wifi_set_mode(HAL_WIFI_MODE_STA) == HAL_WIFI_STATUS_OK;
         default:
@@ -110,6 +112,28 @@ ConnectivityAutoconnectResult ConnectivityManager::autoconnect_from_saved_creden
     if (!ensure_wifi_mode_for_sta_connect()) {
         CM_LOGI("Auto-connect failed: unable to prepare Wi-Fi mode for STA connect");
         return ConnectivityAutoconnectResult::kConnectFailed;
+    }
+
+    // Keep provisioning UI stable on softAP. Background autoconnect attempts in
+    // AP/APSTA can disrupt active HTTP sessions due to channel/mode transitions.
+    hal_wifi_mode_t mode = HAL_WIFI_MODE_NULL;
+    if (hal_wifi_get_mode(&mode) != HAL_WIFI_STATUS_OK) {
+        CM_LOGW("Auto-connect skipped: unable to read Wi-Fi mode");
+        return ConnectivityAutoconnectResult::kConnectFailed;
+    }
+    if (mode == HAL_WIFI_MODE_AP || mode == HAL_WIFI_MODE_APSTA) {
+        size_t ap_client_count = 0U;
+        const hal_wifi_status_t ap_client_status = hal_wifi_get_ap_client_count(&ap_client_count);
+        if (ap_client_status != HAL_WIFI_STATUS_OK) {
+            CM_LOGW("Auto-connect deferred in AP/APSTA: unable to read softAP station count");
+            return ConnectivityAutoconnectResult::kConnectFailed;
+        }
+        if (ap_client_count > 0U) {
+            CM_LOGI(
+                "Auto-connect deferred in AP/APSTA while %u softAP client(s) are connected",
+                static_cast<unsigned>(ap_client_count));
+            return ConnectivityAutoconnectResult::kConnectFailed;
+        }
     }
 
     if (hal_wifi_connect_sta(ssid, password) != HAL_WIFI_STATUS_OK) {

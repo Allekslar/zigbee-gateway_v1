@@ -44,6 +44,7 @@ hal_wifi_status_t hal_wifi_set_mode(hal_wifi_mode_t mode);
 hal_wifi_status_t hal_wifi_start_ap(const char* ssid, const char* password);
 hal_wifi_status_t hal_wifi_connect_sta_async(const char* ssid, const char* password);
 hal_wifi_status_t hal_wifi_connect_sta(const char* ssid, const char* password);
+hal_wifi_status_t hal_wifi_get_ap_client_count(size_t* count);
 hal_wifi_status_t hal_wifi_scan(hal_wifi_scan_record_t* records, size_t capacity, size_t* found_count);
 hal_wifi_status_t hal_wifi_refresh(void);
 

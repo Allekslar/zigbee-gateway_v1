@@ -6,9 +6,11 @@
 #include <cstring>
 
 #include "hal_wifi.h"
+#include "log_tags.h"
 #include "service_runtime.hpp"
 
 #ifdef ESP_PLATFORM
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #endif
@@ -19,6 +21,12 @@ namespace {
 
 #ifdef ESP_PLATFORM
 constexpr TickType_t kScanWorkerIdleDelayTicks = pdMS_TO_TICKS(20);
+constexpr const char* kTag = LOG_TAG_SERVICE_RUNTIME;
+#define SCAN_LOGI(...) ESP_LOGI(kTag, __VA_ARGS__)
+#define SCAN_LOGW(...) ESP_LOGW(kTag, __VA_ARGS__)
+#else
+#define SCAN_LOGI(...) ((void)0)
+#define SCAN_LOGW(...) ((void)0)
 #endif
 
 }  // namespace
@@ -140,6 +148,7 @@ void ScanManager::run_worker_loop(ServiceRuntime& runtime) noexcept {
             continue;
         }
 
+        SCAN_LOGI("Scan worker picked request_id=%lu", static_cast<unsigned long>(request.request_id));
         busy_.store(true, std::memory_order_release);
         active_request_id_.store(request.request_id, std::memory_order_release);
 
@@ -175,6 +184,13 @@ void ScanManager::run_worker_loop(ServiceRuntime& runtime) noexcept {
         active_request_id_.store(0U, std::memory_order_release);
         if (!runtime.queue_network_result(result)) {
             (void)runtime.dropped_ingress_events_.fetch_add(1, std::memory_order_relaxed);
+            SCAN_LOGW("Scan result dropped request_id=%lu", static_cast<unsigned long>(request.request_id));
+        } else {
+            SCAN_LOGI(
+                "Scan result queued request_id=%lu status=%u count=%u",
+                static_cast<unsigned long>(request.request_id),
+                static_cast<unsigned>(result.status),
+                static_cast<unsigned>(result.scan_count));
         }
     }
 }

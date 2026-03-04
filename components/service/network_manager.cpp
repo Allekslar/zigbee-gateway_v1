@@ -159,8 +159,7 @@ bool NetworkManager::handle_scan(
     const NetworkRequest& request,
     NetworkResult* result,
     bool* queue_result) noexcept {
-    if (runtime.network_policy_manager_.has_pending_sta_connect() ||
-        runtime.scan_manager_.has_pending_or_busy()) {
+    if (runtime.scan_manager_.has_pending_or_busy()) {
         result->status = NetworkOperationStatus::kNoCapacity;
         return true;
     }

@@ -56,7 +56,8 @@ constexpr uint32_t kForceRemoveMaxTimeoutMs = 30000U;
 constexpr std::size_t kMaxProcessedEventsPerCycle = 64U;
 #ifdef ESP_PLATFORM
 constexpr const char* kRuntimeTaskName = "service_runtime";
-constexpr uint32_t kRuntimeTaskStackSize = 6144U;
+// NVS + network request processing can exceed 6KB on ESP32-C6 in AP provisioning flow.
+constexpr uint32_t kRuntimeTaskStackSize = 9216U;
 constexpr UBaseType_t kRuntimeTaskPriority = 6U;
 constexpr TickType_t kRuntimeTaskPeriodTicks = pdMS_TO_TICKS(20);
 constexpr const char* kScanWorkerTaskName = "wifi_scan_worker";
@@ -160,6 +161,14 @@ bool ServiceRuntime::post_event(const core::CoreEvent& event) noexcept {
 
 bool ServiceRuntime::queue_network_result(const NetworkResult& result) noexcept {
     SpinLockGuard guard(ingress_lock_);
+
+    for (std::size_t i = 0; i < network_result_count_; ++i) {
+        if (network_result_queue_[i].request_id == result.request_id && result.request_id != 0U) {
+            network_result_queue_[i] = result;
+            return true;
+        }
+    }
+
     if (network_result_count_ >= kNetworkResultQueueCapacity) {
         for (std::size_t i = 1; i < network_result_count_; ++i) {
             network_result_queue_[i - 1U] = network_result_queue_[i];

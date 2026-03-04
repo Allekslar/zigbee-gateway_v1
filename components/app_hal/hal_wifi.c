@@ -30,6 +30,7 @@ static bool s_event_handlers_registered = false;
 static esp_netif_t* s_sta_netif = 0;
 static esp_netif_t* s_ap_netif = 0;
 static wifi_mode_t s_last_mode = WIFI_MODE_NULL;
+static bool s_sta_has_ip = false;
 static EventGroupHandle_t s_sta_event_group = NULL;
 static SemaphoreHandle_t s_wifi_ops_mutex = NULL;
 
@@ -104,12 +105,12 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
                 } else {
                     ESP_LOGW(kTag, "STA disconnected");
                 }
-                notify_network_down();
+                if (s_sta_has_ip) {
+                    notify_network_down();
+                }
+                s_sta_has_ip = false;
                 break;
             }
-            case WIFI_EVENT_AP_STOP:
-                notify_network_down();
-                break;
             default:
                 break;
         }
@@ -120,6 +121,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         if (s_sta_event_group != NULL) {
             xEventGroupSetBits(s_sta_event_group, kStaGotIpBit);
         }
+        s_sta_has_ip = true;
         notify_network_up();
     }
 }
@@ -212,6 +214,7 @@ hal_wifi_status_t hal_wifi_init(void) {
 
 #ifdef ESP_PLATFORM
     s_last_mode = WIFI_MODE_NULL;
+    s_sta_has_ip = false;
     if (ensure_wifi_stack_ready() != HAL_WIFI_STATUS_OK) {
         return HAL_WIFI_STATUS_ERR;
     }
@@ -477,6 +480,50 @@ hal_wifi_status_t hal_wifi_connect_sta(const char* ssid, const char* password) {
 #endif
 }
 
+hal_wifi_status_t hal_wifi_get_ap_client_count(size_t* count) {
+    if (count == 0) {
+        return HAL_WIFI_STATUS_INVALID_ARG;
+    }
+
+#ifdef ESP_PLATFORM
+    const hal_wifi_status_t lock_status = wifi_ops_lock();
+    if (lock_status != HAL_WIFI_STATUS_OK) {
+        return lock_status;
+    }
+
+    if (ensure_wifi_stack_ready() != HAL_WIFI_STATUS_OK) {
+        wifi_ops_unlock();
+        return HAL_WIFI_STATUS_ERR;
+    }
+
+    wifi_mode_t mode = WIFI_MODE_NULL;
+    if (esp_wifi_get_mode(&mode) != ESP_OK) {
+        wifi_ops_unlock();
+        return HAL_WIFI_STATUS_ERR;
+    }
+
+    if (mode != WIFI_MODE_AP && mode != WIFI_MODE_APSTA) {
+        *count = 0U;
+        wifi_ops_unlock();
+        return HAL_WIFI_STATUS_OK;
+    }
+
+    wifi_sta_list_t sta_list = {0};
+    const esp_err_t err = esp_wifi_ap_get_sta_list(&sta_list);
+    if (err != ESP_OK) {
+        wifi_ops_unlock();
+        return HAL_WIFI_STATUS_ERR;
+    }
+
+    *count = (size_t)sta_list.num;
+    wifi_ops_unlock();
+    return HAL_WIFI_STATUS_OK;
+#else
+    *count = 0U;
+    return HAL_WIFI_STATUS_OK;
+#endif
+}
+
 hal_wifi_status_t hal_wifi_scan(hal_wifi_scan_record_t* records, size_t capacity, size_t* found_count) {
     if (records == 0 || found_count == 0 || capacity == 0) {
         return HAL_WIFI_STATUS_INVALID_ARG;
@@ -500,6 +547,19 @@ hal_wifi_status_t hal_wifi_scan(hal_wifi_scan_record_t* records, size_t capacity
         wifi_ops_unlock();
         return HAL_WIFI_STATUS_ERR;
     }
+
+    // ESP-IDF scan API can fail in AP-only mode; enable STA side for scan.
+    // Use set_mode directly (without stop/start) to minimize AP session disruption.
+    if (mode == WIFI_MODE_AP) {
+        err = esp_wifi_set_mode(WIFI_MODE_APSTA);
+        if (err != ESP_OK) {
+            ESP_LOGE(kTag, "scan:set_mode AP->APSTA failed: %s", esp_err_to_name(err));
+            wifi_ops_unlock();
+            return HAL_WIFI_STATUS_ERR;
+        }
+        mode = WIFI_MODE_APSTA;
+    }
+
     ESP_LOGI(kTag, "scan:start mode=%d capacity=%u", (int)mode, (unsigned)capacity);
 
     err = esp_wifi_start();
@@ -599,23 +659,41 @@ hal_wifi_status_t hal_wifi_refresh(void) {
         return HAL_WIFI_STATUS_ERR;
     }
 
-    if (s_last_mode == WIFI_MODE_STA || s_last_mode == WIFI_MODE_APSTA) {
+    wifi_mode_t current_mode = WIFI_MODE_NULL;
+    if (esp_wifi_get_mode(&current_mode) != ESP_OK) {
+        wifi_ops_unlock();
+        return HAL_WIFI_STATUS_ERR;
+    }
+
+    // In APSTA mode keep AP service stable for provisioning UI.
+    // Forcing STA disconnect/connect here can reset active HTTP sessions on softAP.
+    if (current_mode == WIFI_MODE_APSTA) {
+        ESP_LOGI(kTag, "refresh: skip STA reconnect in APSTA mode");
+        s_last_mode = current_mode;
+        wifi_ops_unlock();
+        return HAL_WIFI_STATUS_OK;
+    }
+
+    if (current_mode == WIFI_MODE_STA) {
         (void)esp_wifi_disconnect();
         const hal_wifi_status_t status = esp_wifi_connect() == ESP_OK ? HAL_WIFI_STATUS_OK : HAL_WIFI_STATUS_ERR;
+        s_last_mode = current_mode;
         wifi_ops_unlock();
         return status;
     }
 
-    if (s_last_mode == WIFI_MODE_AP) {
+    if (current_mode == WIFI_MODE_AP) {
         if (esp_wifi_stop() != ESP_OK) {
             wifi_ops_unlock();
             return HAL_WIFI_STATUS_ERR;
         }
         const hal_wifi_status_t status = esp_wifi_start() == ESP_OK ? HAL_WIFI_STATUS_OK : HAL_WIFI_STATUS_ERR;
+        s_last_mode = current_mode;
         wifi_ops_unlock();
         return status;
     }
 
+    s_last_mode = current_mode;
     wifi_ops_unlock();
     return HAL_WIFI_STATUS_BAD_STATE;
 #else

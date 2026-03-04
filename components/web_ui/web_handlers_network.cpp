@@ -557,20 +557,32 @@ esp_err_t network_result_get_handler(httpd_req_t* req) {
     if (!context->runtime->take_network_result(request_id, &result)) {
         (void)httpd_resp_set_type(req, "application/json");
         if (context->runtime->is_scan_request_queued(request_id)) {
+            ESP_LOGI(kTag, "HTTP GET /api/network/result request_id=%lu status=scan_queued", static_cast<unsigned long>(request_id));
             return httpd_resp_send(
                 req,
                 "{\"ready\":false,\"status\":\"scan_queued\"}",
                 HTTPD_RESP_USE_STRLEN);
         }
         if (context->runtime->is_scan_request_in_progress(request_id)) {
+            ESP_LOGI(
+                kTag,
+                "HTTP GET /api/network/result request_id=%lu status=scan_in_progress",
+                static_cast<unsigned long>(request_id));
             return httpd_resp_send(
                 req,
                 "{\"ready\":false,\"status\":\"scan_in_progress\"}",
                 HTTPD_RESP_USE_STRLEN);
         }
+        ESP_LOGI(kTag, "HTTP GET /api/network/result request_id=%lu status=not_ready", static_cast<unsigned long>(request_id));
         return httpd_resp_send(req, "{\"ready\":false}", HTTPD_RESP_USE_STRLEN);
     }
 
+    ESP_LOGI(
+        kTag,
+        "HTTP GET /api/network/result request_id=%lu ready=true operation=%s status=%u",
+        static_cast<unsigned long>(request_id),
+        operation_to_string(result.operation),
+        static_cast<unsigned>(result.status));
     return send_network_result(req, result);
 }
 

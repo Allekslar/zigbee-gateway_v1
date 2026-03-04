@@ -93,7 +93,8 @@
 
   async function requestJson(url, options) {
     log("request:start", url, options && options.method ? options.method : "GET");
-    const response = await fetch(url, options);
+    const requestOptions = Object.assign({ cache: "no-store" }, options || {});
+    const response = await fetch(url, requestOptions);
     const text = await response.text();
     log("request:response", url, response.status, text);
     let payload = {};
@@ -136,7 +137,10 @@
     const interval = Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 150;
 
     while (Date.now() - startedAt <= timeout) {
-      const result = await requestJson("/api/network/result?request_id=" + String(requestId), { method: "GET" });
+      const result = await requestJson(
+        "/api/network/result?request_id=" + String(requestId) + "&_ts=" + String(Date.now()),
+        { method: "GET" }
+      );
       if (Boolean(result.ready)) {
         return result;
       }

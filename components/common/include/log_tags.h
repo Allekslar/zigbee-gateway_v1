@@ -12,6 +12,7 @@
 #define LOG_TAG_APP_MAIN "app_main"
 #define LOG_TAG_SERVICE_RUNTIME "service_runtime"
 #define LOG_TAG_SERVICE_HAL_ADAPTER "hal_adapter"
+#define LOG_TAG_WEB_SERVER "web_server"
 #define LOG_TAG_WEB_DEVICE "web_device"
 #define LOG_TAG_WEB_NETWORK "web_network"
 #define LOG_TAG_HAL_NVS "hal_nvs"

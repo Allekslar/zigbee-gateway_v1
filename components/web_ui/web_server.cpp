@@ -5,11 +5,19 @@
 
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
+#include "esp_log.h"
 #endif
 
+#include "log_tags.h"
 #include "web_routes.hpp"
 
 namespace web_ui {
+
+#ifdef ESP_PLATFORM
+namespace {
+constexpr const char* kTag = LOG_TAG_WEB_SERVER;
+}
+#endif
 
 WebServer::WebServer(core::CoreRegistry& registry, service::ServiceRuntime& runtime) noexcept
     : registry_(&registry), runtime_(&runtime) {
@@ -33,8 +41,12 @@ bool WebServer::start() noexcept {
     // Keep headroom for future API additions.
     config.max_uri_handlers = 24;
     // Some handlers format multi-field JSON responses and can overflow
-    // default 4KB HTTPD stack on ESP32-C6 under test load.
-    config.stack_size = 8192;
+    // default 4KB HTTPD stack on ESP32-C6 under real traffic.
+    config.stack_size = 12288;
+
+#ifdef ESP_PLATFORM
+    ESP_LOGI(kTag, "Starting HTTP server stack_size=%u max_uri_handlers=%u", config.stack_size, config.max_uri_handlers);
+#endif
 
     httpd_handle_t handle = nullptr;
     if (httpd_start(&handle, &config) != ESP_OK) {

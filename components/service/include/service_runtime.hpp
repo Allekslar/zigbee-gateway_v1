@@ -28,7 +28,7 @@ namespace service {
 class ServiceRuntime {
 public:
     static constexpr std::size_t kEventQueueCapacity = 32;
-    static constexpr std::size_t kNetworkResultQueueCapacity = 8;
+    static constexpr std::size_t kNetworkResultQueueCapacity = 16;
     static constexpr std::size_t kNetworkScanMaxRecords = service::kNetworkScanMaxRecords;
     static constexpr uint8_t kMaxAutoconnectRetries = 5U;
 
