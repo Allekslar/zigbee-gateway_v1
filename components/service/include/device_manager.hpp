@@ -16,6 +16,13 @@ struct DeviceRuntimeSnapshot {
     bool join_window_open{false};
     uint16_t join_window_seconds_left{0};
     std::array<uint32_t, core::kMaxDevices> force_remove_ms_left{};
+    std::array<core::CoreReportingState, core::kMaxDevices> reporting_state{};
+    std::array<uint32_t, core::kMaxDevices> last_report_at_ms{};
+    std::array<bool, core::kMaxDevices> stale{};
+    std::array<uint8_t, core::kMaxDevices> battery_percent{};
+    std::array<bool, core::kMaxDevices> has_battery{};
+    std::array<uint8_t, core::kMaxDevices> lqi{};
+    std::array<bool, core::kMaxDevices> has_lqi{};
 };
 
 class DeviceManager {

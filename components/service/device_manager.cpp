@@ -174,9 +174,17 @@ bool DeviceManager::build_runtime_snapshot(
     SpinLockGuard guard(lock_);
     for (std::size_t i = 0; i < state.devices.size(); ++i) {
         const uint16_t short_addr = state.devices[i].short_addr;
-        if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U) {
+        if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || !state.devices[i].online) {
             continue;
         }
+
+        out->reporting_state[i] = state.devices[i].reporting_state;
+        out->last_report_at_ms[i] = state.devices[i].last_report_at_ms;
+        out->stale[i] = state.devices[i].stale;
+        out->battery_percent[i] = state.devices[i].battery_percent;
+        out->has_battery[i] = state.devices[i].has_battery;
+        out->lqi[i] = state.devices[i].lqi;
+        out->has_lqi[i] = state.devices[i].has_lqi;
 
         uint32_t remaining_ms = 0U;
         for (std::size_t j = 0; j < pending_force_remove_.size(); ++j) {

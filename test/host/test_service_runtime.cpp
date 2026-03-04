@@ -34,6 +34,11 @@ int main() {
         if (devices_snapshot.state.devices[i].short_addr == 0x3301) {
             found_joined_device = true;
             assert(devices_snapshot.runtime.force_remove_ms_left[i] == 0U);
+            assert(devices_snapshot.runtime.reporting_state[i] == core::CoreReportingState::kUnknown);
+            assert(devices_snapshot.runtime.last_report_at_ms[i] == 0U);
+            assert(!devices_snapshot.runtime.stale[i]);
+            assert(!devices_snapshot.runtime.has_battery[i]);
+            assert(!devices_snapshot.runtime.has_lqi[i]);
             break;
         }
     }
@@ -97,6 +102,43 @@ int main() {
     assert(runtime.post_event(telemetry));
     assert(runtime.process_pending() == 1);
     assert(runtime.stats().stale_devices == 0);
+
+    // Runtime snapshot must expose reporting/telemetry fields for active devices.
+    const core::CoreState base_state = runtime.state();
+    core::CoreState telemetry_state = base_state;
+    bool telemetry_device_found = false;
+    for (auto& device : telemetry_state.devices) {
+        if (device.short_addr == 0x3301 && device.online) {
+            device.battery_percent = 77U;
+            device.has_battery = true;
+            device.lqi = 190U;
+            device.has_lqi = true;
+            telemetry_device_found = true;
+            break;
+        }
+    }
+    assert(telemetry_device_found);
+    assert(registry.publish(telemetry_state));
+
+    service::ServiceRuntime::DevicesApiSnapshot telemetry_snapshot{};
+    assert(runtime.build_devices_api_snapshot(8000U, &telemetry_snapshot));
+    bool telemetry_verified = false;
+    for (std::size_t i = 0; i < telemetry_snapshot.state.devices.size(); ++i) {
+        const auto& device = telemetry_snapshot.state.devices[i];
+        if (device.short_addr != 0x3301 || !device.online) {
+            continue;
+        }
+        assert(telemetry_snapshot.runtime.reporting_state[i] == device.reporting_state);
+        assert(telemetry_snapshot.runtime.last_report_at_ms[i] == device.last_report_at_ms);
+        assert(telemetry_snapshot.runtime.stale[i] == device.stale);
+        assert(telemetry_snapshot.runtime.has_battery[i]);
+        assert(telemetry_snapshot.runtime.battery_percent[i] == 77U);
+        assert(telemetry_snapshot.runtime.has_lqi[i]);
+        assert(telemetry_snapshot.runtime.lqi[i] == 190U);
+        telemetry_verified = true;
+        break;
+    }
+    assert(telemetry_verified);
 
     return 0;
 }
