@@ -3,6 +3,11 @@
 
 #include "device_manager.hpp"
 
+#ifdef ESP_PLATFORM
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
+
 namespace service {
 
 namespace {
@@ -11,6 +16,10 @@ class SpinLockGuard {
 public:
     explicit SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
         while (lock_.test_and_set(std::memory_order_acquire)) {
+#ifdef ESP_PLATFORM
+            // Avoid priority inversion: let lower-priority lock owner run.
+            vTaskDelay(1);
+#endif
         }
     }
 
