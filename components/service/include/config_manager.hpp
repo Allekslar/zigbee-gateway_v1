@@ -11,7 +11,7 @@ namespace service {
 
 class ConfigManager {
 public:
-    static constexpr uint32_t kCurrentSchemaVersion = 2;
+    static constexpr uint32_t kCurrentSchemaVersion = 3;
     static constexpr uint32_t kDefaultCommandTimeoutMs = 5000;
     static constexpr uint8_t kDefaultMaxCommandRetries = 1;
     static constexpr uint8_t kMaxCommandRetries = 5;

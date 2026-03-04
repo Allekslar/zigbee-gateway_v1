@@ -16,6 +16,7 @@ constexpr const char* kKeySchemaVersion = "cfg_schema_ver";
 constexpr const char* kKeyTimeoutMs = "cfg_cmd_tmo_ms";
 constexpr const char* kKeyMaxRetries = "cfg_cmd_retry";
 constexpr const char* kKeyReportingProfileCount = "cfg_rpt_cnt";
+constexpr const char* kLegacyV2KeyReportingProfileCount = "cfg_rpt_count";
 
 // Legacy v1 keys kept for backward-compatible migration.
 constexpr const char* kLegacyKeyTimeoutMs = "cmd_tmo_ms";
@@ -34,6 +35,15 @@ bool build_profile_nvs_key(char prefix, std::size_t index, char* out, std::size_
     }
 
     const int written = std::snprintf(out, out_size, "rptp_%c%02u", prefix, static_cast<unsigned>(index));
+    return written > 0 && static_cast<std::size_t>(written) < out_size;
+}
+
+bool build_legacy_v2_profile_nvs_key(char prefix, std::size_t index, char* out, std::size_t out_size) noexcept {
+    if (out == nullptr || out_size == 0 || index >= ConfigManager::kMaxReportingProfiles) {
+        return false;
+    }
+
+    const int written = std::snprintf(out, out_size, "cfg_rpt_%c%02u", prefix, static_cast<unsigned>(index));
     return written > 0 && static_cast<std::size_t>(written) < out_size;
 }
 
@@ -282,6 +292,92 @@ bool ConfigManager::migrate_to_current(uint32_t from_version) noexcept {
             }
 
             version = 2;
+            continue;
+        }
+
+        if (version == 2) {
+            // If current reporting profile key-space is already present, only bump schema.
+            uint32_t current_count = 0U;
+            if (hal_nvs_get_u32(kKeyReportingProfileCount, &current_count) == HAL_NVS_STATUS_OK) {
+                if (hal_nvs_set_u32(kKeySchemaVersion, 3U) != HAL_NVS_STATUS_OK) {
+                    return false;
+                }
+                version = 3;
+                continue;
+            }
+
+            // Legacy v2 reporting key-space migration (best-effort, tolerant to partial/missing keys).
+            uint32_t legacy_count = 0U;
+            if (hal_nvs_get_u32(kLegacyV2KeyReportingProfileCount, &legacy_count) != HAL_NVS_STATUS_OK) {
+                legacy_count = 0U;
+            }
+            if (legacy_count > kMaxReportingProfiles) {
+                legacy_count = kMaxReportingProfiles;
+            }
+
+            std::size_t migrated_count = 0;
+            for (std::size_t i = 0; i < static_cast<std::size_t>(legacy_count); ++i) {
+                char legacy_key_slot[16]{};
+                char legacy_cluster_slot[16]{};
+                char legacy_interval_slot[16]{};
+                char legacy_reportable_slot[16]{};
+                if (!build_legacy_v2_profile_nvs_key('k', i, legacy_key_slot, sizeof(legacy_key_slot)) ||
+                    !build_legacy_v2_profile_nvs_key('c', i, legacy_cluster_slot, sizeof(legacy_cluster_slot)) ||
+                    !build_legacy_v2_profile_nvs_key('i', i, legacy_interval_slot, sizeof(legacy_interval_slot)) ||
+                    !build_legacy_v2_profile_nvs_key('r', i, legacy_reportable_slot, sizeof(legacy_reportable_slot))) {
+                    continue;
+                }
+
+                uint32_t key_word = 0U;
+                uint32_t cluster_caps_word = 0U;
+                if (hal_nvs_get_u32(legacy_key_slot, &key_word) != HAL_NVS_STATUS_OK ||
+                    hal_nvs_get_u32(legacy_cluster_slot, &cluster_caps_word) != HAL_NVS_STATUS_OK) {
+                    continue;
+                }
+
+                ReportingProfileKey key{};
+                if (!decode_profile_key_word(key_word, &key)) {
+                    continue;
+                }
+
+                const uint16_t cluster_id = static_cast<uint16_t>(cluster_caps_word & kProfileClusterMask);
+                if (cluster_id == 0U) {
+                    continue;
+                }
+
+                uint32_t interval_word = 0U;
+                uint32_t reportable_change = 0U;
+                (void)hal_nvs_get_u32(legacy_interval_slot, &interval_word);
+                (void)hal_nvs_get_u32(legacy_reportable_slot, &reportable_change);
+
+                char current_key_slot[16]{};
+                char current_cluster_slot[16]{};
+                char current_interval_slot[16]{};
+                char current_reportable_slot[16]{};
+                if (!build_profile_nvs_key('k', migrated_count, current_key_slot, sizeof(current_key_slot)) ||
+                    !build_profile_nvs_key('c', migrated_count, current_cluster_slot, sizeof(current_cluster_slot)) ||
+                    !build_profile_nvs_key('i', migrated_count, current_interval_slot, sizeof(current_interval_slot)) ||
+                    !build_profile_nvs_key('r', migrated_count, current_reportable_slot, sizeof(current_reportable_slot))) {
+                    continue;
+                }
+
+                if (hal_nvs_set_u32(current_key_slot, key_word) != HAL_NVS_STATUS_OK ||
+                    hal_nvs_set_u32(current_cluster_slot, cluster_caps_word) != HAL_NVS_STATUS_OK ||
+                    hal_nvs_set_u32(current_interval_slot, interval_word) != HAL_NVS_STATUS_OK ||
+                    hal_nvs_set_u32(current_reportable_slot, reportable_change) != HAL_NVS_STATUS_OK) {
+                    return false;
+                }
+                ++migrated_count;
+            }
+
+            if (hal_nvs_set_u32(kKeyReportingProfileCount, static_cast<uint32_t>(migrated_count)) != HAL_NVS_STATUS_OK) {
+                return false;
+            }
+            if (hal_nvs_set_u32(kKeySchemaVersion, 3U) != HAL_NVS_STATUS_OK) {
+                return false;
+            }
+
+            version = 3;
             continue;
         }
 
