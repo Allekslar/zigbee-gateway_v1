@@ -65,6 +65,19 @@ bool ReportingManager::is_due(uint32_t now_ms, uint32_t deadline_ms) noexcept {
     return static_cast<uint32_t>(now_ms - deadline_ms) < 0x80000000U;
 }
 
+ConfigManager::ReportingDeviceClass ReportingManager::classify_device_class(uint16_t cluster_id) noexcept {
+    switch (cluster_id) {
+        case 0x0402U:
+            return ConfigManager::ReportingDeviceClass::kTemperature;
+        case 0x0406U:
+            return ConfigManager::ReportingDeviceClass::kMotion;
+        case 0x0500U:
+            return ConfigManager::ReportingDeviceClass::kContact;
+        default:
+            return ConfigManager::ReportingDeviceClass::kUnknown;
+    }
+}
+
 void ReportingManager::clear_retry_state(Entry* entry) noexcept {
     if (entry == nullptr) {
         return;
@@ -318,6 +331,23 @@ uint32_t ReportingManager::degraded_count() const noexcept {
         entries_.begin(),
         entries_.end(),
         [](const Entry& entry) noexcept { return entry.state == State::kDegraded; }));
+}
+
+bool ReportingManager::resolve_profile_for_device(
+    const ConfigManager& config,
+    uint16_t short_addr,
+    uint8_t endpoint,
+    uint16_t cluster_id,
+    ConfigManager::ReportingProfile* out) const noexcept {
+    if (out == nullptr || !valid_short_addr(short_addr) || endpoint == 0U || cluster_id == 0U) {
+        return false;
+    }
+
+    ConfigManager::ReportingProfileKey key{};
+    key.short_addr = short_addr;
+    key.endpoint = endpoint;
+    key.cluster_id = cluster_id;
+    return config.resolve_reporting_profile(key, classify_device_class(cluster_id), out);
 }
 
 }  // namespace service

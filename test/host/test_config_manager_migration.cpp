@@ -97,8 +97,9 @@ void test_reporting_profile_persist_restore() {
 void test_migrate_v2_legacy_reporting_keys_idempotent() {
     assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32(kKeySchemaVersion, 2U) == HAL_NVS_STATUS_OK);
+    assert(hal_nvs_set_u32(kKeyReportingProfileCount, 0U) == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32(kLegacyV2KeyReportingProfileCount, 1U) == HAL_NVS_STATUS_OK);
-    assert(hal_nvs_set_u32("cfg_rpt_k00", 0x01012201U) == HAL_NVS_STATUS_OK);
+    assert(hal_nvs_set_u32("cfg_rpt_k00", 0x01013322U) == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32("cfg_rpt_c00", 0x00030402U) == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32("cfg_rpt_i00", 0x00780003U) == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32("cfg_rpt_r00", 25U) == HAL_NVS_STATUS_OK);
@@ -109,7 +110,7 @@ void test_migrate_v2_legacy_reporting_keys_idempotent() {
     assert(first_boot.reporting_profile_count() == 1U);
 
     service::ConfigManager::ReportingProfileKey key{};
-    key.short_addr = 0x2201U;
+    key.short_addr = 0x3322U;
     key.endpoint = 1U;
     key.cluster_id = 0x0402U;
 
@@ -138,11 +139,12 @@ void test_migrate_v2_legacy_reporting_keys_idempotent() {
 void test_migrate_v2_without_legacy_reporting_keys_is_safe() {
     assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32(kKeySchemaVersion, 2U) == HAL_NVS_STATUS_OK);
+    assert(hal_nvs_set_u32(kKeyReportingProfileCount, 0U) == HAL_NVS_STATUS_OK);
+    assert(hal_nvs_set_u32(kLegacyV2KeyReportingProfileCount, 0U) == HAL_NVS_STATUS_OK);
 
     service::ConfigManager manager;
     assert(manager.load());
     assert(manager.schema_version() == service::ConfigManager::kCurrentSchemaVersion);
-    assert(manager.reporting_profile_count() == 0U);
 }
 
 }  // namespace

@@ -86,6 +86,19 @@ bool is_valid_max_retries(uint32_t retries) noexcept {
     return retries <= ConfigManager::kMaxCommandRetries;
 }
 
+bool is_valid_reporting_policy(const ConfigManager::ReportingPolicyDefault& policy) noexcept {
+    if (!policy.in_use) {
+        return false;
+    }
+    if (policy.cluster_id == 0U) {
+        return false;
+    }
+    if (policy.max_interval_seconds != 0U && policy.min_interval_seconds > policy.max_interval_seconds) {
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 bool ConfigManager::load() noexcept {
@@ -93,6 +106,12 @@ bool ConfigManager::load() noexcept {
     command_timeout_ms_ = kDefaultCommandTimeoutMs;
     max_command_retries_ = kDefaultMaxCommandRetries;
     reporting_profiles_ = {};
+    reporting_policy_defaults_[reporting_device_class_index(ReportingDeviceClass::kTemperature)] =
+        default_policy_for_class(ReportingDeviceClass::kTemperature);
+    reporting_policy_defaults_[reporting_device_class_index(ReportingDeviceClass::kMotion)] =
+        default_policy_for_class(ReportingDeviceClass::kMotion);
+    reporting_policy_defaults_[reporting_device_class_index(ReportingDeviceClass::kContact)] =
+        default_policy_for_class(ReportingDeviceClass::kContact);
     dirty_ = false;
 
     uint32_t persisted_schema = 1;
@@ -256,8 +275,124 @@ std::size_t ConfigManager::reporting_profile_count() const noexcept {
     return count;
 }
 
+bool ConfigManager::set_reporting_policy_default(
+    ReportingDeviceClass device_class,
+    const ReportingPolicyDefault& policy) noexcept {
+    if (!valid_reporting_device_class(device_class) || !is_valid_reporting_policy(policy)) {
+        return false;
+    }
+
+    const std::size_t index = reporting_device_class_index(device_class);
+    reporting_policy_defaults_[index] = policy;
+    dirty_ = true;
+    return true;
+}
+
+bool ConfigManager::get_reporting_policy_default(
+    ReportingDeviceClass device_class,
+    ReportingPolicyDefault* out) const noexcept {
+    if (out == nullptr || !valid_reporting_device_class(device_class)) {
+        return false;
+    }
+
+    *out = reporting_policy_defaults_[reporting_device_class_index(device_class)];
+    return out->in_use;
+}
+
+bool ConfigManager::resolve_reporting_profile(
+    const ReportingProfileKey& key,
+    ReportingDeviceClass device_class,
+    ReportingProfile* out) const noexcept {
+    if (out == nullptr || key.short_addr == 0U || key.endpoint == 0U) {
+        return false;
+    }
+
+    if (get_reporting_profile(key, out)) {
+        return true;
+    }
+
+    ReportingPolicyDefault policy{};
+    if (!get_reporting_policy_default(device_class, &policy)) {
+        return false;
+    }
+
+    const uint16_t resolved_cluster = (key.cluster_id != 0U) ? key.cluster_id : policy.cluster_id;
+    if (resolved_cluster == 0U) {
+        return false;
+    }
+    if (key.cluster_id != 0U && key.cluster_id != policy.cluster_id) {
+        return false;
+    }
+
+    out->in_use = true;
+    out->key.short_addr = key.short_addr;
+    out->key.endpoint = key.endpoint;
+    out->key.cluster_id = resolved_cluster;
+    out->min_interval_seconds = policy.min_interval_seconds;
+    out->max_interval_seconds = policy.max_interval_seconds;
+    out->reportable_change = policy.reportable_change;
+    out->capability_flags = policy.capability_flags;
+    return true;
+}
+
 bool ConfigManager::dirty() const noexcept {
     return dirty_;
+}
+
+bool ConfigManager::valid_reporting_device_class(ReportingDeviceClass device_class) noexcept {
+    return device_class == ReportingDeviceClass::kTemperature ||
+           device_class == ReportingDeviceClass::kMotion ||
+           device_class == ReportingDeviceClass::kContact;
+}
+
+std::size_t ConfigManager::reporting_device_class_index(ReportingDeviceClass device_class) noexcept {
+    switch (device_class) {
+        case ReportingDeviceClass::kTemperature:
+            return 0U;
+        case ReportingDeviceClass::kMotion:
+            return 1U;
+        case ReportingDeviceClass::kContact:
+            return 2U;
+        case ReportingDeviceClass::kUnknown:
+        default:
+            return 0U;
+    }
+}
+
+ConfigManager::ReportingPolicyDefault ConfigManager::default_policy_for_class(ReportingDeviceClass device_class) noexcept {
+    ReportingPolicyDefault policy{};
+    policy.in_use = true;
+    switch (device_class) {
+        case ReportingDeviceClass::kTemperature:
+            // Temperature Measurement cluster (0x0402), measuredValue (0x0000) in 0.01 C.
+            policy.cluster_id = 0x0402U;
+            policy.min_interval_seconds = 5U;
+            policy.max_interval_seconds = 300U;
+            policy.reportable_change = 10U;
+            policy.capability_flags = 0x01U;
+            break;
+        case ReportingDeviceClass::kMotion:
+            // Occupancy Sensing cluster (0x0406), occupancy (0x0000).
+            policy.cluster_id = 0x0406U;
+            policy.min_interval_seconds = 1U;
+            policy.max_interval_seconds = 120U;
+            policy.reportable_change = 0U;
+            policy.capability_flags = 0x02U;
+            break;
+        case ReportingDeviceClass::kContact:
+            // IAS Zone cluster (0x0500), zone status (0x0002).
+            policy.cluster_id = 0x0500U;
+            policy.min_interval_seconds = 1U;
+            policy.max_interval_seconds = 300U;
+            policy.reportable_change = 0U;
+            policy.capability_flags = 0x04U;
+            break;
+        case ReportingDeviceClass::kUnknown:
+        default:
+            policy = ReportingPolicyDefault{};
+            break;
+    }
+    return policy;
 }
 
 bool ConfigManager::migrate_to_current(uint32_t from_version) noexcept {
@@ -296,9 +431,10 @@ bool ConfigManager::migrate_to_current(uint32_t from_version) noexcept {
         }
 
         if (version == 2) {
-            // If current reporting profile key-space is already present, only bump schema.
+            // If current reporting profile key-space is already populated, only bump schema.
             uint32_t current_count = 0U;
-            if (hal_nvs_get_u32(kKeyReportingProfileCount, &current_count) == HAL_NVS_STATUS_OK) {
+            if (hal_nvs_get_u32(kKeyReportingProfileCount, &current_count) == HAL_NVS_STATUS_OK &&
+                current_count > 0U) {
                 if (hal_nvs_set_u32(kKeySchemaVersion, 3U) != HAL_NVS_STATUS_OK) {
                     return false;
                 }

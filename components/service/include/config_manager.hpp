@@ -16,6 +16,14 @@ public:
     static constexpr uint8_t kDefaultMaxCommandRetries = 1;
     static constexpr uint8_t kMaxCommandRetries = 5;
     static constexpr std::size_t kMaxReportingProfiles = 16;
+    static constexpr std::size_t kReportingDeviceClassCount = 3;
+
+    enum class ReportingDeviceClass : uint8_t {
+        kUnknown = 0,
+        kTemperature = 1,
+        kMotion = 2,
+        kContact = 3,
+    };
 
     struct ReportingProfileKey {
         uint16_t short_addr{0};
@@ -26,6 +34,15 @@ public:
     struct ReportingProfile {
         bool in_use{false};
         ReportingProfileKey key{};
+        uint16_t min_interval_seconds{0};
+        uint16_t max_interval_seconds{0};
+        uint32_t reportable_change{0};
+        uint8_t capability_flags{0};
+    };
+
+    struct ReportingPolicyDefault {
+        bool in_use{false};
+        uint16_t cluster_id{0};
         uint16_t min_interval_seconds{0};
         uint16_t max_interval_seconds{0};
         uint32_t reportable_change{0};
@@ -43,6 +60,12 @@ public:
     bool clear_reporting_profile(const ReportingProfileKey& key) noexcept;
     bool get_reporting_profile(const ReportingProfileKey& key, ReportingProfile* out) const noexcept;
     std::size_t reporting_profile_count() const noexcept;
+    bool set_reporting_policy_default(ReportingDeviceClass device_class, const ReportingPolicyDefault& policy) noexcept;
+    bool get_reporting_policy_default(ReportingDeviceClass device_class, ReportingPolicyDefault* out) const noexcept;
+    bool resolve_reporting_profile(
+        const ReportingProfileKey& key,
+        ReportingDeviceClass device_class,
+        ReportingProfile* out) const noexcept;
     bool dirty() const noexcept;
 
 private:
@@ -53,11 +76,15 @@ private:
     static bool profile_key_equal(const ReportingProfileKey& lhs, const ReportingProfileKey& rhs) noexcept;
     int find_profile_index(const ReportingProfileKey& key) const noexcept;
     int find_free_profile_index() const noexcept;
+    static bool valid_reporting_device_class(ReportingDeviceClass device_class) noexcept;
+    static std::size_t reporting_device_class_index(ReportingDeviceClass device_class) noexcept;
+    static ReportingPolicyDefault default_policy_for_class(ReportingDeviceClass device_class) noexcept;
 
     uint32_t schema_version_{kCurrentSchemaVersion};
     uint32_t command_timeout_ms_{kDefaultCommandTimeoutMs};
     uint8_t max_command_retries_{kDefaultMaxCommandRetries};
     std::array<ReportingProfile, kMaxReportingProfiles> reporting_profiles_{};
+    std::array<ReportingPolicyDefault, kReportingDeviceClassCount> reporting_policy_defaults_{};
     bool dirty_{false};
 };
 

@@ -37,6 +37,7 @@ The application evolves through three phases:
 11. **Controlled Side Effects** — Core produces *effects/intents*, while execution happens in Service/HAL.
 12. **Data Durability** — NVS data is versioned and migrated during OTA.
 13. <mark>**C ABI Boundaries** — integrations with stacks (Zigbee/Matter) are done through `extern "C"` wrappers; Core does not export C++ classes externally.</mark>
+14. **Reporting Policy Resolution** — sensor reporting policy is resolved in Service layer as: `per-device override > device-class default (temperature/motion/contact)`.
 
 ---
 

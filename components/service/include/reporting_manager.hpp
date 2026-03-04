@@ -9,6 +9,7 @@
 
 #include "core_events.hpp"
 #include "core_state.hpp"
+#include "config_manager.hpp"
 
 namespace service {
 
@@ -72,6 +73,12 @@ public:
     bool get_state(uint16_t short_addr, State* out) const noexcept;
     bool get_retry_status(uint16_t short_addr, RetryStatus* out) const noexcept;
     uint32_t degraded_count() const noexcept;
+    bool resolve_profile_for_device(
+        const ConfigManager& config,
+        uint16_t short_addr,
+        uint8_t endpoint,
+        uint16_t cluster_id,
+        ConfigManager::ReportingProfile* out) const noexcept;
 
 private:
     struct Entry {
@@ -92,6 +99,7 @@ private:
     static bool is_retryable_reason(FailureReason reason) noexcept;
     static uint32_t compute_backoff_ms(uint8_t attempt) noexcept;
     static bool is_due(uint32_t now_ms, uint32_t deadline_ms) noexcept;
+    static ConfigManager::ReportingDeviceClass classify_device_class(uint16_t cluster_id) noexcept;
     static void clear_retry_state(Entry* entry) noexcept;
 
     std::array<Entry, core::kMaxDevices> entries_{};
