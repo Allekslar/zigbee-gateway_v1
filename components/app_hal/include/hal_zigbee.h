@@ -136,6 +136,12 @@ void hal_zigbee_simulate_attribute_report(
     bool value_bool,
     uint32_t value_u32);
 void hal_zigbee_simulate_command_result(uint32_t correlation_id, hal_zigbee_result_t result);
+void hal_zigbee_simulate_interview_completed(uint32_t correlation_id, uint16_t short_addr);
+void hal_zigbee_simulate_bind_result(uint32_t correlation_id, uint16_t short_addr, hal_zigbee_result_t result);
+void hal_zigbee_simulate_reporting_config_result(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result);
 
 #ifdef __cplusplus
 }

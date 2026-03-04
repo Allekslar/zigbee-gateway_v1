@@ -1365,3 +1365,38 @@ void hal_zigbee_simulate_command_result(uint32_t correlation_id, hal_zigbee_resu
     (void)result;
 #endif
 }
+
+void hal_zigbee_simulate_interview_completed(uint32_t correlation_id, uint16_t short_addr) {
+#ifndef ESP_PLATFORM
+    // TEMP MOCK PATH (!ESP_PLATFORM): explicit simulation helper for host tests.
+    hal_zigbee_notify_interview_result(correlation_id, short_addr, HAL_ZIGBEE_RESULT_SUCCESS);
+#else
+    (void)correlation_id;
+    (void)short_addr;
+#endif
+}
+
+void hal_zigbee_simulate_bind_result(uint32_t correlation_id, uint16_t short_addr, hal_zigbee_result_t result) {
+#ifndef ESP_PLATFORM
+    // TEMP MOCK PATH (!ESP_PLATFORM): explicit simulation helper for host tests.
+    hal_zigbee_notify_bind_result(correlation_id, short_addr, result);
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    (void)result;
+#endif
+}
+
+void hal_zigbee_simulate_reporting_config_result(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result) {
+#ifndef ESP_PLATFORM
+    // TEMP MOCK PATH (!ESP_PLATFORM): explicit simulation helper for host tests.
+    hal_zigbee_notify_configure_reporting_result(correlation_id, short_addr, result);
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    (void)result;
+#endif
+}
