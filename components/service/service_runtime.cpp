@@ -109,6 +109,30 @@ bool decode_raw_u32_le(const hal_zigbee_raw_attribute_report_t& report, uint32_t
     return true;
 }
 
+bool decode_temperature_centi_c(
+    const hal_zigbee_raw_attribute_report_t& report,
+    int16_t* out_temp_centi_c,
+    bool* out_valid) noexcept {
+    if (out_temp_centi_c == nullptr || out_valid == nullptr) {
+        return false;
+    }
+    if (report.payload == nullptr || report.payload_len != 2U) {
+        return false;
+    }
+
+    const uint16_t raw = static_cast<uint16_t>(report.payload[0]) |
+                         (static_cast<uint16_t>(report.payload[1]) << 8U);
+    if (raw == 0x8000U) {
+        *out_temp_centi_c = 0;
+        *out_valid = false;
+        return true;
+    }
+
+    *out_temp_centi_c = static_cast<int16_t>(raw);
+    *out_valid = true;
+    return true;
+}
+
 }  // namespace
 
 ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& effect_executor) noexcept
@@ -376,6 +400,23 @@ bool ServiceRuntime::post_zigbee_configure_reporting_result(
 bool ServiceRuntime::post_zigbee_attribute_report_raw(const hal_zigbee_raw_attribute_report_t& report) noexcept {
     if (report.short_addr == core::kUnknownDeviceShortAddr || report.short_addr == 0x0000U) {
         return false;
+    }
+
+    if (report.cluster_id == 0x0402U && report.attribute_id == 0x0000U) {
+        int16_t temperature_centi_c = 0;
+        bool temperature_valid = false;
+        if (!decode_temperature_centi_c(report, &temperature_centi_c, &temperature_valid)) {
+            return false;
+        }
+
+        core::CoreEvent event{};
+        event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+        event.device_short_addr = report.short_addr;
+        event.value_u32 = monotonic_now_ms();
+        event.telemetry_kind = core::CoreTelemetryKind::kTemperatureCentiC;
+        event.telemetry_i32 = static_cast<int32_t>(temperature_centi_c);
+        event.telemetry_valid = temperature_valid;
+        return push_event(event);
     }
 
     uint32_t decoded_u32 = 0U;

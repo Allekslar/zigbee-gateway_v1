@@ -38,6 +38,7 @@ The application evolves through three phases:
 12. **Data Durability** — NVS data is versioned and migrated during OTA.
 13. <mark>**C ABI Boundaries** — integrations with stacks (Zigbee/Matter) are done through `extern "C"` wrappers; Core does not export C++ classes externally.</mark>
 14. **Reporting Policy Resolution** — sensor reporting policy is resolved in Service layer as: `per-device override > device-class default (temperature/motion/contact)`.
+15. **Telemetry Semantics in Service** — Zigbee raw reports are normalized in Service to domain telemetry events (e.g. `0x0402/measuredValue` in 0.01°C, with invalid marker handling), Core consumes only normalized payload.
 
 ---
 

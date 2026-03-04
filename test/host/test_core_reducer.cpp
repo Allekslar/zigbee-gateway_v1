@@ -135,6 +135,9 @@ int main() {
     telemetry_updated.type = core::CoreEventType::kDeviceTelemetryUpdated;
     telemetry_updated.device_short_addr = 0x1234;
     telemetry_updated.value_u32 = 4242;
+    telemetry_updated.telemetry_kind = core::CoreTelemetryKind::kTemperatureCentiC;
+    telemetry_updated.telemetry_i32 = 2150;
+    telemetry_updated.telemetry_valid = true;
     const core::CoreReduceResult telemetry_result = core::core_reduce(configured_result.next, telemetry_updated);
     assert(telemetry_result.next.revision == configured_result.next.revision + 1);
     assert(telemetry_result.effects.count == 2);
@@ -143,12 +146,24 @@ int main() {
     assert(device->reporting_state == core::CoreReportingState::kReportingActive);
     assert(!device->stale);
     assert(device->last_report_at_ms == 4242);
+    assert(device->has_temperature);
+    assert(device->temperature_centi_c == 2150);
+
+    core::CoreEvent telemetry_invalid = telemetry_updated;
+    telemetry_invalid.value_u32 = 4343;
+    telemetry_invalid.telemetry_valid = false;
+    telemetry_invalid.telemetry_i32 = 0;
+    const core::CoreReduceResult telemetry_invalid_result = core::core_reduce(telemetry_result.next, telemetry_invalid);
+    assert(telemetry_invalid_result.next.revision == telemetry_result.next.revision + 1);
+    device = find_device(telemetry_invalid_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(!device->has_temperature);
 
     core::CoreEvent stale_event{};
     stale_event.type = core::CoreEventType::kDeviceStale;
     stale_event.device_short_addr = 0x1234;
-    const core::CoreReduceResult stale_result = core::core_reduce(telemetry_result.next, stale_event);
-    assert(stale_result.next.revision == telemetry_result.next.revision + 1);
+    const core::CoreReduceResult stale_result = core::core_reduce(telemetry_invalid_result.next, stale_event);
+    assert(stale_result.next.revision == telemetry_invalid_result.next.revision + 1);
     assert(stale_result.effects.count == 2);
     device = find_device(stale_result.next, 0x1234);
     assert(device != nullptr);

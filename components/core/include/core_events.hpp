@@ -31,6 +31,11 @@ enum class CoreEventType : uint8_t {
     kDeviceRemoved = kDeviceLeft,
 };
 
+enum class CoreTelemetryKind : uint8_t {
+    kNone = 0,
+    kTemperatureCentiC,
+};
+
 struct CoreEvent {
     CoreEventType type{CoreEventType::kUnknown};
     uint32_t correlation_id{kNoCorrelationId};
@@ -39,6 +44,9 @@ struct CoreEvent {
     uint16_t attribute_id{0};
     uint32_t value_u32{0};
     bool value_bool{false};
+    CoreTelemetryKind telemetry_kind{CoreTelemetryKind::kNone};
+    int32_t telemetry_i32{0};
+    bool telemetry_valid{false};
 };
 
 }  // namespace core

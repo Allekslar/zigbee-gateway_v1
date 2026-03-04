@@ -94,9 +94,8 @@ bool apply_reporting_state(CoreReduceResult* out,
     return changed;
 }
 
-bool apply_telemetry_update(CoreReduceResult* out,
-                            uint16_t short_addr,
-                            uint32_t reported_at_ms) noexcept {
+bool apply_telemetry_update(CoreReduceResult* out, const CoreEvent& event) noexcept {
+    const uint16_t short_addr = event.device_short_addr;
     if (short_addr == kUnknownDeviceShortAddr) {
         return false;
     }
@@ -116,9 +115,23 @@ bool apply_telemetry_update(CoreReduceResult* out,
         device.stale = false;
         changed = true;
     }
-    if (device.last_report_at_ms != reported_at_ms) {
-        device.last_report_at_ms = reported_at_ms;
+    if (device.last_report_at_ms != event.value_u32) {
+        device.last_report_at_ms = event.value_u32;
         changed = true;
+    }
+
+    if (event.telemetry_kind == CoreTelemetryKind::kTemperatureCentiC) {
+        const int16_t next_temp = static_cast<int16_t>(event.telemetry_i32);
+        if (event.telemetry_valid) {
+            if (!device.has_temperature || device.temperature_centi_c != next_temp) {
+                device.temperature_centi_c = next_temp;
+                device.has_temperature = true;
+                changed = true;
+            }
+        } else if (device.has_temperature) {
+            device.has_temperature = false;
+            changed = true;
+        }
     }
 
     return changed;
@@ -327,7 +340,7 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
             break;
 
         case CoreEventType::kDeviceTelemetryUpdated:
-            state_changed = apply_telemetry_update(&out, event.device_short_addr, event.value_u32);
+            state_changed = apply_telemetry_update(&out, event);
             if (state_changed) {
                 push_state_persist_and_telemetry(&out);
             }
