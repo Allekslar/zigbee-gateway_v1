@@ -8,6 +8,7 @@ void test_hal_nvs_missing_key_returns_error(void);
 void test_hal_zigbee_notifies_registered_callbacks(void);
 void test_hal_zigbee_rejects_null_callbacks(void);
 void test_config_manager_migrates_legacy_v1(void);
+void test_config_manager_reporting_profile_persist_restore(void);
 void test_service_join_policy_deduplicates_candidates(void);
 void test_web_api_http_command_result_updates_snapshot(void);
 void test_web_api_end_to_end_zigbee_core_effects_http_flow(void);
@@ -23,6 +24,7 @@ void app_main(void) {
     RUN_TEST(test_hal_zigbee_notifies_registered_callbacks);
     RUN_TEST(test_hal_zigbee_rejects_null_callbacks);
     RUN_TEST(test_config_manager_migrates_legacy_v1);
+    RUN_TEST(test_config_manager_reporting_profile_persist_restore);
     RUN_TEST(test_service_join_policy_deduplicates_candidates);
     RUN_TEST(test_web_api_http_command_result_updates_snapshot);
     RUN_TEST(test_web_api_end_to_end_zigbee_core_effects_http_flow);

@@ -641,6 +641,10 @@ std::size_t ServiceRuntime::process_pending() noexcept {
             made_progress = true;
         }
 
+        if (persistence_manager_.drain_reporting_profile_writes(*this)) {
+            made_progress = true;
+        }
+
         if (drain_network_requests()) {
             made_progress = true;
         }

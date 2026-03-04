@@ -58,11 +58,46 @@ void test_reject_future_schema() {
     assert(!manager.load());
 }
 
+void test_reporting_profile_persist_restore() {
+    assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
+    assert(hal_nvs_set_u32(kKeySchemaVersion, service::ConfigManager::kCurrentSchemaVersion) == HAL_NVS_STATUS_OK);
+
+    service::ConfigManager writer;
+    assert(writer.load());
+
+    service::ConfigManager::ReportingProfile profile{};
+    profile.in_use = true;
+    profile.key.short_addr = 0x2201U;
+    profile.key.endpoint = 1U;
+    profile.key.cluster_id = 0x0402U;
+    profile.min_interval_seconds = 5U;
+    profile.max_interval_seconds = 300U;
+    profile.reportable_change = 10U;
+    profile.capability_flags = 0x07U;
+
+    assert(writer.set_reporting_profile(profile));
+    assert(writer.save());
+
+    service::ConfigManager reader;
+    assert(reader.load());
+    service::ConfigManager::ReportingProfile restored{};
+    assert(reader.get_reporting_profile(profile.key, &restored));
+    assert(restored.in_use);
+    assert(restored.key.short_addr == profile.key.short_addr);
+    assert(restored.key.endpoint == profile.key.endpoint);
+    assert(restored.key.cluster_id == profile.key.cluster_id);
+    assert(restored.min_interval_seconds == profile.min_interval_seconds);
+    assert(restored.max_interval_seconds == profile.max_interval_seconds);
+    assert(restored.reportable_change == profile.reportable_change);
+    assert(restored.capability_flags == profile.capability_flags);
+}
+
 }  // namespace
 
 int main() {
     test_migrate_v1_legacy_values();
     test_invalid_legacy_values_fallback_to_defaults();
     test_reject_future_schema();
+    test_reporting_profile_persist_restore();
     return 0;
 }

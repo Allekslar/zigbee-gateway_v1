@@ -66,6 +66,30 @@ bool PersistenceManager::pop_config_write(ConfigWriteNotification* out) noexcept
     return true;
 }
 
+bool PersistenceManager::queue_reporting_profile_write(const ReportingProfileWriteNotification& notification) noexcept {
+    SpinLockGuard guard(queue_lock_);
+    if (reporting_profile_write_count_ >= kConfigWriteQueueCapacity) {
+        return false;
+    }
+
+    reporting_profile_write_queue_[reporting_profile_write_tail_] = notification;
+    reporting_profile_write_tail_ = (reporting_profile_write_tail_ + 1U) % kConfigWriteQueueCapacity;
+    ++reporting_profile_write_count_;
+    return true;
+}
+
+bool PersistenceManager::pop_reporting_profile_write(ReportingProfileWriteNotification* out) noexcept {
+    SpinLockGuard guard(queue_lock_);
+    if (out == nullptr || reporting_profile_write_count_ == 0) {
+        return false;
+    }
+
+    *out = reporting_profile_write_queue_[reporting_profile_write_head_];
+    reporting_profile_write_head_ = (reporting_profile_write_head_ + 1U) % kConfigWriteQueueCapacity;
+    --reporting_profile_write_count_;
+    return true;
+}
+
 bool PersistenceManager::post_config_write(
     ServiceRuntime& runtime,
     bool set_timeout_ms,
@@ -87,6 +111,18 @@ bool PersistenceManager::post_config_write(
         return false;
     }
 
+    return true;
+}
+
+bool PersistenceManager::post_reporting_profile_write(
+    ServiceRuntime& runtime,
+    const ConfigManager::ReportingProfile& profile) noexcept {
+    ReportingProfileWriteNotification notification{};
+    notification.profile = profile;
+    if (!queue_reporting_profile_write(notification)) {
+        (void)runtime.dropped_ingress_events_.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
     return true;
 }
 
@@ -150,9 +186,26 @@ bool PersistenceManager::drain_config_writes(ServiceRuntime& runtime) noexcept {
     return drained;
 }
 
+bool PersistenceManager::drain_reporting_profile_writes(ServiceRuntime& runtime) noexcept {
+    bool drained = false;
+    ReportingProfileWriteNotification notification{};
+
+    while (pop_reporting_profile_write(&notification)) {
+        drained = true;
+        const bool changed = runtime.config_manager_.set_reporting_profile(notification.profile);
+        if (changed) {
+            (void)runtime.config_manager_.save();
+        } else {
+            ++runtime.stats_.dropped_events;
+        }
+    }
+
+    return drained;
+}
+
 std::size_t PersistenceManager::pending_ingress_count() const noexcept {
     SpinLockGuard guard(queue_lock_);
-    return nvs_write_count_ + config_write_count_;
+    return nvs_write_count_ + config_write_count_ + reporting_profile_write_count_;
 }
 
 }  // namespace service

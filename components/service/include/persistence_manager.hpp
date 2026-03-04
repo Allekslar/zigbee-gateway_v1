@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "config_manager.hpp"
+
 namespace service {
 
 class ServiceRuntime;
@@ -23,10 +25,12 @@ public:
         uint32_t timeout_ms,
         bool set_max_retries,
         uint8_t max_retries) noexcept;
+    bool post_reporting_profile_write(ServiceRuntime& runtime, const ConfigManager::ReportingProfile& profile) noexcept;
     void on_nvs_u32_written(ServiceRuntime& runtime, const char* key, uint32_t value) noexcept;
 
     bool drain_nvs_writes(ServiceRuntime& runtime) noexcept;
     bool drain_config_writes(ServiceRuntime& runtime) noexcept;
+    bool drain_reporting_profile_writes(ServiceRuntime& runtime) noexcept;
     std::size_t pending_ingress_count() const noexcept;
 
 private:
@@ -42,6 +46,10 @@ private:
         uint8_t max_retries{0};
     };
 
+    struct ReportingProfileWriteNotification {
+        ConfigManager::ReportingProfile profile{};
+    };
+
     class SpinLockGuard {
     public:
         explicit SpinLockGuard(std::atomic_flag& lock) noexcept;
@@ -55,6 +63,8 @@ private:
     bool pop_nvs_write(NvsWriteNotification* out) noexcept;
     bool queue_config_write(const ConfigWriteNotification& notification) noexcept;
     bool pop_config_write(ConfigWriteNotification* out) noexcept;
+    bool queue_reporting_profile_write(const ReportingProfileWriteNotification& notification) noexcept;
+    bool pop_reporting_profile_write(ReportingProfileWriteNotification* out) noexcept;
 
     mutable std::atomic_flag queue_lock_ = ATOMIC_FLAG_INIT;
 
@@ -67,6 +77,11 @@ private:
     std::size_t config_write_head_{0};
     std::size_t config_write_tail_{0};
     std::size_t config_write_count_{0};
+
+    std::array<ReportingProfileWriteNotification, kConfigWriteQueueCapacity> reporting_profile_write_queue_{};
+    std::size_t reporting_profile_write_head_{0};
+    std::size_t reporting_profile_write_tail_{0};
+    std::size_t reporting_profile_write_count_{0};
 };
 
 }  // namespace service
