@@ -3,6 +3,9 @@
 
 #include <cassert>
 #include <cstring>
+
+#include "core_state.hpp"
+#include "web_dto.hpp"
 #include "web_handler_common.hpp"
 
 // Mocks for linker (web_handler_common.cpp uses these)
@@ -50,6 +53,25 @@ int main() {
     
     const char* invalid_json = "{\"val\": \"not_a_number\"}";
     assert(!web_ui::find_json_u32_field(invalid_json, "val", &u32_val));
+
+    web_ui::DeviceDto dto{};
+    assert(dto.short_addr == 0U);
+    assert(!dto.online);
+    assert(!dto.power_on);
+    assert(dto.reporting_state == core::CoreReportingState::kUnknown);
+    assert(dto.last_report_at_ms == 0U);
+    assert(!dto.stale);
+    assert(!dto.has_temperature);
+    assert(dto.occupancy_state == core::CoreOccupancyState::kUnknown);
+    assert(dto.contact_state == core::CoreContactState::kUnknown);
+    assert(!dto.contact_tamper);
+    assert(!dto.contact_battery_low);
+    assert(!dto.has_battery);
+    assert(!dto.has_battery_voltage);
+    assert(!dto.has_lqi);
+    assert(!dto.has_rssi);
+    assert(!dto.force_remove_armed);
+    assert(dto.force_remove_ms_left == 0U);
 
     return 0;
 }
