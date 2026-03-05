@@ -181,16 +181,25 @@ bool ConnectivityManager::ensure_zigbee_started(ServiceRuntime& runtime) noexcep
         return false;
     }
 
-    if (hal_zigbee_set_primary_channel_mask(kServiceZigbeePrimaryChannelMask) != HAL_ZIGBEE_STATUS_OK) {
-        CM_LOGW("Failed to apply Zigbee primary channel policy from service runtime");
+    const hal_zigbee_status_t channel_status =
+        hal_zigbee_set_primary_channel_mask(kServiceZigbeePrimaryChannelMask);
+    if (channel_status != HAL_ZIGBEE_STATUS_OK) {
+        CM_LOGW(
+            "Failed to apply Zigbee primary channel policy from service runtime (status=%d)",
+            static_cast<int>(channel_status));
         return false;
     }
-    if (hal_zigbee_set_max_children(kServiceZigbeeMaxChildren) != HAL_ZIGBEE_STATUS_OK) {
-        CM_LOGW("Failed to apply Zigbee max-children policy from service runtime");
+    const hal_zigbee_status_t children_status = hal_zigbee_set_max_children(kServiceZigbeeMaxChildren);
+    if (children_status != HAL_ZIGBEE_STATUS_OK) {
+        CM_LOGW(
+            "Failed to apply Zigbee max-children policy from service runtime (status=%d)",
+            static_cast<int>(children_status));
         return false;
     }
 
-    if (hal_zigbee_init() != HAL_ZIGBEE_STATUS_OK) {
+    const hal_zigbee_status_t init_status = hal_zigbee_init();
+    if (init_status != HAL_ZIGBEE_STATUS_OK) {
+        CM_LOGW("Failed to initialize Zigbee HAL from service runtime (status=%d)", static_cast<int>(init_status));
         return false;
     }
 

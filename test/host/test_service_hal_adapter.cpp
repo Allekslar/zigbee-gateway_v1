@@ -53,6 +53,10 @@ int main() {
         .cluster_id = 0x0006U,
         .attribute_id = 0x0000U,
         .zcl_data_type = 0x10U,
+        .has_lqi = false,
+        .lqi = 0U,
+        .has_rssi = false,
+        .rssi_dbm = 0,
         .payload = raw_off_payload,
         .payload_len = 1U,
     };

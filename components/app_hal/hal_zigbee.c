@@ -12,6 +12,12 @@
 static hal_zigbee_callbacks_t s_callbacks;
 static void* s_context = 0;
 
+#ifndef ESP_PLATFORM
+static bool s_mock_network_formed = true;
+static bool s_mock_next_formation_status_once_armed = false;
+static hal_zigbee_status_t s_mock_next_formation_status_once = HAL_ZIGBEE_STATUS_OK;
+#endif
+
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -530,6 +536,11 @@ hal_zigbee_status_t hal_zigbee_set_primary_channel_mask(uint32_t channel_mask) {
 #ifdef ESP_PLATFORM
 #if HAL_ZIGBEE_HAS_ESP_ZB_SDK
     if (s_stack_started || s_stack_task_handle != NULL) {
+        // Idempotent behavior: allow repeated policy apply with the same value
+        // after stack/task start sequence has already been initiated.
+        if (s_primary_channel_mask == channel_mask) {
+            return HAL_ZIGBEE_STATUS_OK;
+        }
         return HAL_ZIGBEE_STATUS_ERR;
     }
     s_primary_channel_mask = channel_mask;
@@ -552,6 +563,11 @@ hal_zigbee_status_t hal_zigbee_set_max_children(uint8_t max_children) {
 #ifdef ESP_PLATFORM
 #if HAL_ZIGBEE_HAS_ESP_ZB_SDK
     if (s_stack_started || s_stack_task_handle != NULL) {
+        // Idempotent behavior: allow repeated policy apply with the same value
+        // after stack/task start sequence has already been initiated.
+        if (s_max_children == max_children) {
+            return HAL_ZIGBEE_STATUS_OK;
+        }
         return HAL_ZIGBEE_STATUS_ERR;
     }
     s_max_children = max_children;
@@ -841,7 +857,15 @@ hal_zigbee_status_t hal_zigbee_start_network_formation(void) {
     return HAL_ZIGBEE_STATUS_ERR;
 #endif
 #else
-    return HAL_ZIGBEE_STATUS_OK;
+    hal_zigbee_status_t status = HAL_ZIGBEE_STATUS_OK;
+    if (s_mock_next_formation_status_once_armed) {
+        status = s_mock_next_formation_status_once;
+        s_mock_next_formation_status_once_armed = false;
+    }
+    if (status == HAL_ZIGBEE_STATUS_OK) {
+        s_mock_network_formed = true;
+    }
+    return status;
 #endif
 }
 
@@ -1034,7 +1058,7 @@ bool hal_zigbee_is_network_formed(void) {
     return false;
 #endif
 #else
-    return true;
+    return s_mock_network_formed;
 #endif
 }
 
@@ -1405,5 +1429,22 @@ void hal_zigbee_simulate_reporting_config_result(
     (void)correlation_id;
     (void)short_addr;
     (void)result;
+#endif
+}
+
+void hal_zigbee_simulate_network_formed(bool formed) {
+#ifndef ESP_PLATFORM
+    s_mock_network_formed = formed;
+#else
+    (void)formed;
+#endif
+}
+
+void hal_zigbee_simulate_start_network_formation_status_once(hal_zigbee_status_t status) {
+#ifndef ESP_PLATFORM
+    s_mock_next_formation_status_once = status;
+    s_mock_next_formation_status_once_armed = true;
+#else
+    (void)status;
 #endif
 }

@@ -700,6 +700,10 @@ void ServiceRuntime::clear_scan_request_in_progress_for_test() noexcept {
 bool ServiceRuntime::push_network_result_for_test(const NetworkResult& result) noexcept {
     return queue_network_result(result);
 }
+
+uint32_t ServiceRuntime::monotonic_now_ms_for_test() const noexcept {
+    return monotonic_now_ms();
+}
 #endif
 
 bool ServiceRuntime::initialize_hal_adapter() noexcept {

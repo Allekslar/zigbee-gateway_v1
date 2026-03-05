@@ -100,6 +100,18 @@ void NetworkPolicyManager::process_zigbee_join_window_policy(ServiceRuntime& run
         return;
     }
 
+    // Factory-new coordinator bootstrap: on_zigbee_started() can race with
+    // async Zigbee stack task startup and return NOT_STARTED once.
+    // Keep retrying formation until network is formed.
+    if (pending_join_window_seconds_ == 0U && !hal_zigbee_is_network_formed() &&
+        (zigbee_next_formation_retry_ms_ == 0U || is_deadline_reached(now_ms, zigbee_next_formation_retry_ms_))) {
+        const hal_zigbee_status_t formation_status = hal_zigbee_start_network_formation();
+        if (formation_status == HAL_ZIGBEE_STATUS_OK) {
+            ++zigbee_formation_retry_count_;
+        }
+        zigbee_next_formation_retry_ms_ = now_ms + kZigbeeFormationRetryMs;
+    }
+
     if (pending_join_window_seconds_ > 0U && !hal_zigbee_is_network_formed()) {
         if (zigbee_next_formation_retry_ms_ == 0U || is_deadline_reached(now_ms, zigbee_next_formation_retry_ms_)) {
             const hal_zigbee_status_t formation_status = hal_zigbee_start_network_formation();

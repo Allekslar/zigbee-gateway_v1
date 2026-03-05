@@ -4,6 +4,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -146,6 +147,8 @@ void hal_zigbee_simulate_reporting_config_result(
     uint32_t correlation_id,
     uint16_t short_addr,
     hal_zigbee_result_t result);
+void hal_zigbee_simulate_network_formed(bool formed);
+void hal_zigbee_simulate_start_network_formation_status_once(hal_zigbee_status_t status);
 
 #ifdef __cplusplus
 }

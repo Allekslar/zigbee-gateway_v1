@@ -420,6 +420,11 @@ hal_wifi_status_t hal_wifi_connect_sta_async(const char* ssid, const char* passw
         (void)xEventGroupClearBits(s_sta_event_group, kStaGotIpBit | kStaDisconnectedBit);
     }
 
+    // Ensure reconnect attempts are deterministic: esp_wifi_connect() while an
+    // STA session is still active often returns "disconnect before connecting
+    // to new ap" and no new GOT_IP event is emitted.
+    (void)esp_wifi_disconnect();
+
     if (esp_wifi_connect() != ESP_OK) {
         wifi_ops_unlock();
         return HAL_WIFI_STATUS_ERR;

@@ -159,6 +159,7 @@ private:
     void set_scan_request_in_progress_for_test(uint32_t request_id) noexcept;
     void clear_scan_request_in_progress_for_test() noexcept;
     bool push_network_result_for_test(const NetworkResult& result) noexcept;
+    uint32_t monotonic_now_ms_for_test() const noexcept;
 #endif
 
 private:
