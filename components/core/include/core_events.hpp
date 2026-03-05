@@ -36,6 +36,10 @@ enum class CoreTelemetryKind : uint8_t {
     kTemperatureCentiC,
     kOccupancy,
     kContactIasZoneStatus,
+    kBatteryPercent,
+    kBatteryVoltageMilliV,
+    kLqi,
+    kRssiDbm,
 };
 
 struct CoreEvent {

@@ -21,8 +21,12 @@ struct DeviceRuntimeSnapshot {
     std::array<bool, core::kMaxDevices> stale{};
     std::array<uint8_t, core::kMaxDevices> battery_percent{};
     std::array<bool, core::kMaxDevices> has_battery{};
+    std::array<uint16_t, core::kMaxDevices> battery_voltage_mv{};
+    std::array<bool, core::kMaxDevices> has_battery_voltage{};
     std::array<uint8_t, core::kMaxDevices> lqi{};
     std::array<bool, core::kMaxDevices> has_lqi{};
+    std::array<int8_t, core::kMaxDevices> rssi_dbm{};
+    std::array<bool, core::kMaxDevices> has_rssi{};
 };
 
 class DeviceManager {

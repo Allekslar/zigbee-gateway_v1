@@ -183,8 +183,12 @@ bool DeviceManager::build_runtime_snapshot(
         out->stale[i] = state.devices[i].stale;
         out->battery_percent[i] = state.devices[i].battery_percent;
         out->has_battery[i] = state.devices[i].has_battery;
+        out->battery_voltage_mv[i] = state.devices[i].battery_voltage_mv;
+        out->has_battery_voltage[i] = state.devices[i].has_battery_voltage;
         out->lqi[i] = state.devices[i].lqi;
         out->has_lqi[i] = state.devices[i].has_lqi;
+        out->rssi_dbm[i] = state.devices[i].rssi_dbm;
+        out->has_rssi[i] = state.devices[i].has_rssi;
 
         uint32_t remaining_ms = 0U;
         for (std::size_t j = 0; j < pending_force_remove_.size(); ++j) {

@@ -146,5 +146,31 @@ int main() {
     assert(!device->contact_tamper);
     assert(!device->contact_battery_low);
 
+    const uint8_t battery_pct_payload[1] = {0x96U};  // 150 half-percent => 75%
+    hal_zigbee_raw_attribute_report_t battery_pct_report{};
+    battery_pct_report.short_addr = 0x2201U;
+    battery_pct_report.endpoint = 1U;
+    battery_pct_report.cluster_id = 0x0001U;
+    battery_pct_report.attribute_id = 0x0021U;
+    battery_pct_report.payload = battery_pct_payload;
+    battery_pct_report.payload_len = 1U;
+    assert(runtime.post_zigbee_attribute_report_raw(battery_pct_report));
+    assert(runtime.process_pending() > 0U);
+    device = find_device(runtime.state(), 0x2201U);
+    assert(device != nullptr);
+    assert(device->has_battery);
+    assert(device->battery_percent == 75U);
+
+    const uint8_t battery_mv_payload[1] = {0x1EU};  // 30 * 100mV => 3000mV
+    hal_zigbee_raw_attribute_report_t battery_mv_report = battery_pct_report;
+    battery_mv_report.attribute_id = 0x0020U;
+    battery_mv_report.payload = battery_mv_payload;
+    assert(runtime.post_zigbee_attribute_report_raw(battery_mv_report));
+    assert(runtime.process_pending() > 0U);
+    device = find_device(runtime.state(), 0x2201U);
+    assert(device != nullptr);
+    assert(device->has_battery_voltage);
+    assert(device->battery_voltage_mv == 3000U);
+
     return 0;
 }

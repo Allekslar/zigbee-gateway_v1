@@ -164,6 +164,53 @@ bool decode_ias_zone_status(
     return true;
 }
 
+bool decode_battery_percent(
+    const hal_zigbee_raw_attribute_report_t& report,
+    int32_t* out_percent,
+    bool* out_valid) noexcept {
+    if (out_percent == nullptr || out_valid == nullptr) {
+        return false;
+    }
+    if (report.payload == nullptr || report.payload_len != 1U) {
+        return false;
+    }
+
+    const uint8_t raw = report.payload[0];
+    if (raw == 0xFFU) {
+        *out_percent = 0;
+        *out_valid = false;
+        return true;
+    }
+
+    const uint32_t percent = static_cast<uint32_t>(raw) / 2U;
+    *out_percent = static_cast<int32_t>(percent > 100U ? 100U : percent);
+    *out_valid = true;
+    return true;
+}
+
+bool decode_battery_voltage_mv(
+    const hal_zigbee_raw_attribute_report_t& report,
+    int32_t* out_mv,
+    bool* out_valid) noexcept {
+    if (out_mv == nullptr || out_valid == nullptr) {
+        return false;
+    }
+    if (report.payload == nullptr || report.payload_len != 1U) {
+        return false;
+    }
+
+    const uint8_t raw = report.payload[0];
+    if (raw == 0xFFU) {
+        *out_mv = 0;
+        *out_valid = false;
+        return true;
+    }
+
+    *out_mv = static_cast<int32_t>(static_cast<uint32_t>(raw) * 100U);
+    *out_valid = true;
+    return true;
+}
+
 }  // namespace
 
 ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& effect_executor) noexcept
@@ -463,6 +510,40 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const hal_zigbee_raw_attri
         event.telemetry_kind = core::CoreTelemetryKind::kContactIasZoneStatus;
         event.telemetry_i32 = static_cast<int32_t>(normalized_status);
         event.telemetry_valid = true;
+        return push_event(event);
+    }
+
+    if (report.cluster_id == 0x0001U && report.attribute_id == 0x0021U) {
+        int32_t battery_percent = 0;
+        bool battery_valid = false;
+        if (!decode_battery_percent(report, &battery_percent, &battery_valid)) {
+            return false;
+        }
+
+        core::CoreEvent event{};
+        event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+        event.device_short_addr = report.short_addr;
+        event.value_u32 = monotonic_now_ms();
+        event.telemetry_kind = core::CoreTelemetryKind::kBatteryPercent;
+        event.telemetry_i32 = battery_percent;
+        event.telemetry_valid = battery_valid;
+        return push_event(event);
+    }
+
+    if (report.cluster_id == 0x0001U && report.attribute_id == 0x0020U) {
+        int32_t battery_mv = 0;
+        bool battery_valid = false;
+        if (!decode_battery_voltage_mv(report, &battery_mv, &battery_valid)) {
+            return false;
+        }
+
+        core::CoreEvent event{};
+        event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+        event.device_short_addr = report.short_addr;
+        event.value_u32 = monotonic_now_ms();
+        event.telemetry_kind = core::CoreTelemetryKind::kBatteryVoltageMilliV;
+        event.telemetry_i32 = battery_mv;
+        event.telemetry_valid = battery_valid;
         return push_event(event);
     }
 

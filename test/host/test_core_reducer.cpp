@@ -44,6 +44,7 @@ int main() {
     assert(!joined_device->stale);
     assert(!joined_device->has_temperature);
     assert(!joined_device->has_battery);
+    assert(!joined_device->has_battery_voltage);
     assert(!joined_device->has_lqi);
     assert(!joined_device->has_rssi);
     assert(joined_device->occupancy_state == core::CoreOccupancyState::kUnknown);
@@ -187,11 +188,63 @@ int main() {
     assert(device->contact_tamper);
     assert(device->contact_battery_low);
 
+    core::CoreEvent battery_percent_event{};
+    battery_percent_event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    battery_percent_event.device_short_addr = 0x1234;
+    battery_percent_event.value_u32 = 4646;
+    battery_percent_event.telemetry_kind = core::CoreTelemetryKind::kBatteryPercent;
+    battery_percent_event.telemetry_i32 = 74;
+    battery_percent_event.telemetry_valid = true;
+    const core::CoreReduceResult battery_percent_result = core::core_reduce(contact_result.next, battery_percent_event);
+    device = find_device(battery_percent_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->has_battery);
+    assert(device->battery_percent == 74U);
+
+    core::CoreEvent battery_voltage_event{};
+    battery_voltage_event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    battery_voltage_event.device_short_addr = 0x1234;
+    battery_voltage_event.value_u32 = 4747;
+    battery_voltage_event.telemetry_kind = core::CoreTelemetryKind::kBatteryVoltageMilliV;
+    battery_voltage_event.telemetry_i32 = 3000;
+    battery_voltage_event.telemetry_valid = true;
+    const core::CoreReduceResult battery_voltage_result = core::core_reduce(battery_percent_result.next, battery_voltage_event);
+    device = find_device(battery_voltage_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->has_battery_voltage);
+    assert(device->battery_voltage_mv == 3000U);
+
+    core::CoreEvent lqi_event{};
+    lqi_event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    lqi_event.device_short_addr = 0x1234;
+    lqi_event.value_u32 = 4848;
+    lqi_event.telemetry_kind = core::CoreTelemetryKind::kLqi;
+    lqi_event.telemetry_i32 = 201;
+    lqi_event.telemetry_valid = true;
+    const core::CoreReduceResult lqi_result = core::core_reduce(battery_voltage_result.next, lqi_event);
+    device = find_device(lqi_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->has_lqi);
+    assert(device->lqi == 201U);
+
+    core::CoreEvent rssi_event{};
+    rssi_event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    rssi_event.device_short_addr = 0x1234;
+    rssi_event.value_u32 = 4949;
+    rssi_event.telemetry_kind = core::CoreTelemetryKind::kRssiDbm;
+    rssi_event.telemetry_i32 = -63;
+    rssi_event.telemetry_valid = true;
+    const core::CoreReduceResult rssi_result = core::core_reduce(lqi_result.next, rssi_event);
+    device = find_device(rssi_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->has_rssi);
+    assert(device->rssi_dbm == -63);
+
     core::CoreEvent stale_event{};
     stale_event.type = core::CoreEventType::kDeviceStale;
     stale_event.device_short_addr = 0x1234;
-    const core::CoreReduceResult stale_result = core::core_reduce(contact_result.next, stale_event);
-    assert(stale_result.next.revision == contact_result.next.revision + 1);
+    const core::CoreReduceResult stale_result = core::core_reduce(rssi_result.next, stale_event);
+    assert(stale_result.next.revision == rssi_result.next.revision + 1);
     assert(stale_result.effects.count == 2);
     device = find_device(stale_result.next, 0x1234);
     assert(device != nullptr);

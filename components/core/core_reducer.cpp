@@ -167,6 +167,62 @@ bool apply_telemetry_update(CoreReduceResult* out, const CoreEvent& event) noexc
             device.contact_battery_low = next_battery_low;
             changed = true;
         }
+    } else if (event.telemetry_kind == CoreTelemetryKind::kBatteryPercent) {
+        const int32_t raw_percent = event.telemetry_i32;
+        const uint8_t next_percent =
+            raw_percent <= 0 ? 0U : (raw_percent >= 100 ? 100U : static_cast<uint8_t>(raw_percent));
+        if (event.telemetry_valid) {
+            if (!device.has_battery || device.battery_percent != next_percent) {
+                device.battery_percent = next_percent;
+                device.has_battery = true;
+                changed = true;
+            }
+        } else if (device.has_battery) {
+            device.has_battery = false;
+            changed = true;
+        }
+    } else if (event.telemetry_kind == CoreTelemetryKind::kBatteryVoltageMilliV) {
+        const int32_t raw_mv = event.telemetry_i32;
+        const uint16_t next_mv =
+            raw_mv <= 0 ? 0U : (raw_mv >= 65535 ? 65535U : static_cast<uint16_t>(raw_mv));
+        if (event.telemetry_valid) {
+            if (!device.has_battery_voltage || device.battery_voltage_mv != next_mv) {
+                device.battery_voltage_mv = next_mv;
+                device.has_battery_voltage = true;
+                changed = true;
+            }
+        } else if (device.has_battery_voltage) {
+            device.has_battery_voltage = false;
+            changed = true;
+        }
+    } else if (event.telemetry_kind == CoreTelemetryKind::kLqi) {
+        const int32_t raw_lqi = event.telemetry_i32;
+        const uint8_t next_lqi = raw_lqi <= 0 ? 0U : (raw_lqi >= 255 ? 255U : static_cast<uint8_t>(raw_lqi));
+        if (event.telemetry_valid) {
+            if (!device.has_lqi || device.lqi != next_lqi) {
+                device.lqi = next_lqi;
+                device.has_lqi = true;
+                changed = true;
+            }
+        } else if (device.has_lqi) {
+            device.has_lqi = false;
+            changed = true;
+        }
+    } else if (event.telemetry_kind == CoreTelemetryKind::kRssiDbm) {
+        const int32_t raw_rssi = event.telemetry_i32;
+        const int8_t next_rssi =
+            raw_rssi <= -128 ? static_cast<int8_t>(-128) : (raw_rssi >= 127 ? static_cast<int8_t>(127)
+                                                                              : static_cast<int8_t>(raw_rssi));
+        if (event.telemetry_valid) {
+            if (!device.has_rssi || device.rssi_dbm != next_rssi) {
+                device.rssi_dbm = next_rssi;
+                device.has_rssi = true;
+                changed = true;
+            }
+        } else if (device.has_rssi) {
+            device.has_rssi = false;
+            changed = true;
+        }
     }
 
     return changed;

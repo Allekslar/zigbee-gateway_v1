@@ -38,7 +38,9 @@ int main() {
             assert(devices_snapshot.runtime.last_report_at_ms[i] == 0U);
             assert(!devices_snapshot.runtime.stale[i]);
             assert(!devices_snapshot.runtime.has_battery[i]);
+            assert(!devices_snapshot.runtime.has_battery_voltage[i]);
             assert(!devices_snapshot.runtime.has_lqi[i]);
+            assert(!devices_snapshot.runtime.has_rssi[i]);
             break;
         }
     }
@@ -111,8 +113,12 @@ int main() {
         if (device.short_addr == 0x3301 && device.online) {
             device.battery_percent = 77U;
             device.has_battery = true;
+            device.battery_voltage_mv = 3000U;
+            device.has_battery_voltage = true;
             device.lqi = 190U;
             device.has_lqi = true;
+            device.rssi_dbm = -66;
+            device.has_rssi = true;
             telemetry_device_found = true;
             break;
         }
@@ -133,8 +139,12 @@ int main() {
         assert(telemetry_snapshot.runtime.stale[i] == device.stale);
         assert(telemetry_snapshot.runtime.has_battery[i]);
         assert(telemetry_snapshot.runtime.battery_percent[i] == 77U);
+        assert(telemetry_snapshot.runtime.has_battery_voltage[i]);
+        assert(telemetry_snapshot.runtime.battery_voltage_mv[i] == 3000U);
         assert(telemetry_snapshot.runtime.has_lqi[i]);
         assert(telemetry_snapshot.runtime.lqi[i] == 190U);
+        assert(telemetry_snapshot.runtime.has_rssi[i]);
+        assert(telemetry_snapshot.runtime.rssi_dbm[i] == -66);
         telemetry_verified = true;
         break;
     }

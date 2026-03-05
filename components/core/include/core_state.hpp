@@ -51,6 +51,8 @@ struct CoreDeviceRecord {
     bool contact_battery_low{false};
     uint8_t battery_percent{0};
     bool has_battery{false};
+    uint16_t battery_voltage_mv{0};
+    bool has_battery_voltage{false};
     uint8_t lqi{0};
     bool has_lqi{false};
     int8_t rssi_dbm{0};
