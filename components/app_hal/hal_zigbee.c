@@ -57,6 +57,7 @@ static bool s_endpoint_registered = false;
 static TaskHandle_t s_stack_task_handle = NULL;
 static bool s_permit_join_open = false;
 static int64_t s_permit_join_deadline_us = 0;
+static int64_t s_auto_rejoin_next_open_us = 0;
 static portMUX_TYPE s_join_state_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_primary_channel_mask = (1UL << 13);
 static uint8_t s_max_children = 16U;
@@ -64,6 +65,8 @@ static const uint8_t kGatewayEndpoint = 1U;
 static const uint8_t kDefaultOnOffEndpoint = 1U;
 static const TickType_t kDeviceRemoveLockTimeout = pdMS_TO_TICKS(2000);
 static const int64_t kCommandBridgeEntryTtlUs = 60LL * 1000LL * 1000LL;
+static const uint8_t kAutoRejoinWindowSeconds = 60U;
+static const int64_t kAutoRejoinCooldownUs = 30LL * 1000LL * 1000LL;
 
 typedef struct {
     bool in_use;
@@ -77,9 +80,132 @@ typedef struct {
 enum { kCommandBridgeCapacity = 16 };
 static command_bridge_entry_t s_command_bridge[kCommandBridgeCapacity];
 static portMUX_TYPE s_command_bridge_lock = portMUX_INITIALIZER_UNLOCKED;
+enum { kKnownDeviceIdentityCapacity = 64 };
+typedef struct {
+    bool in_use;
+    esp_zb_ieee_addr_t ieee_addr;
+    uint16_t short_addr;
+} known_device_identity_t;
+static known_device_identity_t s_known_device_identities[kKnownDeviceIdentityCapacity];
+static portMUX_TYPE s_known_device_identities_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static bool is_valid_short_addr(uint16_t short_addr) {
     return short_addr != 0xFFFFU && short_addr != 0x0000U;
+}
+
+static void maybe_open_auto_rejoin_window(const char* reason_tag);
+static uint16_t resolve_short_from_ieee(esp_zb_ieee_addr_t ieee_addr);
+
+static bool is_valid_ieee_addr(const esp_zb_ieee_addr_t ieee_addr) {
+    if (ieee_addr == NULL) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof(esp_zb_ieee_addr_t); ++i) {
+        if (ieee_addr[i] != 0U) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void clear_known_device_identities(void) {
+    portENTER_CRITICAL(&s_known_device_identities_lock);
+    memset(s_known_device_identities, 0, sizeof(s_known_device_identities));
+    portEXIT_CRITICAL(&s_known_device_identities_lock);
+}
+
+static bool find_known_device_by_ieee(
+    const esp_zb_ieee_addr_t ieee_addr,
+    known_device_identity_t* out_identity) {
+    if (!is_valid_ieee_addr(ieee_addr) || out_identity == NULL) {
+        return false;
+    }
+
+    bool found = false;
+    portENTER_CRITICAL(&s_known_device_identities_lock);
+    for (size_t i = 0; i < kKnownDeviceIdentityCapacity; ++i) {
+        if (!s_known_device_identities[i].in_use ||
+            memcmp(s_known_device_identities[i].ieee_addr, ieee_addr, sizeof(esp_zb_ieee_addr_t)) != 0) {
+            continue;
+        }
+        *out_identity = s_known_device_identities[i];
+        found = true;
+        break;
+    }
+    portEXIT_CRITICAL(&s_known_device_identities_lock);
+    return found;
+}
+
+static bool find_known_device_by_short(uint16_t short_addr, known_device_identity_t* out_identity) {
+    if (!is_valid_short_addr(short_addr) || out_identity == NULL) {
+        return false;
+    }
+
+    bool found = false;
+    portENTER_CRITICAL(&s_known_device_identities_lock);
+    for (size_t i = 0; i < kKnownDeviceIdentityCapacity; ++i) {
+        if (!s_known_device_identities[i].in_use || s_known_device_identities[i].short_addr != short_addr) {
+            continue;
+        }
+        *out_identity = s_known_device_identities[i];
+        found = true;
+        break;
+    }
+    portEXIT_CRITICAL(&s_known_device_identities_lock);
+    return found;
+}
+
+static void upsert_known_device_identity(const esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr) {
+    if (!is_valid_ieee_addr(ieee_addr)) {
+        return;
+    }
+
+    known_device_identity_t* slot = NULL;
+    portENTER_CRITICAL(&s_known_device_identities_lock);
+
+    for (size_t i = 0; i < kKnownDeviceIdentityCapacity; ++i) {
+        if (!s_known_device_identities[i].in_use ||
+            memcmp(s_known_device_identities[i].ieee_addr, ieee_addr, sizeof(esp_zb_ieee_addr_t)) != 0) {
+            continue;
+        }
+        slot = &s_known_device_identities[i];
+        break;
+    }
+
+    if (slot == NULL) {
+        for (size_t i = 0; i < kKnownDeviceIdentityCapacity; ++i) {
+            if (s_known_device_identities[i].in_use) {
+                continue;
+            }
+            slot = &s_known_device_identities[i];
+            break;
+        }
+    }
+
+    if (slot != NULL) {
+        slot->in_use = true;
+        memcpy(slot->ieee_addr, ieee_addr, sizeof(esp_zb_ieee_addr_t));
+        slot->short_addr = short_addr;
+    }
+    portEXIT_CRITICAL(&s_known_device_identities_lock);
+}
+
+static void remove_known_device_identity(const esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr) {
+    portENTER_CRITICAL(&s_known_device_identities_lock);
+    for (size_t i = 0; i < kKnownDeviceIdentityCapacity; ++i) {
+        if (!s_known_device_identities[i].in_use) {
+            continue;
+        }
+        const bool ieee_match =
+            is_valid_ieee_addr(ieee_addr) &&
+            memcmp(s_known_device_identities[i].ieee_addr, ieee_addr, sizeof(esp_zb_ieee_addr_t)) == 0;
+        const bool short_match = is_valid_short_addr(short_addr) && s_known_device_identities[i].short_addr == short_addr;
+        if (!ieee_match && !short_match) {
+            continue;
+        }
+        memset(&s_known_device_identities[i], 0, sizeof(s_known_device_identities[i]));
+    }
+    portEXIT_CRITICAL(&s_known_device_identities_lock);
 }
 
 static void clear_command_bridge(void) {
@@ -228,6 +354,34 @@ static void zigbee_command_send_status_handler(esp_zb_zcl_command_send_status_me
         return;
     }
 
+    bool remap_retry_started = false;
+    if (bridge_entry.command_id == ESP_ZB_ZCL_CMD_ON_OFF_ON_ID ||
+        bridge_entry.command_id == ESP_ZB_ZCL_CMD_ON_OFF_OFF_ID) {
+        known_device_identity_t identity = {0};
+        if (find_known_device_by_short(bridge_entry.short_addr, &identity)) {
+            const uint16_t resolved_short = resolve_short_from_ieee(identity.ieee_addr);
+            if (is_valid_short_addr(resolved_short) && resolved_short != bridge_entry.short_addr) {
+                const bool desired_on = bridge_entry.command_id == ESP_ZB_ZCL_CMD_ON_OFF_ON_ID;
+                ESP_LOGW(
+                    kTag,
+                    "Retry on remapped short_addr old=0x%04x new=0x%04x correlation_id=%lu",
+                    (unsigned)bridge_entry.short_addr,
+                    (unsigned)resolved_short,
+                    (unsigned long)bridge_entry.correlation_id);
+                upsert_known_device_identity(identity.ieee_addr, resolved_short);
+                if (hal_zigbee_send_on_off(bridge_entry.correlation_id, resolved_short, desired_on) ==
+                    HAL_ZIGBEE_STATUS_OK) {
+                    remap_retry_started = true;
+                }
+            }
+        }
+    }
+
+    if (remap_retry_started) {
+        maybe_open_auto_rejoin_window("send_status_failed_remap_retry");
+        return;
+    }
+
     const hal_zigbee_result_t result = map_send_status_to_hal_result(message.status);
     ESP_LOGW(
         kTag,
@@ -237,6 +391,7 @@ static void zigbee_command_send_status_handler(esp_zb_zcl_command_send_status_me
         (unsigned long)bridge_entry.correlation_id,
         esp_err_to_name(message.status));
     hal_zigbee_notify_command_result(bridge_entry.correlation_id, result);
+    maybe_open_auto_rejoin_window("send_status_failed");
 }
 
 static esp_err_t zigbee_core_action_handler(esp_zb_core_action_callback_id_t callback_id, const void* message) {
@@ -287,6 +442,37 @@ static void set_join_window_state(bool open, uint8_t duration_seconds) {
     portEXIT_CRITICAL(&s_join_state_lock);
 }
 
+static void maybe_open_auto_rejoin_window(const char* reason_tag) {
+    if (!s_stack_started || !esp_zb_is_started() || !s_network_formed) {
+        return;
+    }
+
+    const int64_t now_us = esp_timer_get_time();
+    if (now_us < s_auto_rejoin_next_open_us) {
+        return;
+    }
+
+    if (!esp_zb_lock_acquire(pdMS_TO_TICKS(200))) {
+        ESP_LOGW(kTag, "Auto-rejoin window skipped (%s): Zigbee lock timeout", reason_tag);
+        return;
+    }
+
+    const esp_err_t err = esp_zb_bdb_open_network(kAutoRejoinWindowSeconds);
+    esp_zb_lock_release();
+    if (err != ESP_OK) {
+        ESP_LOGW(kTag, "Auto-rejoin window open failed (%s): %s", reason_tag, esp_err_to_name(err));
+        return;
+    }
+
+    set_join_window_state(true, kAutoRejoinWindowSeconds);
+    s_auto_rejoin_next_open_us = now_us + kAutoRejoinCooldownUs;
+    ESP_LOGI(
+        kTag,
+        "Auto-opened rejoin window for %u seconds (%s)",
+        (unsigned)kAutoRejoinWindowSeconds,
+        reason_tag);
+}
+
 static void notify_join_with_source(uint16_t short_addr, const char* source_tag) {
     if (!is_valid_short_addr(short_addr)) {
         ESP_LOGW(kTag, "Ignore join from %s with invalid short_addr=0x%04x", source_tag, (unsigned)short_addr);
@@ -305,6 +491,55 @@ static void notify_left_with_source(uint16_t short_addr, const char* source_tag)
 
     ESP_LOGI(kTag, "Leave candidate from %s short_addr=0x%04x", source_tag, (unsigned)short_addr);
     hal_zigbee_notify_device_left(short_addr);
+}
+
+static void notify_join_with_identity(
+    uint16_t short_addr,
+    const esp_zb_ieee_addr_t ieee_addr,
+    const char* source_tag) {
+    if (!is_valid_short_addr(short_addr)) {
+        return;
+    }
+
+    if (!is_valid_ieee_addr(ieee_addr)) {
+        notify_join_with_source(short_addr, source_tag);
+        return;
+    }
+
+    known_device_identity_t known = {0};
+    if (find_known_device_by_ieee(ieee_addr, &known) &&
+        is_valid_short_addr(known.short_addr) &&
+        known.short_addr != short_addr) {
+        ESP_LOGW(
+            kTag,
+            "Device short_addr remap ieee=%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x old=0x%04x new=0x%04x",
+            ieee_addr[0],
+            ieee_addr[1],
+            ieee_addr[2],
+            ieee_addr[3],
+            ieee_addr[4],
+            ieee_addr[5],
+            ieee_addr[6],
+            ieee_addr[7],
+            (unsigned)known.short_addr,
+            (unsigned)short_addr);
+        notify_left_with_source(known.short_addr, "SHORT_ADDR_REMAP");
+    }
+
+    upsert_known_device_identity(ieee_addr, short_addr);
+    notify_join_with_source(short_addr, source_tag);
+}
+
+static void notify_left_with_identity(
+    uint16_t short_addr,
+    const esp_zb_ieee_addr_t ieee_addr,
+    const char* source_tag) {
+    if (!is_valid_short_addr(short_addr)) {
+        return;
+    }
+
+    remove_known_device_identity(ieee_addr, short_addr);
+    notify_left_with_source(short_addr, source_tag);
 }
 
 static uint16_t resolve_short_from_ieee(esp_zb_ieee_addr_t ieee_addr) {
@@ -483,6 +718,7 @@ static int start_zigbee_stack_if_needed(void) {
     }
 
     clear_command_bridge();
+    clear_known_device_identities();
     esp_zb_core_action_handler_register(zigbee_core_action_handler);
     esp_zb_zcl_command_send_status_handler_register(zigbee_command_send_status_handler);
 
@@ -493,6 +729,7 @@ static int start_zigbee_stack_if_needed(void) {
     }
 
     s_stack_started = true;
+    s_auto_rejoin_next_open_us = 0;
     ESP_LOGI(kTag, "Zigbee stack started in no-autostart mode");
     return 0;
 }
@@ -1180,7 +1417,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
                         "Device associated, resolved short_addr=0x%04x",
                         (unsigned)resolved_short);
                     if (is_valid_short_addr(resolved_short)) {
-                        notify_join_with_source(resolved_short, "DEVICE_ASSOCIATED");
+                        notify_join_with_identity(resolved_short, params->device_addr, "DEVICE_ASSOCIATED");
                     } else {
                         ESP_LOGW(kTag, "DEVICE_ASSOCIATED without short_addr yet, waiting for next signal");
                     }
@@ -1198,7 +1435,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
                         kTag,
                         "Device announce received short_addr=0x%04x",
                         (unsigned)params->device_short_addr);
-                    notify_join_with_source(params->device_short_addr, "DEVICE_ANNCE");
+                    notify_join_with_identity(params->device_short_addr, params->ieee_addr, "DEVICE_ANNCE");
                 }
             }
             return;
@@ -1216,7 +1453,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
                         (unsigned)params->authorization_type,
                         (unsigned)params->authorization_status);
                     if (params->authorization_status == 0U) {
-                        notify_join_with_source(params->short_addr, "DEVICE_AUTHORIZED");
+                        notify_join_with_identity(params->short_addr, params->long_addr, "DEVICE_AUTHORIZED");
                     } else {
                         ESP_LOGW(
                             kTag,
@@ -1243,10 +1480,26 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
                         (unsigned)params->parent_short);
 
                     if (params->status == ESP_ZB_ZDO_STANDARD_DEV_LEFT) {
-                        notify_left_with_source(params->short_addr, "DEVICE_UPDATE");
+                        notify_left_with_identity(params->short_addr, params->long_addr, "DEVICE_UPDATE");
                     } else {
-                        notify_join_with_source(params->short_addr, "DEVICE_UPDATE");
+                        notify_join_with_identity(params->short_addr, params->long_addr, "DEVICE_UPDATE");
                     }
+                }
+            }
+            return;
+        }
+        case ESP_ZB_ZDO_DEVICE_UNAVAILABLE: {
+            if (status == ESP_OK) {
+                esp_zb_zdo_device_unavailable_params_t* params =
+                    (esp_zb_zdo_device_unavailable_params_t*)esp_zb_app_signal_get_params(signal_s->p_app_signal);
+                if (params != 0) {
+                    ESP_LOGW(
+                        kTag,
+                        "Device unavailable short_addr=0x%04x",
+                        (unsigned)params->short_addr);
+                    // Keep device in snapshot. "Unavailable" can be transient and
+                    // should not be treated as a definitive leave/removal.
+                    maybe_open_auto_rejoin_window("device_unavailable");
                 }
             }
             return;
@@ -1261,7 +1514,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
                         kTag,
                         "Leave indication received short_addr=0x%04x",
                         (unsigned)params->short_addr);
-                    notify_left_with_source(params->short_addr, "LEAVE_INDICATION");
+                    notify_left_with_identity(params->short_addr, NULL, "LEAVE_INDICATION");
                 }
             }
             return;

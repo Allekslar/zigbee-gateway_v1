@@ -152,12 +152,14 @@ void NetworkPolicyManager::process_zigbee_join_window_policy(ServiceRuntime& run
         return;
     }
 
-    if (!join_window_explicit_expected_ && !zigbee_join_window_was_open_) {
+    // Allow short implicit windows (auto-rejoin), but close unexpectedly long
+    // implicit windows (e.g. stack default 180s) to avoid prolonged exposure.
+    if (!join_window_explicit_expected_ && pending_join_window_seconds_ == 0U && seconds_left > 90U) {
         if (hal_zigbee_close_network() == HAL_ZIGBEE_STATUS_OK) {
             runtime.set_join_window_cache(false, 0U);
+            zigbee_join_window_was_open_ = false;
+            return;
         }
-        zigbee_join_window_was_open_ = false;
-        return;
     }
 
     zigbee_join_window_was_open_ = true;
