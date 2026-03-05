@@ -1316,7 +1316,14 @@ void hal_zigbee_notify_attribute_report_raw(const hal_zigbee_raw_attribute_repor
         return;
     }
     if (s_callbacks.on_attribute_report_raw != 0) {
-        s_callbacks.on_attribute_report_raw(s_context, report);
+        hal_zigbee_raw_attribute_report_t normalized = *report;
+        if (!normalized.has_lqi) {
+            normalized.lqi = 0U;
+        }
+        if (!normalized.has_rssi) {
+            normalized.rssi_dbm = 0;
+        }
+        s_callbacks.on_attribute_report_raw(s_context, &normalized);
     }
 }
 
