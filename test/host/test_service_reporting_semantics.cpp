@@ -2,12 +2,27 @@
 /* Copyright (C) 2026 Alex.K. */
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
+#include <thread>
 
 #include "core_registry.hpp"
 #include "effect_executor.hpp"
 #include "hal_zigbee.h"
 #include "service_runtime.hpp"
+
+namespace {
+
+const core::CoreDeviceRecord* find_device(const core::CoreState& state, uint16_t short_addr) {
+    for (const auto& record : state.devices) {
+        if (record.short_addr == short_addr && record.online) {
+            return &record;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
 
 int main() {
     core::CoreRegistry registry;
@@ -32,13 +47,7 @@ int main() {
     assert(runtime.process_pending() == 1U);
 
     core::CoreState state_after_valid = runtime.state();
-    const core::CoreDeviceRecord* device = nullptr;
-    for (const auto& record : state_after_valid.devices) {
-        if (record.short_addr == 0x2201U && record.online) {
-            device = &record;
-            break;
-        }
-    }
+    const core::CoreDeviceRecord* device = find_device(state_after_valid, 0x2201U);
     assert(device != nullptr);
     assert(device->has_temperature);
     assert(device->temperature_centi_c == 2150);
@@ -58,18 +67,58 @@ int main() {
     assert(runtime.process_pending() == 1U);
 
     core::CoreState state_after_invalid = runtime.state();
-    device = nullptr;
-    for (const auto& record : state_after_invalid.devices) {
-        if (record.short_addr == 0x2201U && record.online) {
-            device = &record;
-            break;
-        }
-    }
+    device = find_device(state_after_invalid, 0x2201U);
     assert(device != nullptr);
     assert(!device->has_temperature);
     assert(device->reporting_state == core::CoreReportingState::kReportingActive);
     assert(device->last_report_at_ms >= last_report_after_valid);
 
+    service::ConfigManager::ReportingPolicyDefault motion_policy{};
+    assert(runtime.config_manager().get_reporting_policy_default(
+        service::ConfigManager::ReportingDeviceClass::kMotion,
+        &motion_policy));
+    motion_policy.occupancy_debounce_ms = 30U;
+    motion_policy.occupancy_hold_ms = 80U;
+    assert(runtime.config_manager().set_reporting_policy_default(
+        service::ConfigManager::ReportingDeviceClass::kMotion,
+        motion_policy));
+
+    const uint8_t occ_payload[1] = {0x01U};
+    hal_zigbee_raw_attribute_report_t occ_report{};
+    occ_report.short_addr = 0x2201U;
+    occ_report.endpoint = 1U;
+    occ_report.cluster_id = 0x0406U;
+    occ_report.attribute_id = 0x0000U;
+    occ_report.payload = occ_payload;
+    occ_report.payload_len = 1U;
+    assert(runtime.post_zigbee_attribute_report_raw(occ_report));
+    assert(runtime.process_pending() > 0U);
+    device = find_device(runtime.state(), 0x2201U);
+    assert(device != nullptr);
+    assert(device->occupancy_state == core::CoreOccupancyState::kOccupied);
+
+    const uint8_t clear_payload[1] = {0x00U};
+    hal_zigbee_raw_attribute_report_t clear_report = occ_report;
+    clear_report.payload = clear_payload;
+    assert(runtime.post_zigbee_attribute_report_raw(clear_report));
+    assert(runtime.process_pending() > 0U);
+    device = find_device(runtime.state(), 0x2201U);
+    assert(device != nullptr);
+    assert(device->occupancy_state == core::CoreOccupancyState::kOccupied);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(90));
+    assert(runtime.post_zigbee_attribute_report_raw(clear_report));
+    assert(runtime.process_pending() > 0U);
+    device = find_device(runtime.state(), 0x2201U);
+    assert(device != nullptr);
+    assert(device->occupancy_state == core::CoreOccupancyState::kOccupied);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    assert(runtime.post_zigbee_attribute_report_raw(clear_report));
+    assert(runtime.process_pending() > 0U);
+    device = find_device(runtime.state(), 0x2201U);
+    assert(device != nullptr);
+    assert(device->occupancy_state == core::CoreOccupancyState::kNotOccupied);
+
     return 0;
 }
-

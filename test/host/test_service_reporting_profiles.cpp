@@ -25,6 +25,8 @@ void test_class_default_profile_is_used() {
     assert(profile.min_interval_seconds == 5U);
     assert(profile.max_interval_seconds == 300U);
     assert(profile.reportable_change == 10U);
+    assert(config.motion_occupancy_debounce_ms() > 0U);
+    assert(config.motion_occupancy_hold_ms() > 0U);
 }
 
 void test_per_device_override_has_priority_over_class_default() {
@@ -74,6 +76,8 @@ void test_custom_class_default_applies_to_new_devices() {
     assert(resolved.min_interval_seconds == 2U);
     assert(resolved.max_interval_seconds == 45U);
     assert(resolved.capability_flags == 0x44U);
+    assert(config.motion_occupancy_debounce_ms() == 0U);
+    assert(config.motion_occupancy_hold_ms() == 0U);
 }
 
 void test_unknown_cluster_has_no_default_profile() {
@@ -96,4 +100,3 @@ int main() {
     test_unknown_cluster_has_no_default_profile();
     return 0;
 }
-

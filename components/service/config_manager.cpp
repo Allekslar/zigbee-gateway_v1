@@ -335,6 +335,18 @@ bool ConfigManager::resolve_reporting_profile(
     return true;
 }
 
+uint32_t ConfigManager::motion_occupancy_debounce_ms() const noexcept {
+    const ReportingPolicyDefault& policy =
+        reporting_policy_defaults_[reporting_device_class_index(ReportingDeviceClass::kMotion)];
+    return policy.occupancy_debounce_ms;
+}
+
+uint32_t ConfigManager::motion_occupancy_hold_ms() const noexcept {
+    const ReportingPolicyDefault& policy =
+        reporting_policy_defaults_[reporting_device_class_index(ReportingDeviceClass::kMotion)];
+    return policy.occupancy_hold_ms;
+}
+
 bool ConfigManager::dirty() const noexcept {
     return dirty_;
 }
@@ -378,6 +390,8 @@ ConfigManager::ReportingPolicyDefault ConfigManager::default_policy_for_class(Re
             policy.max_interval_seconds = 120U;
             policy.reportable_change = 0U;
             policy.capability_flags = 0x02U;
+            policy.occupancy_debounce_ms = 250U;
+            policy.occupancy_hold_ms = 1000U;
             break;
         case ReportingDeviceClass::kContact:
             // IAS Zone cluster (0x0500), zone status (0x0002).

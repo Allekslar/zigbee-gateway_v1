@@ -159,11 +159,24 @@ int main() {
     assert(device != nullptr);
     assert(!device->has_temperature);
 
+    core::CoreEvent occupancy_event{};
+    occupancy_event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    occupancy_event.device_short_addr = 0x1234;
+    occupancy_event.value_u32 = 4444;
+    occupancy_event.telemetry_kind = core::CoreTelemetryKind::kOccupancy;
+    occupancy_event.telemetry_i32 = 1;
+    occupancy_event.telemetry_valid = true;
+    const core::CoreReduceResult occupancy_result = core::core_reduce(telemetry_invalid_result.next, occupancy_event);
+    assert(occupancy_result.next.revision == telemetry_invalid_result.next.revision + 1);
+    device = find_device(occupancy_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->occupancy_state == core::CoreOccupancyState::kOccupied);
+
     core::CoreEvent stale_event{};
     stale_event.type = core::CoreEventType::kDeviceStale;
     stale_event.device_short_addr = 0x1234;
-    const core::CoreReduceResult stale_result = core::core_reduce(telemetry_invalid_result.next, stale_event);
-    assert(stale_result.next.revision == telemetry_invalid_result.next.revision + 1);
+    const core::CoreReduceResult stale_result = core::core_reduce(occupancy_result.next, stale_event);
+    assert(stale_result.next.revision == occupancy_result.next.revision + 1);
     assert(stale_result.effects.count == 2);
     device = find_device(stale_result.next, 0x1234);
     assert(device != nullptr);

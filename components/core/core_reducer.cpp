@@ -132,6 +132,15 @@ bool apply_telemetry_update(CoreReduceResult* out, const CoreEvent& event) noexc
             device.has_temperature = false;
             changed = true;
         }
+    } else if (event.telemetry_kind == CoreTelemetryKind::kOccupancy) {
+        CoreOccupancyState next_state = CoreOccupancyState::kUnknown;
+        if (event.telemetry_valid) {
+            next_state = (event.telemetry_i32 != 0) ? CoreOccupancyState::kOccupied : CoreOccupancyState::kNotOccupied;
+        }
+        if (device.occupancy_state != next_state) {
+            device.occupancy_state = next_state;
+            changed = true;
+        }
     }
 
     return changed;

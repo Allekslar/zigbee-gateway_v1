@@ -47,6 +47,8 @@ public:
         uint16_t max_interval_seconds{0};
         uint32_t reportable_change{0};
         uint8_t capability_flags{0};
+        uint32_t occupancy_debounce_ms{0};
+        uint32_t occupancy_hold_ms{0};
     };
 
     bool load() noexcept;
@@ -66,6 +68,8 @@ public:
         const ReportingProfileKey& key,
         ReportingDeviceClass device_class,
         ReportingProfile* out) const noexcept;
+    uint32_t motion_occupancy_debounce_ms() const noexcept;
+    uint32_t motion_occupancy_hold_ms() const noexcept;
     bool dirty() const noexcept;
 
 private:

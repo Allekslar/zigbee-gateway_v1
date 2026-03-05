@@ -350,4 +350,83 @@ bool ReportingManager::resolve_profile_for_device(
     return config.resolve_reporting_profile(key, classify_device_class(cluster_id), out);
 }
 
+bool ReportingManager::normalize_occupancy_report(
+    uint16_t short_addr,
+    bool occupied_raw,
+    uint32_t now_ms,
+    const OccupancyPolicy& policy,
+    core::CoreEvent* out_domain_event) noexcept {
+    if (out_domain_event == nullptr || !valid_short_addr(short_addr)) {
+        return false;
+    }
+
+    int index = find_index(entries_, short_addr);
+    if (index < 0) {
+        index = find_free_index(entries_);
+        if (index < 0) {
+            return false;
+        }
+        entries_[static_cast<std::size_t>(index)].short_addr = short_addr;
+    }
+
+    Entry& entry = entries_[static_cast<std::size_t>(index)];
+    bool emit = false;
+
+    if (!entry.occupancy_valid) {
+        entry.occupancy_valid = true;
+        entry.occupancy_stable = occupied_raw;
+        entry.occupancy_pending_valid = false;
+        emit = true;
+    } else if (occupied_raw == entry.occupancy_stable) {
+        entry.occupancy_pending_valid = false;
+    } else {
+        // Hold-time: suppress quick occupied->clear transitions after recent motion.
+        if (!occupied_raw && entry.occupancy_stable && policy.hold_ms > 0U &&
+            !is_due(now_ms, entry.occupancy_hold_until_ms)) {
+            return false;
+        }
+
+        if (policy.debounce_ms == 0U) {
+            entry.occupancy_stable = occupied_raw;
+            entry.occupancy_pending_valid = false;
+            emit = true;
+        } else {
+            if (!entry.occupancy_pending_valid || entry.occupancy_pending_target != occupied_raw) {
+                entry.occupancy_pending_valid = true;
+                entry.occupancy_pending_target = occupied_raw;
+                entry.occupancy_pending_since_ms = now_ms;
+                return false;
+            }
+
+            const uint32_t deadline_ms = entry.occupancy_pending_since_ms + policy.debounce_ms;
+            if (!is_due(now_ms, deadline_ms)) {
+                return false;
+            }
+
+            entry.occupancy_pending_valid = false;
+            entry.occupancy_stable = occupied_raw;
+            emit = true;
+        }
+    }
+
+    if (!emit) {
+        return false;
+    }
+
+    if (entry.occupancy_stable && policy.hold_ms > 0U) {
+        entry.occupancy_hold_until_ms = now_ms + policy.hold_ms;
+    } else if (!entry.occupancy_stable) {
+        entry.occupancy_hold_until_ms = 0U;
+    }
+
+    *out_domain_event = core::CoreEvent{};
+    out_domain_event->type = core::CoreEventType::kDeviceTelemetryUpdated;
+    out_domain_event->device_short_addr = short_addr;
+    out_domain_event->value_u32 = now_ms;
+    out_domain_event->telemetry_kind = core::CoreTelemetryKind::kOccupancy;
+    out_domain_event->telemetry_i32 = entry.occupancy_stable ? 1 : 0;
+    out_domain_event->telemetry_valid = true;
+    return true;
+}
+
 }  // namespace service

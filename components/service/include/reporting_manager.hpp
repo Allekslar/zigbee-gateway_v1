@@ -58,6 +58,11 @@ public:
         bool pending{false};
     };
 
+    struct OccupancyPolicy {
+        uint32_t debounce_ms{0};
+        uint32_t hold_ms{0};
+    };
+
     RuntimeActions handle_event(const core::CoreEvent& event) noexcept;
     RuntimeActions report_operation_failure(
         uint16_t short_addr,
@@ -79,6 +84,12 @@ public:
         uint8_t endpoint,
         uint16_t cluster_id,
         ConfigManager::ReportingProfile* out) const noexcept;
+    bool normalize_occupancy_report(
+        uint16_t short_addr,
+        bool occupied_raw,
+        uint32_t now_ms,
+        const OccupancyPolicy& policy,
+        core::CoreEvent* out_domain_event) noexcept;
 
 private:
     struct Entry {
@@ -91,6 +102,12 @@ private:
         bool retry_pending{false};
         uint32_t last_report_at_ms{0};
         bool stale_pending{false};
+        bool occupancy_valid{false};
+        bool occupancy_stable{false};
+        bool occupancy_pending_valid{false};
+        bool occupancy_pending_target{false};
+        uint32_t occupancy_pending_since_ms{0};
+        uint32_t occupancy_hold_until_ms{0};
     };
 
     static bool valid_short_addr(uint16_t short_addr) noexcept;

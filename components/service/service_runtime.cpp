@@ -629,6 +629,27 @@ bool ServiceRuntime::start() noexcept {
 }
 
 void ServiceRuntime::apply_managers(const core::CoreEvent& event) noexcept {
+    if (event.type == core::CoreEventType::kAttributeReported &&
+        event.cluster_id == 0x0406U &&
+        event.attribute_id == 0x0000U) {
+        const bool occupied_raw = (event.value_u32 & 0x01U) != 0U;
+        ReportingManager::OccupancyPolicy occupancy_policy{};
+        occupancy_policy.debounce_ms = config_manager_.motion_occupancy_debounce_ms();
+        occupancy_policy.hold_ms = config_manager_.motion_occupancy_hold_ms();
+
+        core::CoreEvent domain_event{};
+        if (reporting_manager_.normalize_occupancy_report(
+                event.device_short_addr,
+                occupied_raw,
+                monotonic_now_ms(),
+                occupancy_policy,
+                &domain_event)) {
+            if (!push_event(domain_event)) {
+                ++stats_.dropped_events;
+            }
+        }
+    }
+
     const ReportingManager::RuntimeActions reporting_actions = reporting_manager_.handle_event(event);
     if (reporting_actions.mark_degraded) {
         ++stats_.reporting_failures;
