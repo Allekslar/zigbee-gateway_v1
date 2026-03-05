@@ -133,6 +133,37 @@ bool decode_temperature_centi_c(
     return true;
 }
 
+bool decode_ias_zone_status(
+    const hal_zigbee_raw_attribute_report_t& report,
+    uint32_t* out_normalized_status) noexcept {
+    if (out_normalized_status == nullptr) {
+        return false;
+    }
+    if (report.payload == nullptr || report.payload_len != 2U) {
+        return false;
+    }
+
+    const uint16_t zone_status = static_cast<uint16_t>(report.payload[0]) |
+                                 (static_cast<uint16_t>(report.payload[1]) << 8U);
+    uint32_t normalized = 0U;
+    // IAS Zone status mapping:
+    // bit0 alarm1 -> contact open
+    // bit2 tamper -> tamper true
+    // bit3 battery -> battery low true
+    if ((zone_status & (1U << 0U)) != 0U) {
+        normalized |= 0x01U;
+    }
+    if ((zone_status & (1U << 2U)) != 0U) {
+        normalized |= 0x02U;
+    }
+    if ((zone_status & (1U << 3U)) != 0U) {
+        normalized |= 0x04U;
+    }
+
+    *out_normalized_status = normalized;
+    return true;
+}
+
 }  // namespace
 
 ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& effect_executor) noexcept
@@ -416,6 +447,22 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const hal_zigbee_raw_attri
         event.telemetry_kind = core::CoreTelemetryKind::kTemperatureCentiC;
         event.telemetry_i32 = static_cast<int32_t>(temperature_centi_c);
         event.telemetry_valid = temperature_valid;
+        return push_event(event);
+    }
+
+    if (report.cluster_id == 0x0500U && report.attribute_id == 0x0002U) {
+        uint32_t normalized_status = 0U;
+        if (!decode_ias_zone_status(report, &normalized_status)) {
+            return false;
+        }
+
+        core::CoreEvent event{};
+        event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+        event.device_short_addr = report.short_addr;
+        event.value_u32 = monotonic_now_ms();
+        event.telemetry_kind = core::CoreTelemetryKind::kContactIasZoneStatus;
+        event.telemetry_i32 = static_cast<int32_t>(normalized_status);
+        event.telemetry_valid = true;
         return push_event(event);
     }
 

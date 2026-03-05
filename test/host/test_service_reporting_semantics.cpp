@@ -120,5 +120,31 @@ int main() {
     assert(device != nullptr);
     assert(device->occupancy_state == core::CoreOccupancyState::kNotOccupied);
 
+    const uint8_t ias_open_tamper_low[2] = {0x0DU, 0x00U};  // bit0 open + bit2 tamper + bit3 battery_low
+    hal_zigbee_raw_attribute_report_t ias_report{};
+    ias_report.short_addr = 0x2201U;
+    ias_report.endpoint = 1U;
+    ias_report.cluster_id = 0x0500U;
+    ias_report.attribute_id = 0x0002U;
+    ias_report.payload = ias_open_tamper_low;
+    ias_report.payload_len = 2U;
+    assert(runtime.post_zigbee_attribute_report_raw(ias_report));
+    assert(runtime.process_pending() > 0U);
+    device = find_device(runtime.state(), 0x2201U);
+    assert(device != nullptr);
+    assert(device->contact_state == core::CoreContactState::kOpen);
+    assert(device->contact_tamper);
+    assert(device->contact_battery_low);
+
+    const uint8_t ias_closed_clear[2] = {0x00U, 0x00U};
+    ias_report.payload = ias_closed_clear;
+    assert(runtime.post_zigbee_attribute_report_raw(ias_report));
+    assert(runtime.process_pending() > 0U);
+    device = find_device(runtime.state(), 0x2201U);
+    assert(device != nullptr);
+    assert(device->contact_state == core::CoreContactState::kClosed);
+    assert(!device->contact_tamper);
+    assert(!device->contact_battery_low);
+
     return 0;
 }

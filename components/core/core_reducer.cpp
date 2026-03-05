@@ -141,6 +141,32 @@ bool apply_telemetry_update(CoreReduceResult* out, const CoreEvent& event) noexc
             device.occupancy_state = next_state;
             changed = true;
         }
+    } else if (event.telemetry_kind == CoreTelemetryKind::kContactIasZoneStatus) {
+        CoreContactState next_contact_state = CoreContactState::kUnknown;
+        bool next_tamper = device.contact_tamper;
+        bool next_battery_low = device.contact_battery_low;
+        if (event.telemetry_valid) {
+            const uint32_t status_mask = static_cast<uint32_t>(event.telemetry_i32);
+            const bool open = (status_mask & 0x01U) != 0U;
+            const bool tamper = (status_mask & 0x02U) != 0U;
+            const bool battery_low = (status_mask & 0x04U) != 0U;
+            next_contact_state = open ? CoreContactState::kOpen : CoreContactState::kClosed;
+            next_tamper = tamper;
+            next_battery_low = battery_low;
+        }
+
+        if (device.contact_state != next_contact_state) {
+            device.contact_state = next_contact_state;
+            changed = true;
+        }
+        if (device.contact_tamper != next_tamper) {
+            device.contact_tamper = next_tamper;
+            changed = true;
+        }
+        if (device.contact_battery_low != next_battery_low) {
+            device.contact_battery_low = next_battery_low;
+            changed = true;
+        }
     }
 
     return changed;

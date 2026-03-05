@@ -172,11 +172,26 @@ int main() {
     assert(device != nullptr);
     assert(device->occupancy_state == core::CoreOccupancyState::kOccupied);
 
+    core::CoreEvent contact_event{};
+    contact_event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    contact_event.device_short_addr = 0x1234;
+    contact_event.value_u32 = 4545;
+    contact_event.telemetry_kind = core::CoreTelemetryKind::kContactIasZoneStatus;
+    contact_event.telemetry_i32 = 0x07;  // open + tamper + battery_low
+    contact_event.telemetry_valid = true;
+    const core::CoreReduceResult contact_result = core::core_reduce(occupancy_result.next, contact_event);
+    assert(contact_result.next.revision == occupancy_result.next.revision + 1);
+    device = find_device(contact_result.next, 0x1234);
+    assert(device != nullptr);
+    assert(device->contact_state == core::CoreContactState::kOpen);
+    assert(device->contact_tamper);
+    assert(device->contact_battery_low);
+
     core::CoreEvent stale_event{};
     stale_event.type = core::CoreEventType::kDeviceStale;
     stale_event.device_short_addr = 0x1234;
-    const core::CoreReduceResult stale_result = core::core_reduce(occupancy_result.next, stale_event);
-    assert(stale_result.next.revision == occupancy_result.next.revision + 1);
+    const core::CoreReduceResult stale_result = core::core_reduce(contact_result.next, stale_event);
+    assert(stale_result.next.revision == contact_result.next.revision + 1);
     assert(stale_result.effects.count == 2);
     device = find_device(stale_result.next, 0x1234);
     assert(device != nullptr);

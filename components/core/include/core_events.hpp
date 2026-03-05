@@ -35,6 +35,7 @@ enum class CoreTelemetryKind : uint8_t {
     kNone = 0,
     kTemperatureCentiC,
     kOccupancy,
+    kContactIasZoneStatus,
 };
 
 struct CoreEvent {

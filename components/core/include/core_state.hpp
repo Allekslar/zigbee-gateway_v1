@@ -47,6 +47,8 @@ struct CoreDeviceRecord {
     bool has_temperature{false};
     CoreOccupancyState occupancy_state{CoreOccupancyState::kUnknown};
     CoreContactState contact_state{CoreContactState::kUnknown};
+    bool contact_tamper{false};
+    bool contact_battery_low{false};
     uint8_t battery_percent{0};
     bool has_battery{false};
     uint8_t lqi{0};
