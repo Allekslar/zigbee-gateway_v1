@@ -172,5 +172,26 @@ int main() {
     assert(device->has_battery_voltage);
     assert(device->battery_voltage_mv == 3000U);
 
+    const uint8_t lqi_rssi_payload[1] = {0x00U};
+    hal_zigbee_raw_attribute_report_t lqi_rssi_report{};
+    lqi_rssi_report.short_addr = 0x2201U;
+    lqi_rssi_report.endpoint = 1U;
+    lqi_rssi_report.cluster_id = 0x0006U;
+    lqi_rssi_report.attribute_id = 0x0000U;
+    lqi_rssi_report.payload = lqi_rssi_payload;
+    lqi_rssi_report.payload_len = 1U;
+    lqi_rssi_report.has_lqi = true;
+    lqi_rssi_report.lqi = 181U;
+    lqi_rssi_report.has_rssi = true;
+    lqi_rssi_report.rssi_dbm = -59;
+    assert(runtime.post_zigbee_attribute_report_raw(lqi_rssi_report));
+    assert(runtime.process_pending() > 0U);
+    device = find_device(runtime.state(), 0x2201U);
+    assert(device != nullptr);
+    assert(device->has_lqi);
+    assert(device->lqi == 181U);
+    assert(device->has_rssi);
+    assert(device->rssi_dbm == -59);
+
     return 0;
 }

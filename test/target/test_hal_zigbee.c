@@ -21,6 +21,10 @@ typedef struct {
     uint16_t cluster_id;
     uint16_t attribute_id;
     uint8_t zcl_data_type;
+    bool has_lqi;
+    uint8_t lqi;
+    bool has_rssi;
+    int8_t rssi_dbm;
     uint8_t payload_len;
     uint8_t payload_first_byte;
     bool value_bool;
@@ -104,6 +108,10 @@ static void on_attribute_report_raw(void* context, const hal_zigbee_raw_attribut
     capture->cluster_id = report->cluster_id;
     capture->attribute_id = report->attribute_id;
     capture->zcl_data_type = report->zcl_data_type;
+    capture->has_lqi = report->has_lqi;
+    capture->lqi = report->lqi;
+    capture->has_rssi = report->has_rssi;
+    capture->rssi_dbm = report->rssi_dbm;
     capture->payload_len = report->payload_len;
     capture->payload_first_byte = (report->payload_len > 0U) ? report->payload[0] : 0U;
 }
@@ -182,6 +190,10 @@ void test_hal_zigbee_notifies_registered_callbacks(void) {
         .cluster_id = 0x0402,
         .attribute_id = 0x0000,
         .zcl_data_type = 0x29,
+        .has_lqi = true,
+        .lqi = 190,
+        .has_rssi = true,
+        .rssi_dbm = -64,
         .payload = payload,
         .payload_len = 2,
     };
@@ -192,6 +204,10 @@ void test_hal_zigbee_notifies_registered_callbacks(void) {
     TEST_ASSERT_EQUAL_HEX16(0x0402, capture.cluster_id);
     TEST_ASSERT_EQUAL_HEX16(0x0000, capture.attribute_id);
     TEST_ASSERT_EQUAL_UINT8(0x29, capture.zcl_data_type);
+    TEST_ASSERT_TRUE(capture.has_lqi);
+    TEST_ASSERT_EQUAL_UINT8(190, capture.lqi);
+    TEST_ASSERT_TRUE(capture.has_rssi);
+    TEST_ASSERT_EQUAL_INT8(-64, capture.rssi_dbm);
     TEST_ASSERT_EQUAL_UINT8(2, capture.payload_len);
     TEST_ASSERT_EQUAL_UINT8(0xAA, capture.payload_first_byte);
 

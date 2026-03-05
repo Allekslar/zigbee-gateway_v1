@@ -31,6 +31,10 @@ typedef struct {
     uint16_t cluster_id;
     uint16_t attribute_id;
     uint8_t zcl_data_type;
+    bool has_lqi;
+    uint8_t lqi;
+    bool has_rssi;
+    int8_t rssi_dbm;
     const uint8_t* payload;
     uint8_t payload_len;
 } hal_zigbee_raw_attribute_report_t;

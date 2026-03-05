@@ -479,6 +479,33 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const hal_zigbee_raw_attri
     if (report.short_addr == core::kUnknownDeviceShortAddr || report.short_addr == 0x0000U) {
         return false;
     }
+    const uint32_t now_ms = monotonic_now_ms();
+
+    if (report.has_lqi) {
+        core::CoreEvent lqi_event{};
+        lqi_event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+        lqi_event.device_short_addr = report.short_addr;
+        lqi_event.value_u32 = now_ms;
+        lqi_event.telemetry_kind = core::CoreTelemetryKind::kLqi;
+        lqi_event.telemetry_i32 = static_cast<int32_t>(report.lqi);
+        lqi_event.telemetry_valid = true;
+        if (!push_event(lqi_event)) {
+            return false;
+        }
+    }
+
+    if (report.has_rssi) {
+        core::CoreEvent rssi_event{};
+        rssi_event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+        rssi_event.device_short_addr = report.short_addr;
+        rssi_event.value_u32 = now_ms;
+        rssi_event.telemetry_kind = core::CoreTelemetryKind::kRssiDbm;
+        rssi_event.telemetry_i32 = static_cast<int32_t>(report.rssi_dbm);
+        rssi_event.telemetry_valid = true;
+        if (!push_event(rssi_event)) {
+            return false;
+        }
+    }
 
     if (report.cluster_id == 0x0402U && report.attribute_id == 0x0000U) {
         int16_t temperature_centi_c = 0;
@@ -490,7 +517,7 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const hal_zigbee_raw_attri
         core::CoreEvent event{};
         event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         event.device_short_addr = report.short_addr;
-        event.value_u32 = monotonic_now_ms();
+        event.value_u32 = now_ms;
         event.telemetry_kind = core::CoreTelemetryKind::kTemperatureCentiC;
         event.telemetry_i32 = static_cast<int32_t>(temperature_centi_c);
         event.telemetry_valid = temperature_valid;
@@ -506,7 +533,7 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const hal_zigbee_raw_attri
         core::CoreEvent event{};
         event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         event.device_short_addr = report.short_addr;
-        event.value_u32 = monotonic_now_ms();
+        event.value_u32 = now_ms;
         event.telemetry_kind = core::CoreTelemetryKind::kContactIasZoneStatus;
         event.telemetry_i32 = static_cast<int32_t>(normalized_status);
         event.telemetry_valid = true;
@@ -523,7 +550,7 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const hal_zigbee_raw_attri
         core::CoreEvent event{};
         event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         event.device_short_addr = report.short_addr;
-        event.value_u32 = monotonic_now_ms();
+        event.value_u32 = now_ms;
         event.telemetry_kind = core::CoreTelemetryKind::kBatteryPercent;
         event.telemetry_i32 = battery_percent;
         event.telemetry_valid = battery_valid;
@@ -540,7 +567,7 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const hal_zigbee_raw_attri
         core::CoreEvent event{};
         event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         event.device_short_addr = report.short_addr;
-        event.value_u32 = monotonic_now_ms();
+        event.value_u32 = now_ms;
         event.telemetry_kind = core::CoreTelemetryKind::kBatteryVoltageMilliV;
         event.telemetry_i32 = battery_mv;
         event.telemetry_valid = battery_valid;
