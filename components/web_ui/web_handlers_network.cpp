@@ -13,7 +13,6 @@
 #include "core_commands.hpp"
 #include "core_errors.hpp"
 #include "core_events.hpp"
-#include "core_registry.hpp"
 #include "core_state.hpp"
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
@@ -399,25 +398,20 @@ esp_err_t network_get_handler(httpd_req_t* req) {
     }
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
-    core::CoreRegistry::SnapshotRef snapshot{};
-    if (!context->registry->pin_current(&snapshot) || !snapshot.valid()) {
+    service::ServiceRuntime::NetworkApiSnapshot snapshot{};
+    if (!context->runtime->build_network_api_snapshot(&snapshot)) {
         return send_json_error(req, "500 Internal Server Error", "snapshot_unavailable");
     }
-
-    const core::CoreState state = *snapshot.state;
-    context->registry->release_snapshot(&snapshot);
-
-    const auto& stats = context->runtime->stats();
 
     char response[192]{};
     const int written = std::snprintf(
         response,
         sizeof(response),
         "{\"revision\":%" PRIu32 ",\"connected\":%s,\"refresh_requests\":%" PRIu32 ",\"current_backoff_ms\":%" PRIu32 "}",
-        state.revision,
-        state.network_connected ? "true" : "false",
-        stats.network_refresh_requests,
-        stats.current_backoff_ms);
+        snapshot.revision,
+        snapshot.connected ? "true" : "false",
+        snapshot.refresh_requests,
+        snapshot.current_backoff_ms);
     if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
         return ESP_FAIL;
     }

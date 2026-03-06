@@ -6,10 +6,6 @@
 #include <atomic>
 #include <cstdint>
 
-namespace core {
-class CoreRegistry;
-}
-
 namespace service {
 class ServiceRuntime;
 }
@@ -17,7 +13,6 @@ class ServiceRuntime;
 namespace web_ui {
 
 struct WebRouteContext {
-    core::CoreRegistry* registry{nullptr};
     service::ServiceRuntime* runtime{nullptr};
     std::atomic<uint32_t>* next_correlation_id{nullptr};
 };

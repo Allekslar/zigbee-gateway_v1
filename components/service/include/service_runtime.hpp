@@ -21,9 +21,28 @@
 #include "persistence_manager.hpp"
 #include "reporting_manager.hpp"
 #include "scan_manager.hpp"
-#include "hal_zigbee.h"
 
 namespace service {
+
+enum class ZigbeeResult : uint8_t {
+    kSuccess = 0,
+    kTimeout = 1,
+    kFailed = 2,
+};
+
+struct ZigbeeRawAttributeReport {
+    uint16_t short_addr{core::kUnknownDeviceShortAddr};
+    uint8_t endpoint{0};
+    uint16_t cluster_id{0};
+    uint16_t attribute_id{0};
+    uint8_t zcl_data_type{0};
+    bool has_lqi{false};
+    uint8_t lqi{0};
+    bool has_rssi{false};
+    int8_t rssi_dbm{0};
+    const uint8_t* payload{nullptr};
+    uint8_t payload_len{0};
+};
 
 class ServiceRuntime {
 public:
@@ -59,6 +78,21 @@ public:
     struct ConfigSnapshot {
         uint32_t command_timeout_ms{5000};
         uint8_t max_command_retries{1};
+    };
+
+    struct NetworkApiSnapshot {
+        uint32_t revision{0};
+        bool connected{false};
+        uint32_t refresh_requests{0};
+        uint32_t current_backoff_ms{0};
+    };
+
+    struct ConfigApiSnapshot {
+        uint32_t revision{0};
+        uint8_t last_command_status{0};
+        uint32_t command_timeout_ms{5000};
+        uint8_t max_command_retries{1};
+        uint32_t autoconnect_failures{0};
     };
 
     using BootAutoconnectResult = ConnectivityAutoconnectResult;
@@ -97,16 +131,16 @@ public:
     bool post_zigbee_interview_result(
         uint32_t correlation_id,
         uint16_t short_addr,
-        hal_zigbee_result_t result) noexcept;
+        ZigbeeResult result) noexcept;
     bool post_zigbee_bind_result(
         uint32_t correlation_id,
         uint16_t short_addr,
-        hal_zigbee_result_t result) noexcept;
+        ZigbeeResult result) noexcept;
     bool post_zigbee_configure_reporting_result(
         uint32_t correlation_id,
         uint16_t short_addr,
-        hal_zigbee_result_t result) noexcept;
-    bool post_zigbee_attribute_report_raw(const hal_zigbee_raw_attribute_report_t& report) noexcept;
+        ZigbeeResult result) noexcept;
+    bool post_zigbee_attribute_report_raw(const ZigbeeRawAttributeReport& report) noexcept;
     bool post_remove_device(
         uint32_t request_id,
         uint16_t short_addr,
@@ -118,6 +152,8 @@ public:
         uint32_t now_ms,
         DevicesRuntimeSnapshot* out) const noexcept;
     bool build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnapshot* out) const noexcept;
+    bool build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept;
+    bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept;
     bool get_force_remove_remaining_ms(uint16_t short_addr, uint32_t now_ms, uint32_t* remaining_ms) const noexcept;
     bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept;
     bool is_scan_request_queued(uint32_t request_id) const noexcept;
@@ -132,7 +168,7 @@ public:
     bool start() noexcept;
     void on_nvs_u32_written(const char* key, uint32_t value) noexcept;
 
-    const RuntimeStats& stats() const noexcept;
+    RuntimeStats stats() const noexcept;
     ConfigSnapshot config_snapshot() const noexcept;
     core::CoreState state() const noexcept;
 
@@ -191,6 +227,23 @@ private:
     std::size_t process_force_remove_timeouts(uint32_t now_ms) noexcept;
     std::size_t process_pending_sta_connect(uint32_t now_ms) noexcept;
 
+    struct RuntimeStatsStorage {
+        std::atomic<uint32_t> processed_events{0};
+        std::atomic<uint32_t> dropped_events{0};
+        std::atomic<uint32_t> executed_effects{0};
+        std::atomic<uint32_t> failed_effects{0};
+        std::atomic<uint32_t> command_retries{0};
+        std::atomic<uint32_t> command_timeouts{0};
+        std::atomic<uint32_t> reporting_retries{0};
+        std::atomic<uint32_t> reporting_failures{0};
+        std::atomic<uint32_t> stale_devices{0};
+        std::atomic<uint32_t> autoconnect_failures{0};
+        std::atomic<uint32_t> current_backoff_ms{0};
+        std::atomic<uint32_t> nvs_writes{0};
+        std::atomic<uint32_t> last_nvs_revision{0};
+        std::atomic<uint32_t> network_refresh_requests{0};
+    };
+
     core::CoreRegistry* registry_{nullptr};
     EffectExecutor* effect_executor_{nullptr};
     ConfigManager config_manager_{};
@@ -221,7 +274,7 @@ private:
 
     std::atomic<uint32_t> dropped_ingress_events_{0};
 
-    RuntimeStats stats_{};
+    RuntimeStatsStorage stats_{};
     std::atomic<uint32_t> last_tick_ms_{0};
 #ifdef ESP_PLATFORM
     void* runtime_task_handle_{nullptr};

@@ -6,7 +6,6 @@
 
 #include "core_registry.hpp"
 #include "effect_executor.hpp"
-#include "hal_zigbee.h"
 #include "reporting_manager.hpp"
 #include "service_runtime.hpp"
 
@@ -48,7 +47,7 @@ int main() {
         assert(before_device != nullptr);
         assert(!before_device->has_temperature);
 
-        hal_zigbee_raw_attribute_report_t malformed{};
+        service::ZigbeeRawAttributeReport malformed{};
         malformed.short_addr = 0x4101U;
         malformed.endpoint = 1U;
         malformed.cluster_id = 0x0402U;
@@ -73,7 +72,7 @@ int main() {
         service::ServiceRuntime runtime(registry, effect_executor);
 
         const uint8_t temp_payload[2] = {0x66U, 0x08U};  // 21.50 C
-        hal_zigbee_raw_attribute_report_t early{};
+        service::ZigbeeRawAttributeReport early{};
         early.short_addr = 0x4102U;
         early.endpoint = 1U;
         early.cluster_id = 0x0402U;
@@ -112,7 +111,7 @@ int main() {
         assert(runtime.process_pending() == 1U);
 
         const uint8_t temp_payload[2] = {0x66U, 0x08U};  // 21.50 C
-        hal_zigbee_raw_attribute_report_t report{};
+        service::ZigbeeRawAttributeReport report{};
         report.short_addr = 0x4103U;
         report.endpoint = 1U;
         report.cluster_id = 0x0402U;
@@ -153,4 +152,3 @@ int main() {
 
     return 0;
 }
-

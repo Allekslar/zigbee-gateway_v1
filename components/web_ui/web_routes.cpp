@@ -6,8 +6,8 @@
 namespace web_ui {
 
 bool register_web_routes(void* server_handle, WebRouteContext* context) noexcept {
-    if (server_handle == nullptr || context == nullptr || context->registry == nullptr ||
-        context->runtime == nullptr || context->next_correlation_id == nullptr) {
+    if (server_handle == nullptr || context == nullptr || context->runtime == nullptr ||
+        context->next_correlation_id == nullptr) {
         return false;
     }
 

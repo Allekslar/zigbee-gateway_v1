@@ -7,8 +7,6 @@
 #include <cstdio>
 
 #include "core_events.hpp"
-#include "core_registry.hpp"
-#include "core_state.hpp"
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
 #endif
@@ -87,27 +85,21 @@ esp_err_t config_get_handler(httpd_req_t* req) {
     }
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
-    core::CoreRegistry::SnapshotRef snapshot{};
-    if (!context->registry->pin_current(&snapshot) || !snapshot.valid()) {
+    service::ServiceRuntime::ConfigApiSnapshot snapshot{};
+    if (!context->runtime->build_config_api_snapshot(&snapshot)) {
         return send_json_error(req, "500 Internal Server Error", "snapshot_unavailable");
     }
-
-    const core::CoreState state = *snapshot.state;
-    context->registry->release_snapshot(&snapshot);
-
-    const service::ServiceRuntime::ConfigSnapshot config = context->runtime->config_snapshot();
-    const auto& stats = context->runtime->stats();
 
     char response[224]{};
     const int written = std::snprintf(
         response,
         sizeof(response),
         "{\"revision\":%" PRIu32 ",\"last_command_status\":%u,\"command_timeout_ms\":%" PRIu32 ",\"max_command_retries\":%u,\"autoconnect_failures\":%" PRIu32 "}",
-        state.revision,
-        static_cast<unsigned>(state.last_command_status),
-        config.command_timeout_ms,
-        static_cast<unsigned>(config.max_command_retries),
-        stats.autoconnect_failures);
+        snapshot.revision,
+        static_cast<unsigned>(snapshot.last_command_status),
+        snapshot.command_timeout_ms,
+        static_cast<unsigned>(snapshot.max_command_retries),
+        snapshot.autoconnect_failures);
     if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
         return ESP_FAIL;
     }

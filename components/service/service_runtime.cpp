@@ -75,7 +75,7 @@ uint32_t clamp_force_remove_timeout(uint32_t timeout_ms) noexcept {
     return timeout_ms;
 }
 
-bool decode_raw_u32_le(const hal_zigbee_raw_attribute_report_t& report, uint32_t* out_value) noexcept {
+bool decode_raw_u32_le(const ZigbeeRawAttributeReport& report, uint32_t* out_value) noexcept {
     if (out_value == nullptr) {
         return false;
     }
@@ -97,7 +97,7 @@ bool decode_raw_u32_le(const hal_zigbee_raw_attribute_report_t& report, uint32_t
 }
 
 bool decode_temperature_centi_c(
-    const hal_zigbee_raw_attribute_report_t& report,
+    const ZigbeeRawAttributeReport& report,
     int16_t* out_temp_centi_c,
     bool* out_valid) noexcept {
     if (out_temp_centi_c == nullptr || out_valid == nullptr) {
@@ -121,7 +121,7 @@ bool decode_temperature_centi_c(
 }
 
 bool decode_ias_zone_status(
-    const hal_zigbee_raw_attribute_report_t& report,
+    const ZigbeeRawAttributeReport& report,
     uint32_t* out_normalized_status) noexcept {
     if (out_normalized_status == nullptr) {
         return false;
@@ -152,7 +152,7 @@ bool decode_ias_zone_status(
 }
 
 bool decode_battery_percent(
-    const hal_zigbee_raw_attribute_report_t& report,
+    const ZigbeeRawAttributeReport& report,
     int32_t* out_percent,
     bool* out_valid) noexcept {
     if (out_percent == nullptr || out_valid == nullptr) {
@@ -176,7 +176,7 @@ bool decode_battery_percent(
 }
 
 bool decode_battery_voltage_mv(
-    const hal_zigbee_raw_attribute_report_t& report,
+    const ZigbeeRawAttributeReport& report,
     int32_t* out_mv,
     bool* out_valid) noexcept {
     if (out_mv == nullptr || out_valid == nullptr) {
@@ -475,9 +475,9 @@ bool ServiceRuntime::post_zigbee_join_candidate(uint16_t short_addr) noexcept {
 bool ServiceRuntime::post_zigbee_interview_result(
     uint32_t correlation_id,
     uint16_t short_addr,
-    hal_zigbee_result_t result) noexcept {
+    ZigbeeResult result) noexcept {
     (void)correlation_id;
-    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || result != HAL_ZIGBEE_RESULT_SUCCESS) {
+    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || result != ZigbeeResult::kSuccess) {
         return false;
     }
 
@@ -490,9 +490,9 @@ bool ServiceRuntime::post_zigbee_interview_result(
 bool ServiceRuntime::post_zigbee_bind_result(
     uint32_t correlation_id,
     uint16_t short_addr,
-    hal_zigbee_result_t result) noexcept {
+    ZigbeeResult result) noexcept {
     (void)correlation_id;
-    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || result != HAL_ZIGBEE_RESULT_SUCCESS) {
+    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || result != ZigbeeResult::kSuccess) {
         return false;
     }
 
@@ -505,9 +505,9 @@ bool ServiceRuntime::post_zigbee_bind_result(
 bool ServiceRuntime::post_zigbee_configure_reporting_result(
     uint32_t correlation_id,
     uint16_t short_addr,
-    hal_zigbee_result_t result) noexcept {
+    ZigbeeResult result) noexcept {
     (void)correlation_id;
-    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || result != HAL_ZIGBEE_RESULT_SUCCESS) {
+    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || result != ZigbeeResult::kSuccess) {
         return false;
     }
 
@@ -517,7 +517,7 @@ bool ServiceRuntime::post_zigbee_configure_reporting_result(
     return push_event(event);
 }
 
-bool ServiceRuntime::post_zigbee_attribute_report_raw(const hal_zigbee_raw_attribute_report_t& report) noexcept {
+bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeReport& report) noexcept {
     if (report.short_addr == core::kUnknownDeviceShortAddr || report.short_addr == 0x0000U) {
         return false;
     }
@@ -703,6 +703,46 @@ bool ServiceRuntime::build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnaps
     return true;
 }
 
+bool ServiceRuntime::build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept {
+    if (out == nullptr) {
+        return false;
+    }
+
+    core::CoreRegistry::SnapshotRef snapshot{};
+    if (!registry_->pin_current(&snapshot) || !snapshot.valid()) {
+        return false;
+    }
+
+    const RuntimeStats runtime_stats = stats();
+    out->revision = snapshot.state->revision;
+    out->connected = snapshot.state->network_connected;
+    out->refresh_requests = runtime_stats.network_refresh_requests;
+    out->current_backoff_ms = runtime_stats.current_backoff_ms;
+    registry_->release_snapshot(&snapshot);
+    return true;
+}
+
+bool ServiceRuntime::build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept {
+    if (out == nullptr) {
+        return false;
+    }
+
+    core::CoreRegistry::SnapshotRef snapshot{};
+    if (!registry_->pin_current(&snapshot) || !snapshot.valid()) {
+        return false;
+    }
+
+    const ConfigSnapshot config = config_snapshot();
+    const RuntimeStats runtime_stats = stats();
+    out->revision = snapshot.state->revision;
+    out->last_command_status = snapshot.state->last_command_status;
+    out->command_timeout_ms = config.command_timeout_ms;
+    out->max_command_retries = config.max_command_retries;
+    out->autoconnect_failures = runtime_stats.autoconnect_failures;
+    registry_->release_snapshot(&snapshot);
+    return true;
+}
+
 bool ServiceRuntime::get_force_remove_remaining_ms(
     uint16_t short_addr,
     uint32_t now_ms,
@@ -846,22 +886,22 @@ void ServiceRuntime::apply_managers(const core::CoreEvent& event) noexcept {
                 occupancy_policy,
                 &domain_event)) {
             if (!push_event(domain_event)) {
-                ++stats_.dropped_events;
+                (void)stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
             }
         }
     }
 
     const ReportingManager::RuntimeActions reporting_actions = reporting_manager_.handle_event(event);
     if (reporting_actions.mark_degraded) {
-        ++stats_.reporting_failures;
+        (void)stats_.reporting_failures.fetch_add(1, std::memory_order_relaxed);
     }
     if (reporting_actions.request_interview || reporting_actions.request_bind ||
         reporting_actions.request_configure_reporting) {
         // Retry/backoff orchestration is introduced in RPT-006.
         // For RPT-005 we keep the counter observable and deterministic.
-        ++stats_.reporting_retries;
+        (void)stats_.reporting_retries.fetch_add(1, std::memory_order_relaxed);
     }
-    stats_.stale_devices = reporting_manager_.degraded_count();
+    stats_.stale_devices.store(reporting_manager_.degraded_count(), std::memory_order_relaxed);
 
     (void)device_manager_.handle_event(event);
     (void)network_manager_.handle_event(event);
@@ -870,7 +910,7 @@ void ServiceRuntime::apply_managers(const core::CoreEvent& event) noexcept {
         event.type,
         event.device_short_addr,
         monotonic_now_ms());
-    stats_.network_refresh_requests = network_manager_.refresh_count();
+    stats_.network_refresh_requests.store(network_manager_.refresh_count(), std::memory_order_relaxed);
     event_bus_.publish(event);
 }
 
@@ -878,9 +918,9 @@ void ServiceRuntime::execute_effects(const core::CoreEffectList& effects) noexce
     for (uint8_t i = 0; i < effects.count; ++i) {
         const core::CoreEffect& effect = effects.items[i];
         const bool ok = effect_executor_->execute(effect);
-        ++stats_.executed_effects;
+        (void)stats_.executed_effects.fetch_add(1, std::memory_order_relaxed);
         if (!ok) {
-            ++stats_.failed_effects;
+            (void)stats_.failed_effects.fetch_add(1, std::memory_order_relaxed);
         }
 
         if (effect.type == core::CoreEffectType::kPersistState) {
@@ -899,7 +939,7 @@ std::size_t ServiceRuntime::process_pending() noexcept {
         bool made_progress = false;
 
         const uint32_t dropped_ingress = dropped_ingress_events_.exchange(0, std::memory_order_acq_rel);
-        stats_.dropped_events += dropped_ingress;
+        (void)stats_.dropped_events.fetch_add(dropped_ingress, std::memory_order_relaxed);
 
         if (drain_nvs_writes()) {
             made_progress = true;
@@ -934,7 +974,7 @@ std::size_t ServiceRuntime::process_pending() noexcept {
         }
 
         ++processed;
-        ++stats_.processed_events;
+        (void)stats_.processed_events.fetch_add(1, std::memory_order_relaxed);
 
         apply_managers(event);
 
@@ -945,7 +985,7 @@ std::size_t ServiceRuntime::process_pending() noexcept {
 
         core::CoreRegistry::SnapshotRef prev_snapshot{};
         if (!registry_->pin_current(&prev_snapshot)) {
-            ++stats_.dropped_events;
+            (void)stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
 
@@ -955,7 +995,7 @@ std::size_t ServiceRuntime::process_pending() noexcept {
 
         if (reduced.next.revision != prev.revision) {
             if (!registry_->publish(reduced.next)) {
-                ++stats_.dropped_events;
+                (void)stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
             }
 
             if (event.type == core::CoreEventType::kDeviceJoined ||
@@ -976,7 +1016,7 @@ std::size_t ServiceRuntime::process_pending() noexcept {
 }
 
 std::size_t ServiceRuntime::tick(uint32_t now_ms) noexcept {
-    stats_.stale_devices = reporting_manager_.degraded_count();
+    stats_.stale_devices.store(reporting_manager_.degraded_count(), std::memory_order_relaxed);
     last_tick_ms_.store(now_ms, std::memory_order_release);
     process_zigbee_network_policy(now_ms);
     std::size_t queued = command_manager_.process_timeouts(*this, now_ms);
@@ -991,7 +1031,7 @@ std::size_t ServiceRuntime::tick(uint32_t now_ms) noexcept {
         if (push_event(stale_event)) {
             ++queued;
         } else {
-            ++stats_.dropped_events;
+            (void)stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
             (void)reporting_manager_.set_stale_pending(stale_short_addrs[i], false);
         }
     }
@@ -1012,8 +1052,23 @@ void ServiceRuntime::on_nvs_u32_written(const char* key, uint32_t value) noexcep
     persistence_manager_.on_nvs_u32_written(*this, key, value);
 }
 
-const ServiceRuntime::RuntimeStats& ServiceRuntime::stats() const noexcept {
-    return stats_;
+ServiceRuntime::RuntimeStats ServiceRuntime::stats() const noexcept {
+    RuntimeStats snapshot{};
+    snapshot.processed_events = stats_.processed_events.load(std::memory_order_relaxed);
+    snapshot.dropped_events = stats_.dropped_events.load(std::memory_order_relaxed);
+    snapshot.executed_effects = stats_.executed_effects.load(std::memory_order_relaxed);
+    snapshot.failed_effects = stats_.failed_effects.load(std::memory_order_relaxed);
+    snapshot.command_retries = stats_.command_retries.load(std::memory_order_relaxed);
+    snapshot.command_timeouts = stats_.command_timeouts.load(std::memory_order_relaxed);
+    snapshot.reporting_retries = stats_.reporting_retries.load(std::memory_order_relaxed);
+    snapshot.reporting_failures = stats_.reporting_failures.load(std::memory_order_relaxed);
+    snapshot.stale_devices = stats_.stale_devices.load(std::memory_order_relaxed);
+    snapshot.autoconnect_failures = stats_.autoconnect_failures.load(std::memory_order_relaxed);
+    snapshot.current_backoff_ms = stats_.current_backoff_ms.load(std::memory_order_relaxed);
+    snapshot.nvs_writes = stats_.nvs_writes.load(std::memory_order_relaxed);
+    snapshot.last_nvs_revision = stats_.last_nvs_revision.load(std::memory_order_relaxed);
+    snapshot.network_refresh_requests = stats_.network_refresh_requests.load(std::memory_order_relaxed);
+    return snapshot;
 }
 
 ServiceRuntime::ConfigSnapshot ServiceRuntime::config_snapshot() const noexcept {
@@ -1141,7 +1196,7 @@ std::size_t ServiceRuntime::process_force_remove_timeouts(uint32_t now_ms) noexc
                 "Force-remove timeout reached, posted fallback kDeviceLeft short_addr=0x%04x",
                 static_cast<unsigned>(short_addr));
         } else {
-            ++stats_.dropped_events;
+            (void)stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
             SR_LOGI(
                 "Force-remove timeout reached but queue full, short_addr=0x%04x",
                 static_cast<unsigned>(short_addr));

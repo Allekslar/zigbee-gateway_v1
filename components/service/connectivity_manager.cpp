@@ -91,7 +91,7 @@ ConnectivityAutoconnectResult ConnectivityManager::autoconnect_from_saved_creden
 
     if (autoconnect_retry_count_ >= kAutoconnectRetryLimit) {
         CM_LOGW("Auto-connect suppressed: reached max retries (%u)", kAutoconnectRetryLimit);
-        runtime.stats_.current_backoff_ms = 0;
+        runtime.stats_.current_backoff_ms.store(0U, std::memory_order_relaxed);
         return ConnectivityAutoconnectResult::kConnectFailed;
     }
 
@@ -99,7 +99,7 @@ ConnectivityAutoconnectResult ConnectivityManager::autoconnect_from_saved_creden
     if (hal_nvs_get_str("wifi_ssid", ssid, sizeof(ssid)) != HAL_NVS_STATUS_OK || ssid[0] == '\0') {
         CM_LOGI("Auto-connect skipped: saved Wi-Fi credentials not found");
         autoconnect_retry_count_ = kAutoconnectRetryLimit;
-        runtime.stats_.current_backoff_ms = 0;
+        runtime.stats_.current_backoff_ms.store(0U, std::memory_order_relaxed);
         return ConnectivityAutoconnectResult::kCredentialsMissing;
     }
 
@@ -138,10 +138,10 @@ ConnectivityAutoconnectResult ConnectivityManager::autoconnect_from_saved_creden
     if (hal_wifi_connect_sta(ssid, password) != HAL_WIFI_STATUS_OK) {
         const uint32_t delay_ms = (1UL << autoconnect_retry_count_) * 1000U;
         next_autoconnect_attempt_ms_ = now + delay_ms;
-        runtime.stats_.current_backoff_ms = delay_ms;
+        runtime.stats_.current_backoff_ms.store(delay_ms, std::memory_order_relaxed);
 
         ++autoconnect_retry_count_;
-        ++runtime.stats_.autoconnect_failures;
+        (void)runtime.stats_.autoconnect_failures.fetch_add(1, std::memory_order_relaxed);
         CM_LOGW(
             "Auto-connect failed (attempt %u), next retry in %lu ms",
             autoconnect_retry_count_,
@@ -151,7 +151,7 @@ ConnectivityAutoconnectResult ConnectivityManager::autoconnect_from_saved_creden
 
     autoconnect_retry_count_ = 0;
     next_autoconnect_attempt_ms_ = 0;
-    runtime.stats_.current_backoff_ms = 0;
+    runtime.stats_.current_backoff_ms.store(0U, std::memory_order_relaxed);
     mark_wifi_credentials_available();
     const bool zigbee_started_ok = ensure_zigbee_started(runtime);
 #ifdef ESP_PLATFORM
@@ -229,7 +229,7 @@ bool ConnectivityManager::can_attempt_autoconnect(uint32_t now_ms, uint8_t max_r
 void ConnectivityManager::clear_autoconnect_backoff(ServiceRuntime& runtime) noexcept {
     autoconnect_retry_count_ = 0;
     next_autoconnect_attempt_ms_ = 0U;
-    runtime.stats_.current_backoff_ms = 0U;
+    runtime.stats_.current_backoff_ms.store(0U, std::memory_order_relaxed);
 }
 
 }  // namespace service

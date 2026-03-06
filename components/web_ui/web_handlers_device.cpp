@@ -10,7 +10,6 @@
 #include "core_commands.hpp"
 #include "core_events.hpp"
 #include "core_errors.hpp"
-#include "core_registry.hpp"
 #include "core_state.hpp"
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"

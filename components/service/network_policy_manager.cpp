@@ -57,7 +57,7 @@ std::size_t NetworkPolicyManager::process_pending_sta_connect(ServiceRuntime& ru
     }
 
     if (!runtime.queue_network_result(result)) {
-        ++runtime.stats_.dropped_events;
+        (void)runtime.stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
         return 0;
     }
     return 1;

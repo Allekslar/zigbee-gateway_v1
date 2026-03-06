@@ -19,9 +19,8 @@ constexpr const char* kTag = LOG_TAG_WEB_SERVER;
 }
 #endif
 
-WebServer::WebServer(core::CoreRegistry& registry, service::ServiceRuntime& runtime) noexcept
-    : registry_(&registry), runtime_(&runtime) {
-    route_context_.registry = registry_;
+WebServer::WebServer(service::ServiceRuntime& runtime) noexcept
+    : runtime_(&runtime) {
     route_context_.runtime = runtime_;
     route_context_.next_correlation_id = &next_correlation_id_;
 }
@@ -31,7 +30,7 @@ bool WebServer::start() noexcept {
         return true;
     }
 
-    if (registry_ == nullptr || runtime_ == nullptr) {
+    if (runtime_ == nullptr) {
         return false;
     }
 

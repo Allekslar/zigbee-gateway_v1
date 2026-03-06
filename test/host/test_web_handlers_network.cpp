@@ -102,7 +102,6 @@ int main() {
 
     std::atomic<uint32_t> next_id{100};
     web_ui::WebRouteContext route_ctx;
-    route_ctx.registry = &registry;
     route_ctx.runtime = &runtime;
     route_ctx.next_correlation_id = &next_id;
 

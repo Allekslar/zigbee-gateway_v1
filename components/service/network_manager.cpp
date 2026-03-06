@@ -101,7 +101,7 @@ bool NetworkManager::drain_requests(ServiceRuntime& runtime) noexcept {
         }
 
         if (queue_result && !runtime.queue_network_result(result)) {
-            ++runtime.stats_.dropped_events;
+            (void)runtime.stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
         }
     }
 

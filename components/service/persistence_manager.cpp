@@ -156,9 +156,9 @@ bool PersistenceManager::drain_nvs_writes(ServiceRuntime& runtime) noexcept {
 
     while (pop_nvs_write(&notification)) {
         drained = true;
-        ++runtime.stats_.nvs_writes;
+        (void)runtime.stats_.nvs_writes.fetch_add(1, std::memory_order_relaxed);
         if (notification.is_core_revision) {
-            runtime.stats_.last_nvs_revision = notification.value;
+            runtime.stats_.last_nvs_revision.store(notification.value, std::memory_order_relaxed);
         }
     }
 
@@ -184,7 +184,7 @@ bool PersistenceManager::drain_config_writes(ServiceRuntime& runtime) noexcept {
         if (changed) {
             (void)runtime.config_manager_.save();
         } else {
-            ++runtime.stats_.dropped_events;
+            (void)runtime.stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
         }
 
         runtime.config_timeout_ms_cache_.store(
@@ -208,7 +208,7 @@ bool PersistenceManager::drain_reporting_profile_writes(ServiceRuntime& runtime)
         if (changed) {
             (void)runtime.config_manager_.save();
         } else {
-            ++runtime.stats_.dropped_events;
+            (void)runtime.stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
         }
     }
 

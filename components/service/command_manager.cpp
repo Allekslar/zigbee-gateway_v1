@@ -202,7 +202,7 @@ bool CommandManager::drain_command_requests(ServiceRuntime& runtime) noexcept {
         drained = true;
         const core::CoreError err = submit_command_internal(runtime, notification.command);
         if (err != core::CoreError::kOk) {
-            ++runtime.stats_.dropped_events;
+            (void)runtime.stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
         }
     }
 
@@ -217,7 +217,7 @@ bool CommandManager::drain_command_results(ServiceRuntime& runtime) noexcept {
         drained = true;
         const core::CoreError err = resolve_command_result(runtime, result);
         if (err != core::CoreError::kOk) {
-            ++runtime.stats_.dropped_events;
+            (void)runtime.stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
         }
     }
 
@@ -239,7 +239,7 @@ std::size_t CommandManager::process_timeouts(ServiceRuntime& runtime, uint32_t n
         if (tracked != nullptr && tracked->retries_left > 0) {
             --tracked->retries_left;
             tracked->command.issued_at_ms = now_ms;
-            ++runtime.stats_.command_retries;
+            (void)runtime.stats_.command_retries.fetch_add(1, std::memory_order_relaxed);
 
             core::CoreEvent retry_request{};
             const core::CoreError retry_submit = command_dispatcher_.submit(tracked->command, &retry_request);
@@ -249,7 +249,7 @@ std::size_t CommandManager::process_timeouts(ServiceRuntime& runtime, uint32_t n
             }
         }
 
-        ++runtime.stats_.command_timeouts;
+        (void)runtime.stats_.command_timeouts.fetch_add(1, std::memory_order_relaxed);
         release_tracked_command(timeout_event.correlation_id);
         if (runtime.push_event(timeout_event)) {
             ++queued;

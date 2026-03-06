@@ -8,7 +8,6 @@
 
 #include "core_registry.hpp"
 #include "effect_executor.hpp"
-#include "hal_zigbee.h"
 #include "service_runtime.hpp"
 
 namespace {
@@ -36,7 +35,7 @@ int main() {
     assert(runtime.process_pending() == 1U);
 
     const uint8_t valid_payload[2] = {0x66U, 0x08U};  // 0x0866 => 2150 (21.50 C)
-    hal_zigbee_raw_attribute_report_t valid_report{};
+    service::ZigbeeRawAttributeReport valid_report{};
     valid_report.short_addr = 0x2201U;
     valid_report.endpoint = 1U;
     valid_report.cluster_id = 0x0402U;
@@ -56,7 +55,7 @@ int main() {
     const uint32_t last_report_after_valid = device->last_report_at_ms;
 
     const uint8_t invalid_payload[2] = {0x00U, 0x80U};  // invalid marker 0x8000
-    hal_zigbee_raw_attribute_report_t invalid_report{};
+    service::ZigbeeRawAttributeReport invalid_report{};
     invalid_report.short_addr = 0x2201U;
     invalid_report.endpoint = 1U;
     invalid_report.cluster_id = 0x0402U;
@@ -84,7 +83,7 @@ int main() {
         motion_policy));
 
     const uint8_t occ_payload[1] = {0x01U};
-    hal_zigbee_raw_attribute_report_t occ_report{};
+    service::ZigbeeRawAttributeReport occ_report{};
     occ_report.short_addr = 0x2201U;
     occ_report.endpoint = 1U;
     occ_report.cluster_id = 0x0406U;
@@ -98,7 +97,7 @@ int main() {
     assert(device->occupancy_state == core::CoreOccupancyState::kOccupied);
 
     const uint8_t clear_payload[1] = {0x00U};
-    hal_zigbee_raw_attribute_report_t clear_report = occ_report;
+    service::ZigbeeRawAttributeReport clear_report = occ_report;
     clear_report.payload = clear_payload;
     assert(runtime.post_zigbee_attribute_report_raw(clear_report));
     assert(runtime.process_pending() > 0U);
@@ -121,7 +120,7 @@ int main() {
     assert(device->occupancy_state == core::CoreOccupancyState::kNotOccupied);
 
     const uint8_t ias_open_tamper_low[2] = {0x0DU, 0x00U};  // bit0 open + bit2 tamper + bit3 battery_low
-    hal_zigbee_raw_attribute_report_t ias_report{};
+    service::ZigbeeRawAttributeReport ias_report{};
     ias_report.short_addr = 0x2201U;
     ias_report.endpoint = 1U;
     ias_report.cluster_id = 0x0500U;
@@ -147,7 +146,7 @@ int main() {
     assert(!device->contact_battery_low);
 
     const uint8_t battery_pct_payload[1] = {0x96U};  // 150 half-percent => 75%
-    hal_zigbee_raw_attribute_report_t battery_pct_report{};
+    service::ZigbeeRawAttributeReport battery_pct_report{};
     battery_pct_report.short_addr = 0x2201U;
     battery_pct_report.endpoint = 1U;
     battery_pct_report.cluster_id = 0x0001U;
@@ -162,7 +161,7 @@ int main() {
     assert(device->battery_percent == 75U);
 
     const uint8_t battery_mv_payload[1] = {0x1EU};  // 30 * 100mV => 3000mV
-    hal_zigbee_raw_attribute_report_t battery_mv_report = battery_pct_report;
+    service::ZigbeeRawAttributeReport battery_mv_report = battery_pct_report;
     battery_mv_report.attribute_id = 0x0020U;
     battery_mv_report.payload = battery_mv_payload;
     assert(runtime.post_zigbee_attribute_report_raw(battery_mv_report));
@@ -173,7 +172,7 @@ int main() {
     assert(device->battery_voltage_mv == 3000U);
 
     const uint8_t lqi_rssi_payload[1] = {0x00U};
-    hal_zigbee_raw_attribute_report_t lqi_rssi_report{};
+    service::ZigbeeRawAttributeReport lqi_rssi_report{};
     lqi_rssi_report.short_addr = 0x2201U;
     lqi_rssi_report.endpoint = 1U;
     lqi_rssi_report.cluster_id = 0x0006U;

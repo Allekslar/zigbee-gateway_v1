@@ -22,7 +22,7 @@ constexpr const char* kProvisioningApPassword = "12345678";
 core::CoreRegistry g_registry;
 service::EffectExecutor g_effect_executor;
 service::ServiceRuntime g_runtime(g_registry, g_effect_executor);
-web_ui::WebServer g_web_server(g_registry, g_runtime);
+web_ui::WebServer g_web_server(g_runtime);
 mqtt_bridge::MqttBridge g_mqtt;
 matter_bridge::MatterBridge g_matter;
 

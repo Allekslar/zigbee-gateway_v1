@@ -268,6 +268,30 @@ run_checks() {
         'vTaskDelay[[:space:]]*\([[:space:]]*1[[:space:]]*\)' \
         "Service spinlock paths must not block via vTaskDelay(1); use taskYIELD/backoff-safe approach"
 
+    check_absent "INV-M013" "medium" "components/web_ui/web_handlers_network.cpp" \
+        'pin_current[[:space:]]*\(' \
+        "web network handler must not pin registry directly"
+    check_absent "INV-M013" "medium" "components/web_ui/web_handlers_config.cpp" \
+        'pin_current[[:space:]]*\(' \
+        "web config handler must not pin registry directly"
+    check_absent "INV-M013" "medium" "components/web_ui/include/web_routes.hpp" \
+        'CoreRegistry' \
+        "web route context must not depend on CoreRegistry"
+    check_present "INV-M013" "medium" "components/web_ui/web_handlers_network.cpp" \
+        'build_network_api_snapshot[[:space:]]*\(' \
+        "web network handler must use ServiceRuntime network snapshot API"
+    check_present "INV-M013" "medium" "components/web_ui/web_handlers_config.cpp" \
+        'build_config_api_snapshot[[:space:]]*\(' \
+        "web config handler must use ServiceRuntime config snapshot API"
+
+    check_absent "INV-M014" "medium" "components/service/include/service_runtime.hpp" \
+        'const[[:space:]]+RuntimeStats&[[:space:]]+stats[[:space:]]*\(' \
+        "ServiceRuntime stats API must return snapshot by value"
+
+    check_absent "INV-M015" "medium" "components/service/include/service_runtime.hpp" \
+        '#include[[:space:]]+"hal_zigbee\.h"|hal_zigbee_' \
+        "public ServiceRuntime header must not expose HAL Zigbee boundary types"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

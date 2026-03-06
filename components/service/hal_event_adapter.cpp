@@ -40,6 +40,34 @@ core::CoreCommandResultType map_zigbee_result(hal_zigbee_result_t result) noexce
     }
 }
 
+ZigbeeResult map_service_zigbee_result(hal_zigbee_result_t result) noexcept {
+    switch (result) {
+        case HAL_ZIGBEE_RESULT_SUCCESS:
+            return ZigbeeResult::kSuccess;
+        case HAL_ZIGBEE_RESULT_TIMEOUT:
+            return ZigbeeResult::kTimeout;
+        case HAL_ZIGBEE_RESULT_FAILED:
+        default:
+            return ZigbeeResult::kFailed;
+    }
+}
+
+ZigbeeRawAttributeReport map_raw_attribute_report(const hal_zigbee_raw_attribute_report_t& report) noexcept {
+    ZigbeeRawAttributeReport mapped{};
+    mapped.short_addr = report.short_addr;
+    mapped.endpoint = report.endpoint;
+    mapped.cluster_id = report.cluster_id;
+    mapped.attribute_id = report.attribute_id;
+    mapped.zcl_data_type = report.zcl_data_type;
+    mapped.has_lqi = report.has_lqi;
+    mapped.lqi = report.lqi;
+    mapped.has_rssi = report.has_rssi;
+    mapped.rssi_dbm = report.rssi_dbm;
+    mapped.payload = report.payload;
+    mapped.payload_len = report.payload_len;
+    return mapped;
+}
+
 void zigbee_device_joined_cb(void* context, uint16_t short_addr) noexcept {
     if (context == nullptr) {
         return;
@@ -139,7 +167,7 @@ void zigbee_interview_result_cb(
     }
 
     ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
-    if (!runtime->post_zigbee_interview_result(correlation_id, short_addr, result)) {
+    if (!runtime->post_zigbee_interview_result(correlation_id, short_addr, map_service_zigbee_result(result))) {
         HAL_ADAPTER_LOGW(
             "Drop interview result short_addr=0x%04x correlation_id=%lu result=%u",
             static_cast<unsigned>(short_addr),
@@ -158,7 +186,7 @@ void zigbee_bind_result_cb(
     }
 
     ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
-    if (!runtime->post_zigbee_bind_result(correlation_id, short_addr, result)) {
+    if (!runtime->post_zigbee_bind_result(correlation_id, short_addr, map_service_zigbee_result(result))) {
         HAL_ADAPTER_LOGW(
             "Drop bind result short_addr=0x%04x correlation_id=%lu result=%u",
             static_cast<unsigned>(short_addr),
@@ -177,7 +205,10 @@ void zigbee_configure_reporting_result_cb(
     }
 
     ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
-    if (!runtime->post_zigbee_configure_reporting_result(correlation_id, short_addr, result)) {
+    if (!runtime->post_zigbee_configure_reporting_result(
+            correlation_id,
+            short_addr,
+            map_service_zigbee_result(result))) {
         HAL_ADAPTER_LOGW(
             "Drop configure-reporting result short_addr=0x%04x correlation_id=%lu result=%u",
             static_cast<unsigned>(short_addr),
@@ -192,7 +223,8 @@ void zigbee_attribute_report_raw_cb(void* context, const hal_zigbee_raw_attribut
     }
 
     ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
-    if (!runtime->post_zigbee_attribute_report_raw(*report)) {
+    const ZigbeeRawAttributeReport mapped_report = map_raw_attribute_report(*report);
+    if (!runtime->post_zigbee_attribute_report_raw(mapped_report)) {
         HAL_ADAPTER_LOGW(
             "Drop raw attribute report short_addr=0x%04x cluster=0x%04x attr=0x%04x type=0x%02x len=%u",
             static_cast<unsigned>(report->short_addr),
