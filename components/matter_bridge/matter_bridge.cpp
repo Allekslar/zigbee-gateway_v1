@@ -6,6 +6,10 @@
 #include <algorithm>
 #include <cstring>
 
+#ifdef ESP_PLATFORM
+#include "hal_matter.h"
+#endif
+
 namespace matter_bridge {
 namespace {
 
@@ -32,6 +36,38 @@ uint16_t resolve_status_endpoint(const MatterEndpointMapEntry* map,
     uint16_t endpoint = 0;
     (void)map_resolve_endpoint(map, map_size, device.short_addr, infer_primary_class(device), &endpoint);
     return endpoint;
+}
+
+bool publish_update_to_hal(const MatterAttributeUpdate& update) noexcept {
+#ifdef ESP_PLATFORM
+    hal_matter_attribute_update_t hal_update{};
+    hal_update.endpoint_id = update.endpoint;
+    hal_update.bool_value = update.bool_value;
+    hal_update.int_value = update.int_value;
+
+    switch (update.type) {
+        case MatterAttributeType::kAvailabilityOnline:
+            hal_update.attr_type = HAL_MATTER_ATTR_AVAILABILITY_ONLINE;
+            break;
+        case MatterAttributeType::kTemperatureCentiC:
+            hal_update.attr_type = HAL_MATTER_ATTR_TEMPERATURE_CENTI_C;
+            break;
+        case MatterAttributeType::kOccupancy:
+            hal_update.attr_type = HAL_MATTER_ATTR_OCCUPANCY;
+            break;
+        case MatterAttributeType::kContactOpen:
+            hal_update.attr_type = HAL_MATTER_ATTR_CONTACT_OPEN;
+            break;
+        case MatterAttributeType::kStale:
+            hal_update.attr_type = HAL_MATTER_ATTR_STALE;
+            break;
+    }
+
+    return hal_matter_publish_attribute_update(&hal_update) == 0;
+#else
+    (void)update;
+    return true;
+#endif
 }
 
 }  // namespace
@@ -201,6 +237,11 @@ std::size_t MatterBridge::sync_snapshot(const core::CoreState& state) noexcept {
     }
     for (std::size_t i = 0; i < next_count; ++i) {
         cached_devices_[i] = next_cache[i];
+    }
+
+    // Keep transport side effects out of Core by publishing normalized updates via HAL C ABI.
+    for (std::size_t i = 0; i < pending_update_count_; ++i) {
+        (void)publish_update_to_hal(pending_updates_[i]);
     }
 
     return pending_update_count_;

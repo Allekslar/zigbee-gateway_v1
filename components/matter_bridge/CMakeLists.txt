@@ -8,7 +8,7 @@ idf_component_register(
         "matter_bridge.cpp"
         "matter_device_map.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES core service common
+    REQUIRES core service common app_hal
 )
 
 zg_apply_component_compile_policy(${COMPONENT_LIB})

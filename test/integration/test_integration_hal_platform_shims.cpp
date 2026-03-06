@@ -20,6 +20,19 @@ int main() {
     assert(hal_matter_init() == 0);
     assert(hal_matter_publish_state(1U, true) == 0);
     assert(hal_matter_publish_state(2U, false) == 0);
+    assert(hal_matter_publish_attribute_update(nullptr) == -1);
+
+    hal_matter_attribute_update_t update{};
+    update.endpoint_id = 11U;
+    update.attr_type = HAL_MATTER_ATTR_OCCUPANCY;
+    update.bool_value = true;
+    update.int_value = 0;
+    assert(hal_matter_publish_attribute_update(&update) == 0);
+
+    update.endpoint_id = 10U;
+    update.attr_type = HAL_MATTER_ATTR_TEMPERATURE_CENTI_C;
+    update.int_value = 2150;
+    assert(hal_matter_publish_attribute_update(&update) == 0);
 
     const uint8_t sample_block[4] = {1U, 2U, 3U, 4U};
     assert(hal_rcp_update_begin() == 0);

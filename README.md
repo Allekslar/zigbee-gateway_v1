@@ -144,6 +144,13 @@ Matter snapshot-to-attribute bridge contract:
 
 Implementation API: `components/matter_bridge/include/matter_bridge.hpp`.
 
+Matter HAL C ABI contract:
+
+- `hal_matter_publish_attribute_update(const hal_matter_attribute_update_t*)` is the thin C boundary for normalized sensor attribute updates.
+- `hal_matter_attribute_update_t` carries only transport data (`endpoint_id`, attribute kind, scalar value fields) and contains no business policy/state machine.
+
+Implementation API: `components/app_hal/include/hal_matter.h`.
+
 ## Requirements
 
 - ESP-IDF `v5.5.x` (`ARCHITECTURE.md` pins `v5.5.2`);
