@@ -99,9 +99,9 @@ void test_reporting_flow_join_to_first_report_and_reboot_recovery(void) {
 
     // Lifecycle: join -> interview -> bind -> configure -> first report.
     hal_zigbee_notify_device_joined(short_addr);
-    hal_zigbee_simulate_interview_completed(interview_corr, short_addr);
-    hal_zigbee_simulate_bind_result(bind_corr, short_addr, HAL_ZIGBEE_RESULT_SUCCESS);
-    hal_zigbee_simulate_reporting_config_result(config_corr, short_addr, HAL_ZIGBEE_RESULT_SUCCESS);
+    hal_zigbee_notify_interview_result(interview_corr, short_addr, HAL_ZIGBEE_RESULT_SUCCESS);
+    hal_zigbee_notify_bind_result(bind_corr, short_addr, HAL_ZIGBEE_RESULT_SUCCESS);
+    hal_zigbee_notify_configure_reporting_result(config_corr, short_addr, HAL_ZIGBEE_RESULT_SUCCESS);
     const hal_zigbee_raw_attribute_report_t first_report = {
         .short_addr = short_addr,
         .endpoint = 1U,

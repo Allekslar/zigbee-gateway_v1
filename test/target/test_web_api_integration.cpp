@@ -8,6 +8,7 @@
 #include <inttypes.h>
 
 #include "esp_http_client.h"
+#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "hal_wifi.h"
@@ -288,6 +289,20 @@ extern "C" void test_web_api_config_reporting_update_validation_and_queue_apply(
     int status_code = 0;
     service::ConfigManager::ReportingProfileKey key{};
     service::ConfigManager::ReportingProfile profile{};
+    const uint16_t test_cluster_id = static_cast<uint16_t>(0x7000U | (esp_random() & 0x0FFFU));
+    char invalid_payload[192] = {};
+    char valid_payload[256] = {};
+
+    std::snprintf(
+        invalid_payload,
+        sizeof(invalid_payload),
+        "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":%u,\"min_interval_seconds\":301,\"max_interval_seconds\":300}",
+        static_cast<unsigned>(test_cluster_id));
+    std::snprintf(
+        valid_payload,
+        sizeof(valid_payload),
+        "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":%u,\"min_interval_seconds\":10,\"max_interval_seconds\":300,\"reportable_change\":42,\"capability_flags\":3}",
+        static_cast<unsigned>(test_cluster_id));
 
     if (!runtime.initialize_hal_adapter()) {
         failure = "runtime.initialize_hal_adapter failed";
@@ -302,7 +317,7 @@ extern "C" void test_web_api_config_reporting_update_validation_and_queue_apply(
     if (!http_request_with_retry(
             "http://127.0.0.1/api/config/reporting",
             HTTP_METHOD_POST,
-            "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":301,\"max_interval_seconds\":300}",
+            invalid_payload,
             response,
             sizeof(response),
             &status_code)) {
@@ -318,7 +333,7 @@ extern "C" void test_web_api_config_reporting_update_validation_and_queue_apply(
     if (!http_request_with_retry(
             "http://127.0.0.1/api/config/reporting",
             HTTP_METHOD_POST,
-            "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,\"max_interval_seconds\":300,\"reportable_change\":42,\"capability_flags\":3}",
+            valid_payload,
             response,
             sizeof(response),
             &status_code)) {
@@ -333,7 +348,7 @@ extern "C" void test_web_api_config_reporting_update_validation_and_queue_apply(
 
     key.short_addr = 0x2201U;
     key.endpoint = 1U;
-    key.cluster_id = 0x0402U;
+    key.cluster_id = test_cluster_id;
     if (runtime.config_manager().get_reporting_profile(key, &profile)) {
         failure = "reporting profile applied before queue drain";
         goto cleanup;

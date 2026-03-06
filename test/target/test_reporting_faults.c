@@ -95,16 +95,16 @@ void test_reporting_faults_malformed_duplicate_out_of_order_timeout(void) {
     TEST_ASSERT_EQUAL_UINT32(0U, capture.raw_count);
 
     // Out-of-order callbacks should still be dispatched safely.
-    hal_zigbee_simulate_reporting_config_result(901U, 0x4401U, HAL_ZIGBEE_RESULT_SUCCESS);
+    hal_zigbee_notify_configure_reporting_result(901U, 0x4401U, HAL_ZIGBEE_RESULT_SUCCESS);
     TEST_ASSERT_TRUE(capture.configure_called);
     TEST_ASSERT_EQUAL_INT(HAL_ZIGBEE_RESULT_SUCCESS, capture.configure_result);
     TEST_ASSERT_EQUAL_HEX16(0x4401U, capture.short_addr);
 
-    hal_zigbee_simulate_interview_completed(902U, 0x4401U);
+    hal_zigbee_notify_interview_result(902U, 0x4401U, HAL_ZIGBEE_RESULT_SUCCESS);
     TEST_ASSERT_TRUE(capture.interview_called);
     TEST_ASSERT_EQUAL_HEX16(0x4401U, capture.short_addr);
 
-    hal_zigbee_simulate_bind_result(903U, 0x4401U, HAL_ZIGBEE_RESULT_SUCCESS);
+    hal_zigbee_notify_bind_result(903U, 0x4401U, HAL_ZIGBEE_RESULT_SUCCESS);
     TEST_ASSERT_TRUE(capture.bind_called);
     TEST_ASSERT_EQUAL_HEX16(0x4401U, capture.short_addr);
 
@@ -130,8 +130,7 @@ void test_reporting_faults_malformed_duplicate_out_of_order_timeout(void) {
 
     // Timeout fault must be traceable in callback result.
     capture.configure_called = false;
-    hal_zigbee_simulate_reporting_config_result(904U, 0x4401U, HAL_ZIGBEE_RESULT_TIMEOUT);
+    hal_zigbee_notify_configure_reporting_result(904U, 0x4401U, HAL_ZIGBEE_RESULT_TIMEOUT);
     TEST_ASSERT_TRUE(capture.configure_called);
     TEST_ASSERT_EQUAL_INT(HAL_ZIGBEE_RESULT_TIMEOUT, capture.configure_result);
 }
-
