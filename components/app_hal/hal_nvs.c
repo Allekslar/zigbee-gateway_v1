@@ -39,6 +39,19 @@ static host_u32_entry_t s_u32_entries[16];
 static host_str_entry_t s_str_entries[16];
 static bool s_host_storage_initialized = false;
 
+static void host_copy_cstr(char* dst, size_t dst_capacity, const char* src) {
+    if (dst == NULL || src == NULL || dst_capacity == 0U) {
+        return;
+    }
+
+    size_t i = 0U;
+    while ((i + 1U) < dst_capacity && src[i] != '\0') {
+        dst[i] = src[i];
+        ++i;
+    }
+    dst[i] = '\0';
+}
+
 static host_u32_entry_t* host_find_u32_entry(const char* key, bool allow_create) {
     host_u32_entry_t* free_entry = NULL;
     for (size_t i = 0; i < (sizeof(s_u32_entries) / sizeof(s_u32_entries[0])); ++i) {
@@ -59,8 +72,8 @@ static host_u32_entry_t* host_find_u32_entry(const char* key, bool allow_create)
         return NULL;
     }
 
-    memset(free_entry, 0, sizeof(*free_entry));
-    strncpy(free_entry->key, key, sizeof(free_entry->key) - 1);
+    *free_entry = (host_u32_entry_t){0};
+    host_copy_cstr(free_entry->key, sizeof(free_entry->key), key);
     free_entry->used = true;
     return free_entry;
 }
@@ -85,8 +98,8 @@ static host_str_entry_t* host_find_str_entry(const char* key, bool allow_create)
         return NULL;
     }
 
-    memset(free_entry, 0, sizeof(*free_entry));
-    strncpy(free_entry->key, key, sizeof(free_entry->key) - 1);
+    *free_entry = (host_str_entry_t){0};
+    host_copy_cstr(free_entry->key, sizeof(free_entry->key), key);
     free_entry->used = true;
     return free_entry;
 }
@@ -115,8 +128,12 @@ hal_nvs_status_t hal_nvs_init(void) {
     return err == ESP_OK ? HAL_NVS_STATUS_OK : HAL_NVS_STATUS_ERR;
 #else
     if (!s_host_storage_initialized) {
-        memset(s_u32_entries, 0, sizeof(s_u32_entries));
-        memset(s_str_entries, 0, sizeof(s_str_entries));
+        for (size_t i = 0; i < (sizeof(s_u32_entries) / sizeof(s_u32_entries[0])); ++i) {
+            s_u32_entries[i] = (host_u32_entry_t){0};
+        }
+        for (size_t i = 0; i < (sizeof(s_str_entries) / sizeof(s_str_entries[0])); ++i) {
+            s_str_entries[i] = (host_str_entry_t){0};
+        }
         s_host_storage_initialized = true;
     }
     return HAL_NVS_STATUS_OK;
@@ -229,7 +246,7 @@ hal_nvs_status_t hal_nvs_set_str(const char* key, const char* value) {
         return entry == NULL ? HAL_NVS_STATUS_NO_SPACE : HAL_NVS_STATUS_ERR;
     }
 
-    memcpy(entry->value, value, value_len + 1);
+    host_copy_cstr(entry->value, sizeof(entry->value), value);
     return HAL_NVS_STATUS_OK;
 #endif
 }
@@ -275,7 +292,7 @@ hal_nvs_status_t hal_nvs_get_str(const char* key, char* value_out, uint32_t valu
         return HAL_NVS_STATUS_NO_SPACE;
     }
 
-    memcpy(value_out, entry->value, source_len + 1);
+    host_copy_cstr(value_out, value_out_capacity, entry->value);
     return HAL_NVS_STATUS_OK;
 #endif
 }

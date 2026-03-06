@@ -21,6 +21,19 @@ static void* s_context = 0;
 #ifndef ESP_PLATFORM
 static hal_wifi_mode_t s_mock_mode = HAL_WIFI_MODE_NULL;
 static bool s_simulate_connect_failure = false;
+
+static void host_copy_cstr(char* dst, size_t dst_capacity, const char* src) {
+    if (dst == NULL || src == NULL || dst_capacity == 0U) {
+        return;
+    }
+
+    size_t i = 0U;
+    while ((i + 1U) < dst_capacity && src[i] != '\0') {
+        dst[i] = src[i];
+        ++i;
+    }
+    dst[i] = '\0';
+}
 #endif
 
 #ifdef ESP_PLATFORM
@@ -641,8 +654,8 @@ hal_wifi_status_t hal_wifi_scan(hal_wifi_scan_record_t* records, size_t capacity
     const size_t out_count = sample_count < capacity ? sample_count : capacity;
 
     for (size_t i = 0; i < out_count; ++i) {
-        memset(&records[i], 0, sizeof(records[i]));
-        strncpy(records[i].ssid, sample_ssids[i], sizeof(records[i].ssid) - 1);
+        records[i] = (hal_wifi_scan_record_t){0};
+        host_copy_cstr(records[i].ssid, sizeof(records[i].ssid), sample_ssids[i]);
         records[i].rssi = sample_rssi[i];
         records[i].is_open = sample_open[i];
     }

@@ -594,11 +594,7 @@ bool ConfigManager::save_reporting_profiles() noexcept {
         ++write_index;
     }
 
-    if (hal_nvs_set_u32(kKeyReportingProfileCount, static_cast<uint32_t>(used_count)) != HAL_NVS_STATUS_OK) {
-        return false;
-    }
-
-    return true;
+    return hal_nvs_set_u32(kKeyReportingProfileCount, static_cast<uint32_t>(used_count)) == HAL_NVS_STATUS_OK;
 }
 
 void ConfigManager::load_reporting_profiles() noexcept {

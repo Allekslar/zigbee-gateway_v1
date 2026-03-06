@@ -46,7 +46,6 @@ bool ConnectivityManager::ensure_wifi_mode_for_scan() noexcept {
     switch (mode) {
         case HAL_WIFI_MODE_STA:
         case HAL_WIFI_MODE_APSTA:
-            return true;
         case HAL_WIFI_MODE_AP:
             // Keep provisioning AP session stable during scan.
             // Switching AP -> APSTA can drop connected browser clients.
@@ -154,11 +153,14 @@ ConnectivityAutoconnectResult ConnectivityManager::autoconnect_from_saved_creden
     next_autoconnect_attempt_ms_ = 0;
     runtime.stats_.current_backoff_ms = 0;
     mark_wifi_credentials_available();
-    if (!ensure_zigbee_started(runtime)) {
-        CM_LOGI("Auto-connect: Wi-Fi connected but Zigbee start failed");
-    } else {
-        CM_LOGI("Auto-connect: Wi-Fi connected, Zigbee started");
-    }
+    const bool zigbee_started = ensure_zigbee_started(runtime);
+#ifdef ESP_PLATFORM
+    CM_LOGI(
+        "Auto-connect: Wi-Fi connected, Zigbee %s",
+        zigbee_started ? "started" : "start failed");
+#else
+    (void)zigbee_started;
+#endif
 
     return ConnectivityAutoconnectResult::kConnectStarted;
 }

@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -134,7 +135,8 @@ int main() {
 
     
     g_request_body = "{\"ssid\": \"\"}";
-    req.content_len = g_request_body.length();
+    assert(g_request_body.size() <= static_cast<size_t>(std::numeric_limits<int>::max()));
+    req.content_len = static_cast<int>(g_request_body.size());
     g_last_response.clear();
     g_last_status.clear();
     
@@ -146,7 +148,8 @@ int main() {
     
     const char* test_ssid = "TestWiFi";
     g_request_body = "{\"ssid\": \"TestWiFi\", \"password\": \"pass123\"}";
-    req.content_len = g_request_body.length();
+    assert(g_request_body.size() <= static_cast<size_t>(std::numeric_limits<int>::max()));
+    req.content_len = static_cast<int>(g_request_body.size());
     g_last_response.clear();
     g_last_status.clear();
     
