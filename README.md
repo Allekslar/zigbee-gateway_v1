@@ -64,6 +64,23 @@ test/target/          - target HAL tests for ESP32-C6
 - `rssi` (`number` or `null`)
 - `force_remove_armed`, `force_remove_ms_left`
 
+## `POST /api/config/reporting` Contract
+
+Per-device reporting override is updated asynchronously via ingress queue.
+
+Request JSON fields:
+- `short_addr` (`1..65534`)
+- `endpoint` (`1..255`)
+- `cluster_id` (`1..65535`)
+- `min_interval_seconds` (`0..65535`)
+- `max_interval_seconds` (`1..65535`, must be `>= min_interval_seconds`)
+- optional: `reportable_change` (`uint32`)
+- optional: `capability_flags` (`0..255`)
+
+Behavior:
+- invalid key/range payload is rejected with `400`;
+- accepted payload returns `{"accepted":true}` and is applied during runtime queue drain.
+
 ## Requirements
 
 - ESP-IDF `v5.5.x` (`ARCHITECTURE.md` pins `v5.5.2`);

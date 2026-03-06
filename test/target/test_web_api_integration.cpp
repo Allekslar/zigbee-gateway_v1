@@ -277,6 +277,89 @@ cleanup:
     }
 }
 
+extern "C" void test_web_api_config_reporting_update_validation_and_queue_apply(void) {
+    const char* failure = nullptr;
+
+    RuntimeFixture* fixture = new RuntimeFixture();
+    service::ServiceRuntime& runtime = fixture->runtime;
+    web_ui::WebServer& web_server = fixture->web_server;
+
+    char response[256] = {};
+    int status_code = 0;
+    service::ConfigManager::ReportingProfileKey key{};
+    service::ConfigManager::ReportingProfile profile{};
+
+    if (!runtime.initialize_hal_adapter()) {
+        failure = "runtime.initialize_hal_adapter failed";
+        goto cleanup;
+    }
+
+    if (!web_server.start()) {
+        failure = "web_server.start failed";
+        goto cleanup;
+    }
+
+    if (!http_request_with_retry(
+            "http://127.0.0.1/api/config/reporting",
+            HTTP_METHOD_POST,
+            "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":301,\"max_interval_seconds\":300}",
+            response,
+            sizeof(response),
+            &status_code)) {
+        failure = "POST /api/config/reporting failed for invalid bounds";
+        goto cleanup;
+    }
+
+    if (status_code != 400 || !response_has(response, "\"error\":\"invalid_profile_bounds\"")) {
+        failure = "invalid bounds were not rejected with 400";
+        goto cleanup;
+    }
+
+    if (!http_request_with_retry(
+            "http://127.0.0.1/api/config/reporting",
+            HTTP_METHOD_POST,
+            "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,\"max_interval_seconds\":300,\"reportable_change\":42,\"capability_flags\":3}",
+            response,
+            sizeof(response),
+            &status_code)) {
+        failure = "POST /api/config/reporting failed for valid payload";
+        goto cleanup;
+    }
+
+    if (status_code != 200 || !response_has(response, "\"accepted\":true")) {
+        failure = "valid reporting profile update was not accepted";
+        goto cleanup;
+    }
+
+    key.short_addr = 0x2201U;
+    key.endpoint = 1U;
+    key.cluster_id = 0x0402U;
+    if (runtime.config_manager().get_reporting_profile(key, &profile)) {
+        failure = "reporting profile applied before queue drain";
+        goto cleanup;
+    }
+
+    (void)runtime.process_pending();
+
+    if (!runtime.config_manager().get_reporting_profile(key, &profile)) {
+        failure = "reporting profile was not applied after queue drain";
+        goto cleanup;
+    }
+
+    if (profile.min_interval_seconds != 10U || profile.max_interval_seconds != 300U ||
+        profile.reportable_change != 42U || profile.capability_flags != 3U) {
+        failure = "applied reporting profile values mismatch";
+        goto cleanup;
+    }
+
+cleanup:
+    web_server.stop();
+    delete fixture;
+    if (failure != nullptr) {
+        TEST_FAIL_MESSAGE(failure);
+    }
+}
+
 extern "C" void test_web_api_end_to_end_zigbee_core_effects_http_flow(void) {
     const char* failure = nullptr;
 

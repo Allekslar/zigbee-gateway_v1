@@ -116,6 +116,43 @@ int main() {
     assert(snapshot.command_timeout_ms == 7000U);
     assert(snapshot.max_command_retries == 4U);
 
+    clear_http_capture();
+    g_request_body = "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":301,\"max_interval_seconds\":300}";
+    req.content_len = static_cast<int>(g_request_body.size());
+    assert(web_ui::config_reporting_post_handler(&req) == ESP_OK);
+    assert(g_last_status == "400 Bad Request");
+    assert(g_last_response.find("\"error\":\"invalid_profile_bounds\"") != std::string::npos);
+
+    clear_http_capture();
+    g_request_body = "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,\"max_interval_seconds\":300,\"capability_flags\":512}";
+    req.content_len = static_cast<int>(g_request_body.size());
+    assert(web_ui::config_reporting_post_handler(&req) == ESP_OK);
+    assert(g_last_status == "400 Bad Request");
+    assert(g_last_response.find("\"error\":\"invalid_capability_flags\"") != std::string::npos);
+
+    clear_http_capture();
+    g_request_body = "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,\"max_interval_seconds\":300,\"reportable_change\":25,\"capability_flags\":3}";
+    req.content_len = static_cast<int>(g_request_body.size());
+    assert(web_ui::config_reporting_post_handler(&req) == ESP_OK);
+    assert(g_last_status.empty());
+    assert(g_last_response.find("\"accepted\":true") != std::string::npos);
+
+    service::ConfigManager::ReportingProfileKey key{};
+    key.short_addr = 0x2201U;
+    key.endpoint = 1U;
+    key.cluster_id = 0x0402U;
+    service::ConfigManager::ReportingProfile before_apply{};
+    assert(!runtime.config_manager().get_reporting_profile(key, &before_apply));
+
+    runtime.process_pending();
+    service::ConfigManager::ReportingProfile after_apply{};
+    assert(runtime.config_manager().get_reporting_profile(key, &after_apply));
+    assert(after_apply.in_use);
+    assert(after_apply.min_interval_seconds == 10U);
+    assert(after_apply.max_interval_seconds == 300U);
+    assert(after_apply.reportable_change == 25U);
+    assert(after_apply.capability_flags == 3U);
+
     assert(web_ui::register_config_routes(reinterpret_cast<void*>(1), &route_ctx));
 
     clear_http_capture();

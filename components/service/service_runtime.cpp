@@ -339,6 +339,10 @@ bool ServiceRuntime::post_config_write(const ConfigWriteRequest& request) noexce
         request.max_retries);
 }
 
+bool ServiceRuntime::post_reporting_profile_write(const ConfigManager::ReportingProfile& profile) noexcept {
+    return persistence_manager_.post_reporting_profile_write(*this, profile);
+}
+
 bool ServiceRuntime::post_network_scan(uint32_t request_id) noexcept {
     if (request_id == 0) {
         return false;

@@ -11,6 +11,7 @@ void test_config_manager_migrates_legacy_v1(void);
 void test_config_manager_reporting_profile_persist_restore(void);
 void test_service_join_policy_deduplicates_candidates(void);
 void test_web_api_http_command_result_updates_snapshot(void);
+void test_web_api_config_reporting_update_validation_and_queue_apply(void);
 void test_web_api_end_to_end_zigbee_core_effects_http_flow(void);
 void test_web_api_network_scan_result_status_transitions(void);
 void test_web_api_network_scan_result_failure_transition(void);
@@ -27,6 +28,7 @@ void app_main(void) {
     RUN_TEST(test_config_manager_reporting_profile_persist_restore);
     RUN_TEST(test_service_join_policy_deduplicates_candidates);
     RUN_TEST(test_web_api_http_command_result_updates_snapshot);
+    RUN_TEST(test_web_api_config_reporting_update_validation_and_queue_apply);
     RUN_TEST(test_web_api_end_to_end_zigbee_core_effects_http_flow);
     RUN_TEST(test_web_api_network_scan_result_status_transitions);
     RUN_TEST(test_web_api_network_scan_result_failure_transition);

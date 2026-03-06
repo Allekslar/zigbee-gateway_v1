@@ -83,6 +83,7 @@ public:
     core::CoreError submit_command(const core::CoreCommand& command) noexcept;
     core::CoreError handle_command_result(const core::CoreCommandResult& result) noexcept;
     bool post_config_write(const ConfigWriteRequest& request) noexcept;
+    bool post_reporting_profile_write(const ConfigManager::ReportingProfile& profile) noexcept;
     bool post_network_scan(uint32_t request_id) noexcept;
     bool post_network_connect(
         uint32_t request_id,
