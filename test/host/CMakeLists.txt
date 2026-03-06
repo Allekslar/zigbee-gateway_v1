@@ -232,3 +232,14 @@ target_include_directories(test_mqtt_topics PRIVATE
 )
 zg_apply_component_compile_policy(test_mqtt_topics)
 add_test(NAME test_mqtt_topics COMMAND test_mqtt_topics)
+
+add_executable(test_mqtt_serializer
+    test_mqtt_serializer.cpp
+    ../../components/mqtt_bridge/mqtt_serializer.cpp
+)
+target_include_directories(test_mqtt_serializer PRIVATE
+    ../../components/mqtt_bridge/include
+    ../../components/core/include
+)
+zg_apply_component_compile_policy(test_mqtt_serializer)
+add_test(NAME test_mqtt_serializer COMMAND test_mqtt_serializer)

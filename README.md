@@ -94,6 +94,19 @@ Stable topic naming under root `zigbee-gateway`:
 
 Implementation API: `components/mqtt_bridge/include/mqtt_topics.hpp`.
 
+Telemetry payload serializer contract:
+
+- `temperature_c` (`number` or `null`)
+- `occupancy` (`unknown|not_occupied|occupied`)
+- `contact` object: `state`, `tamper`, `battery_low`
+- `battery` object: `percent`, `voltage_mv` (`number` or `null`)
+- `lqi` (`number` or `null`)
+- `rssi` (`number` or `null`)
+- `stale` (`boolean`)
+- `timestamp_ms` (`number`)
+
+Implementation API: `components/mqtt_bridge/include/mqtt_serializer.hpp`.
+
 ## Requirements
 
 - ESP-IDF `v5.5.x` (`ARCHITECTURE.md` pins `v5.5.2`);
