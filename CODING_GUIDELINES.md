@@ -163,6 +163,7 @@ Types: PascalCase Functions: snake_case Members: trailing underscore
 -   Pure Core logic
 -   No ESP-IDF dependencies
 -   Deterministic
+-   Reporting lifecycle regressions must be covered by dedicated host tests and enforced by a blocking CI job (`reporting-regression`)
 
 ## Target Tests
 

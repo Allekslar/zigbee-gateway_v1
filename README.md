@@ -255,10 +255,24 @@ Main pipeline: [.github/workflows/ci.yml](.github/workflows/ci.yml)
 Blocking jobs for merge:
 - `firmware-build`
 - `host-tests`
+- `reporting-regression`
 - `target-hal-tests-build`
 - `target-hal-tests-hil-smoke`
 - `architecture-invariants`
 - `static-analysis`
+
+### Reporting Regression Gate
+
+`reporting-regression` is a dedicated blocking CI job for reporting lifecycle stability.
+
+It runs the host regression subset:
+- `test_service_reporting_manager`
+- `test_service_reporting_retry`
+- `test_service_reporting_stale`
+- `test_service_reporting_flow`
+- `test_service_reporting_profiles`
+- `test_service_reporting_semantics`
+- `test_service_reporting_faults`
 
 ## Typical Issues
 

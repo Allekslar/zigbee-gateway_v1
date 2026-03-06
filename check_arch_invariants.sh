@@ -221,6 +221,13 @@ run_checks() {
         'process_zigbee_network_policy|request_join_window_open|maybe_auto_close_join_window_after_first_join' \
         "ServiceRuntime must own Zigbee formation/join policy flow"
 
+    check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
+        '^  reporting-regression:' \
+        "CI workflow must define reporting-regression blocking job"
+    check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
+        'test_service_reporting_manager' \
+        "reporting-regression must run dedicated reporting lifecycle tests"
+
     check_present "INV-L001" "low" "components/common/include/log_tags.h" \
         'LOG_TAG_SERVICE_RUNTIME' \
         "log tag registry should include ServiceRuntime tag"

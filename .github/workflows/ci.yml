@@ -120,6 +120,26 @@ jobs:
           message: ${{ steps.coverage_value.outputs.line_percent }}
           valColorRange: 70 80 90 100
 
+  reporting-regression:
+    name: Reporting Regression Suite (Blocking)
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure host tests
+        run: cmake -S test/host -B build-host
+
+      - name: Build host tests
+        run: cmake --build build-host --parallel
+
+      - name: Run reporting regression suite
+        run: |
+          ctest --test-dir build-host --output-on-failure -R \
+            '^(test_service_reporting_manager|test_service_reporting_retry|test_service_reporting_stale|test_service_reporting_flow|test_service_reporting_profiles|test_service_reporting_semantics|test_service_reporting_faults)$'
+
   target-hal-tests-build:
     name: Target HAL Tests Build (ESP32-C6)
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
