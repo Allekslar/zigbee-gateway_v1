@@ -34,6 +34,7 @@ set(SERVICE_SOURCES
     ../../components/service/network_manager.cpp
     ../../components/service/network_policy_manager.cpp
     ../../components/service/persistence_manager.cpp
+    ../../components/service/reporting_manager.cpp
     ../../components/service/scan_manager.cpp
     ../../components/service/service_runtime.cpp
     ../../components/service/hal_event_adapter.cpp

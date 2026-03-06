@@ -49,6 +49,21 @@ test/integration/     - integration host tests for web/platform shims
 test/target/          - target HAL tests for ESP32-C6
 ```
 
+## `/api/devices` Snapshot Contract
+
+`GET /api/devices` returns a consistent per-device snapshot. Each device object always includes:
+
+- `short_addr`, `online`, `power_on`
+- `reporting_state` (`unknown|interview_completed|binding_ready|reporting_configured|reporting_active|stale`)
+- `last_report_at`, `stale`
+- `temperature_c` (`number` or `null`)
+- `occupancy` (`unknown|not_occupied|occupied`)
+- `contact` object: `state`, `tamper`, `battery_low`
+- `battery` object: `percent`, `voltage_mv` (`number` or `null`)
+- `lqi` (`number` or `null`)
+- `rssi` (`number` or `null`)
+- `force_remove_armed`, `force_remove_ms_left`
+
 ## Requirements
 
 - ESP-IDF `v5.5.x` (`ARCHITECTURE.md` pins `v5.5.2`);

@@ -28,6 +28,48 @@ namespace {
 constexpr const char* kTag = LOG_TAG_WEB_DEVICE;
 constexpr uint32_t kDefaultForceRemoveTimeoutMs = 5000U;
 
+const char* reporting_state_to_string(core::CoreReportingState state) noexcept {
+    switch (state) {
+        case core::CoreReportingState::kInterviewCompleted:
+            return "interview_completed";
+        case core::CoreReportingState::kBindingReady:
+            return "binding_ready";
+        case core::CoreReportingState::kReportingConfigured:
+            return "reporting_configured";
+        case core::CoreReportingState::kReportingActive:
+            return "reporting_active";
+        case core::CoreReportingState::kStale:
+            return "stale";
+        case core::CoreReportingState::kUnknown:
+        default:
+            return "unknown";
+    }
+}
+
+const char* occupancy_state_to_string(core::CoreOccupancyState state) noexcept {
+    switch (state) {
+        case core::CoreOccupancyState::kNotOccupied:
+            return "not_occupied";
+        case core::CoreOccupancyState::kOccupied:
+            return "occupied";
+        case core::CoreOccupancyState::kUnknown:
+        default:
+            return "unknown";
+    }
+}
+
+const char* contact_state_to_string(core::CoreContactState state) noexcept {
+    switch (state) {
+        case core::CoreContactState::kClosed:
+            return "closed";
+        case core::CoreContactState::kOpen:
+            return "open";
+        case core::CoreContactState::kUnknown:
+        default:
+            return "unknown";
+    }
+}
+
 esp_err_t send_async_accept(httpd_req_t* req, uint32_t request_id, const char* operation) {
     if (req == nullptr || request_id == 0 || operation == nullptr) {
         return ESP_FAIL;
@@ -65,7 +107,7 @@ esp_err_t devices_get_handler(httpd_req_t* req) {
 
     (void)httpd_resp_set_type(req, "application/json");
 
-    char chunk[320]{};
+    char chunk[1024]{};
     int written = std::snprintf(
         chunk,
         sizeof(chunk),
@@ -90,15 +132,84 @@ esp_err_t devices_get_handler(httpd_req_t* req) {
 
         const uint32_t force_remove_ms_left = runtime_snapshot.force_remove_ms_left[i];
         const bool force_remove_armed = force_remove_ms_left > 0U;
+        const char* reporting_state = reporting_state_to_string(runtime_snapshot.reporting_state[i]);
+        const uint32_t last_report_at = runtime_snapshot.last_report_at_ms[i];
+        const bool stale = runtime_snapshot.stale[i];
+        const char* occupancy_state = occupancy_state_to_string(device.occupancy_state);
+        const char* contact_state = contact_state_to_string(device.contact_state);
+
+        char temperature_c_buf[24]{};
+        char battery_percent_buf[16]{};
+        char battery_voltage_buf[16]{};
+        char lqi_buf[16]{};
+        char rssi_buf[16]{};
+        const char* temperature_c = "null";
+        const char* battery_percent = "null";
+        const char* battery_voltage_mv = "null";
+        const char* lqi = "null";
+        const char* rssi = "null";
+        if (device.has_temperature) {
+            const int temp_written =
+                std::snprintf(temperature_c_buf, sizeof(temperature_c_buf), "%.2f", static_cast<double>(device.temperature_centi_c) / 100.0);
+            if (temp_written <= 0 || temp_written >= static_cast<int>(sizeof(temperature_c_buf))) {
+                return ESP_FAIL;
+            }
+            temperature_c = temperature_c_buf;
+        }
+        if (runtime_snapshot.has_battery[i]) {
+            const int battery_pct_written =
+                std::snprintf(battery_percent_buf, sizeof(battery_percent_buf), "%u", static_cast<unsigned>(runtime_snapshot.battery_percent[i]));
+            if (battery_pct_written <= 0 || battery_pct_written >= static_cast<int>(sizeof(battery_percent_buf))) {
+                return ESP_FAIL;
+            }
+            battery_percent = battery_percent_buf;
+        }
+        if (runtime_snapshot.has_battery_voltage[i]) {
+            const int battery_voltage_written =
+                std::snprintf(battery_voltage_buf, sizeof(battery_voltage_buf), "%u", static_cast<unsigned>(runtime_snapshot.battery_voltage_mv[i]));
+            if (battery_voltage_written <= 0 || battery_voltage_written >= static_cast<int>(sizeof(battery_voltage_buf))) {
+                return ESP_FAIL;
+            }
+            battery_voltage_mv = battery_voltage_buf;
+        }
+        if (runtime_snapshot.has_lqi[i]) {
+            const int lqi_written = std::snprintf(lqi_buf, sizeof(lqi_buf), "%u", static_cast<unsigned>(runtime_snapshot.lqi[i]));
+            if (lqi_written <= 0 || lqi_written >= static_cast<int>(sizeof(lqi_buf))) {
+                return ESP_FAIL;
+            }
+            lqi = lqi_buf;
+        }
+        if (runtime_snapshot.has_rssi[i]) {
+            const int rssi_written = std::snprintf(rssi_buf, sizeof(rssi_buf), "%d", static_cast<int>(runtime_snapshot.rssi_dbm[i]));
+            if (rssi_written <= 0 || rssi_written >= static_cast<int>(sizeof(rssi_buf))) {
+                return ESP_FAIL;
+            }
+            rssi = rssi_buf;
+        }
 
         written = std::snprintf(
             chunk,
             sizeof(chunk),
-            "%s{\"short_addr\":%u,\"online\":%s,\"power_on\":%s,\"force_remove_armed\":%s,\"force_remove_ms_left\":%lu}",
+            "%s{\"short_addr\":%u,\"online\":%s,\"power_on\":%s,\"reporting_state\":\"%s\",\"last_report_at\":%lu,\"stale\":%s,"
+            "\"temperature_c\":%s,\"occupancy\":\"%s\",\"contact\":{\"state\":\"%s\",\"tamper\":%s,\"battery_low\":%s},"
+            "\"battery\":{\"percent\":%s,\"voltage_mv\":%s},\"lqi\":%s,\"rssi\":%s,"
+            "\"force_remove_armed\":%s,\"force_remove_ms_left\":%lu}",
             first ? "" : ",",
             static_cast<unsigned>(device.short_addr),
             device.online ? "true" : "false",
             device.power_on ? "true" : "false",
+            reporting_state,
+            static_cast<unsigned long>(last_report_at),
+            stale ? "true" : "false",
+            temperature_c,
+            occupancy_state,
+            contact_state,
+            device.contact_tamper ? "true" : "false",
+            device.contact_battery_low ? "true" : "false",
+            battery_percent,
+            battery_voltage_mv,
+            lqi,
+            rssi,
             force_remove_armed ? "true" : "false",
             static_cast<unsigned long>(force_remove_ms_left));
         if (written <= 0 || written >= static_cast<int>(sizeof(chunk))) {
