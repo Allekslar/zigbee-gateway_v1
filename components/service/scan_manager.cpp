@@ -13,6 +13,8 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#else
+#include <thread>
 #endif
 
 namespace service {
@@ -33,6 +35,11 @@ constexpr const char* kTag = LOG_TAG_SERVICE_RUNTIME;
 
 ScanManager::SpinLockGuard::SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
     while (lock_.test_and_set(std::memory_order_acquire)) {
+#ifdef ESP_PLATFORM
+        taskYIELD();
+#else
+        std::this_thread::yield();
+#endif
     }
 }
 

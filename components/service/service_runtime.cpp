@@ -34,20 +34,10 @@ constexpr const char* kTag = LOG_TAG_SERVICE_RUNTIME;
 class SpinLockGuard {
 public:
     explicit SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
-#ifdef ESP_PLATFORM
-        uint32_t waited_ms = 0U;
-#endif
         while (lock_.test_and_set(std::memory_order_acquire)) {
 #ifdef ESP_PLATFORM
-            // Avoid starving a lower-priority task that currently owns the lock.
-            vTaskDelay(1);
-            ++waited_ms;
-            if (waited_ms >= kIngressLockForceUnlockMs) {
-                // Defensive recovery: a stale set lock bit must not stall service_runtime forever.
-                SR_LOGW("Ingress lock wait timeout, forcing unlock");
-                lock_.clear(std::memory_order_release);
-                waited_ms = 0U;
-            }
+            // Yield to let lock owner run; never force-clear a lock held by another context.
+            taskYIELD();
 #endif
         }
     }
@@ -58,9 +48,6 @@ public:
 
 private:
     std::atomic_flag& lock_;
-#ifdef ESP_PLATFORM
-    static constexpr uint32_t kIngressLockForceUnlockMs = 2000U;
-#endif
 };
 
 constexpr uint32_t kForceRemoveDefaultTimeoutMs = 5000U;

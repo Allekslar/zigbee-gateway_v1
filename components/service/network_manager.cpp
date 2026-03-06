@@ -5,6 +5,13 @@
 
 #include <cstring>
 
+#ifdef ESP_PLATFORM
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#else
+#include <thread>
+#endif
+
 #include "hal_nvs.h"
 #include "hal_wifi.h"
 #include "hal_zigbee.h"
@@ -14,6 +21,11 @@ namespace service {
 
 NetworkManager::SpinLockGuard::SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
     while (lock_.test_and_set(std::memory_order_acquire)) {
+#ifdef ESP_PLATFORM
+        taskYIELD();
+#else
+        std::this_thread::yield();
+#endif
     }
 }
 

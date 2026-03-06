@@ -3,12 +3,24 @@
 
 #include "command_manager.hpp"
 
+#ifdef ESP_PLATFORM
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#else
+#include <thread>
+#endif
+
 #include "service_runtime.hpp"
 
 namespace service {
 
 CommandManager::SpinLockGuard::SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
     while (lock_.test_and_set(std::memory_order_acquire)) {
+#ifdef ESP_PLATFORM
+        taskYIELD();
+#else
+        std::this_thread::yield();
+#endif
     }
 }
 
