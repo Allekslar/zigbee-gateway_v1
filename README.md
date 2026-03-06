@@ -125,6 +125,16 @@ MQTT config command ingress:
 - Bridge maps payload to `CoreCommandType::kUpdateReportingProfile` and submits via `ServiceRuntime`.
 - Input bounds are validated; repeated identical command is idempotent (no extra queued write).
 
+Matter endpoint mapping contract:
+
+- Device classes map to stable endpoints:
+  - `temperature -> 10`
+  - `occupancy -> 11`
+  - `contact -> 12`
+- Explicit per-device mapping overrides class default mapping.
+
+Implementation API: `components/matter_bridge/include/matter_endpoint_map.hpp`.
+
 ## Requirements
 
 - ESP-IDF `v5.5.x` (`ARCHITECTURE.md` pins `v5.5.2`);

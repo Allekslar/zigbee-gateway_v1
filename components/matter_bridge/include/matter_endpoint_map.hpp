@@ -8,6 +8,18 @@
 
 namespace matter_bridge {
 
+enum class MatterDeviceClass : uint8_t {
+    kUnknown = 0,
+    kTemperature = 1,
+    kOccupancy = 2,
+    kContact = 3,
+};
+
+// Stable endpoint mapping contract for sensor classes.
+constexpr uint16_t kMatterEndpointTemperature = 10U;
+constexpr uint16_t kMatterEndpointOccupancy = 11U;
+constexpr uint16_t kMatterEndpointContact = 12U;
+
 struct MatterEndpointMapEntry {
     uint16_t zigbee_short_addr{0};
     uint16_t matter_endpoint{0};
@@ -17,5 +29,13 @@ bool map_find_endpoint(const MatterEndpointMapEntry* map,
                        std::size_t size,
                        uint16_t zigbee_short_addr,
                        uint16_t* endpoint_out) noexcept;
+
+bool map_default_endpoint_for_class(MatterDeviceClass device_class, uint16_t* endpoint_out) noexcept;
+
+bool map_resolve_endpoint(const MatterEndpointMapEntry* map,
+                          std::size_t size,
+                          uint16_t zigbee_short_addr,
+                          MatterDeviceClass device_class,
+                          uint16_t* endpoint_out) noexcept;
 
 }  // namespace matter_bridge

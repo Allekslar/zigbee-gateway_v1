@@ -278,3 +278,13 @@ target_include_directories(test_mqtt_bridge_commands PRIVATE
 target_link_libraries(test_mqtt_bridge_commands PRIVATE service_host)
 zg_apply_component_compile_policy(test_mqtt_bridge_commands)
 add_test(NAME test_mqtt_bridge_commands COMMAND test_mqtt_bridge_commands)
+
+add_executable(test_matter_device_map
+    test_matter_device_map.cpp
+    ../../components/matter_bridge/matter_device_map.cpp
+)
+target_include_directories(test_matter_device_map PRIVATE
+    ../../components/matter_bridge/include
+)
+zg_apply_component_compile_policy(test_matter_device_map)
+add_test(NAME test_matter_device_map COMMAND test_matter_device_map)

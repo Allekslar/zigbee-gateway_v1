@@ -23,4 +23,42 @@ bool map_find_endpoint(const MatterEndpointMapEntry* map,
     return false;
 }
 
+bool map_default_endpoint_for_class(MatterDeviceClass device_class, uint16_t* endpoint_out) noexcept {
+    if (endpoint_out == nullptr) {
+        return false;
+    }
+
+    switch (device_class) {
+        case MatterDeviceClass::kTemperature:
+            *endpoint_out = kMatterEndpointTemperature;
+            return true;
+        case MatterDeviceClass::kOccupancy:
+            *endpoint_out = kMatterEndpointOccupancy;
+            return true;
+        case MatterDeviceClass::kContact:
+            *endpoint_out = kMatterEndpointContact;
+            return true;
+        case MatterDeviceClass::kUnknown:
+        default:
+            return false;
+    }
+}
+
+bool map_resolve_endpoint(const MatterEndpointMapEntry* map,
+                          std::size_t size,
+                          uint16_t zigbee_short_addr,
+                          MatterDeviceClass device_class,
+                          uint16_t* endpoint_out) noexcept {
+    if (endpoint_out == nullptr) {
+        return false;
+    }
+
+    // Explicit per-device mapping has priority over class default mapping.
+    if (map_find_endpoint(map, size, zigbee_short_addr, endpoint_out)) {
+        return true;
+    }
+
+    return map_default_endpoint_for_class(device_class, endpoint_out);
+}
+
 }  // namespace matter_bridge
