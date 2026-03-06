@@ -381,7 +381,7 @@ bool ReportingManager::normalize_occupancy_report(
         entry.occupancy_pending_valid = false;
     } else {
         // Hold-time: suppress quick occupied->clear transitions after recent motion.
-        if (!occupied_raw && entry.occupancy_stable && policy.hold_ms > 0U &&
+        if (!occupied_raw && policy.hold_ms > 0U &&
             !is_due(now_ms, entry.occupancy_hold_until_ms)) {
             return false;
         }

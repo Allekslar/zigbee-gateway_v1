@@ -153,13 +153,13 @@ ConnectivityAutoconnectResult ConnectivityManager::autoconnect_from_saved_creden
     next_autoconnect_attempt_ms_ = 0;
     runtime.stats_.current_backoff_ms = 0;
     mark_wifi_credentials_available();
-    const bool zigbee_started = ensure_zigbee_started(runtime);
+    const bool zigbee_started_ok = ensure_zigbee_started(runtime);
 #ifdef ESP_PLATFORM
     CM_LOGI(
         "Auto-connect: Wi-Fi connected, Zigbee %s",
-        zigbee_started ? "started" : "start failed");
+        zigbee_started_ok ? "started" : "start failed");
 #else
-    (void)zigbee_started;
+    (void)zigbee_started_ok;
 #endif
 
     return ConnectivityAutoconnectResult::kConnectStarted;

@@ -3,6 +3,7 @@
 
 #include "config_manager.hpp"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "hal_nvs.h"
@@ -266,13 +267,10 @@ bool ConfigManager::get_reporting_profile(const ReportingProfileKey& key, Report
 }
 
 std::size_t ConfigManager::reporting_profile_count() const noexcept {
-    std::size_t count = 0;
-    for (const ReportingProfile& profile : reporting_profiles_) {
-        if (profile.in_use) {
-            ++count;
-        }
-    }
-    return count;
+    return static_cast<std::size_t>(std::count_if(
+        reporting_profiles_.begin(),
+        reporting_profiles_.end(),
+        [](const ReportingProfile& profile) { return profile.in_use; }));
 }
 
 bool ConfigManager::set_reporting_policy_default(
@@ -554,12 +552,10 @@ void ConfigManager::load_current_values() noexcept {
 }
 
 bool ConfigManager::save_reporting_profiles() noexcept {
-    std::size_t used_count = 0;
-    for (const ReportingProfile& profile : reporting_profiles_) {
-        if (profile.in_use) {
-            ++used_count;
-        }
-    }
+    const std::size_t used_count = static_cast<std::size_t>(std::count_if(
+        reporting_profiles_.begin(),
+        reporting_profiles_.end(),
+        [](const ReportingProfile& profile) { return profile.in_use; }));
 
     std::size_t write_index = 0;
     for (const ReportingProfile& profile : reporting_profiles_) {
