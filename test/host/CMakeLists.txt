@@ -243,3 +243,18 @@ target_include_directories(test_mqtt_serializer PRIVATE
 )
 zg_apply_component_compile_policy(test_mqtt_serializer)
 add_test(NAME test_mqtt_serializer COMMAND test_mqtt_serializer)
+
+add_executable(test_mqtt_device_sync
+    test_mqtt_device_sync.cpp
+    ../../components/mqtt_bridge/mqtt_bridge.cpp
+    ../../components/mqtt_bridge/mqtt_device_sync.cpp
+    ../../components/mqtt_bridge/mqtt_topics.cpp
+    ../../components/mqtt_bridge/mqtt_serializer.cpp
+    ../../components/mqtt_bridge/mqtt_discovery.cpp
+)
+target_include_directories(test_mqtt_device_sync PRIVATE
+    ../../components/mqtt_bridge/include
+    ../../components/core/include
+)
+zg_apply_component_compile_policy(test_mqtt_device_sync)
+add_test(NAME test_mqtt_device_sync COMMAND test_mqtt_device_sync)

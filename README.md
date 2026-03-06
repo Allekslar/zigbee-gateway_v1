@@ -107,6 +107,14 @@ Telemetry payload serializer contract:
 
 Implementation API: `components/mqtt_bridge/include/mqtt_serializer.hpp`.
 
+Device sync publish behavior:
+
+- `MqttBridge::sync_snapshot(...)` publishes only relevant deltas.
+- New online device: publishes `availability=online` + `state` + `telemetry`.
+- Snapshot field change: publishes only changed topic (`state` or `telemetry`).
+- Device removed/offline: publishes `availability=offline`.
+- Publications can be drained via `MqttBridge::drain_publications(...)`.
+
 ## Requirements
 
 - ESP-IDF `v5.5.x` (`ARCHITECTURE.md` pins `v5.5.2`);
