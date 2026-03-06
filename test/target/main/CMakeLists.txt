@@ -8,6 +8,7 @@ idf_component_register(
         "test_main.c"
         "../test_hal_nvs.c"
         "../test_hal_zigbee.c"
+        "../test_reporting_faults.c"
         "../test_config_manager_runtime_policies.cpp"
         "../test_web_api_integration.cpp"
     INCLUDE_DIRS "."
