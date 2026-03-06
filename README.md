@@ -115,6 +115,16 @@ Device sync publish behavior:
 - Device removed/offline: publishes `availability=offline`.
 - Publications can be drained via `MqttBridge::drain_publications(...)`.
 
+MQTT config command ingress:
+
+- Topic: `zigbee-gateway/devices/<short_addr>/config`
+- Payload fields:
+  - `endpoint`, `cluster_id`
+  - `min_interval_seconds`, `max_interval_seconds`
+  - optional: `reportable_change`, `capability_flags`
+- Bridge maps payload to `CoreCommandType::kUpdateReportingProfile` and submits via `ServiceRuntime`.
+- Input bounds are validated; repeated identical command is idempotent (no extra queued write).
+
 ## Requirements
 
 - ESP-IDF `v5.5.x` (`ARCHITECTURE.md` pins `v5.5.2`);

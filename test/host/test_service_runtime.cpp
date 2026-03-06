@@ -150,5 +150,46 @@ int main() {
     }
     assert(telemetry_verified);
 
+    core::CoreCommand bad_reporting_cmd{};
+    bad_reporting_cmd.type = core::CoreCommandType::kUpdateReportingProfile;
+    bad_reporting_cmd.correlation_id = 300U;
+    bad_reporting_cmd.device_short_addr = 0x3301U;
+    bad_reporting_cmd.reporting_endpoint = 1U;
+    bad_reporting_cmd.reporting_cluster_id = 0x0402U;
+    bad_reporting_cmd.reporting_min_interval_seconds = 301U;
+    bad_reporting_cmd.reporting_max_interval_seconds = 300U;
+    assert(runtime.post_command(bad_reporting_cmd) == core::CoreError::kInvalidArgument);
+
+    core::CoreCommand reporting_cmd{};
+    reporting_cmd.type = core::CoreCommandType::kUpdateReportingProfile;
+    reporting_cmd.correlation_id = 301U;
+    reporting_cmd.device_short_addr = 0x3301U;
+    reporting_cmd.reporting_endpoint = 1U;
+    reporting_cmd.reporting_cluster_id = 0x0402U;
+    reporting_cmd.reporting_min_interval_seconds = 10U;
+    reporting_cmd.reporting_max_interval_seconds = 300U;
+    reporting_cmd.reporting_reportable_change = 25U;
+    reporting_cmd.reporting_capability_flags = 3U;
+    assert(runtime.post_command(reporting_cmd) == core::CoreError::kOk);
+
+    service::ConfigManager::ReportingProfileKey reporting_key{};
+    reporting_key.short_addr = 0x3301U;
+    reporting_key.endpoint = 1U;
+    reporting_key.cluster_id = 0x0402U;
+    service::ConfigManager::ReportingProfile reporting_before{};
+    assert(!runtime.config_manager().get_reporting_profile(reporting_key, &reporting_before));
+    (void)runtime.process_pending();
+    service::ConfigManager::ReportingProfile reporting_after{};
+    assert(runtime.config_manager().get_reporting_profile(reporting_key, &reporting_after));
+    assert(reporting_after.min_interval_seconds == 10U);
+    assert(reporting_after.max_interval_seconds == 300U);
+    assert(reporting_after.reportable_change == 25U);
+    assert(reporting_after.capability_flags == 3U);
+
+    // Idempotent command path: same profile is accepted and does not enqueue extra work.
+    reporting_cmd.correlation_id = 302U;
+    assert(runtime.post_command(reporting_cmd) == core::CoreError::kOk);
+    assert(runtime.process_pending() == 0U);
+
     return 0;
 }

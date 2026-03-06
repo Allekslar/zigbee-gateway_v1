@@ -211,6 +211,19 @@ bool decode_battery_voltage_mv(
     return true;
 }
 
+bool reporting_profile_equal(
+    const ConfigManager::ReportingProfile& lhs,
+    const ConfigManager::ReportingProfile& rhs) noexcept {
+    return lhs.in_use == rhs.in_use &&
+           lhs.key.short_addr == rhs.key.short_addr &&
+           lhs.key.endpoint == rhs.key.endpoint &&
+           lhs.key.cluster_id == rhs.key.cluster_id &&
+           lhs.min_interval_seconds == rhs.min_interval_seconds &&
+           lhs.max_interval_seconds == rhs.max_interval_seconds &&
+           lhs.reportable_change == rhs.reportable_change &&
+           lhs.capability_flags == rhs.capability_flags;
+}
+
 }  // namespace
 
 ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& effect_executor) noexcept
@@ -318,6 +331,44 @@ bool ServiceRuntime::take_network_result_locked(uint32_t request_id, NetworkResu
 }
 
 core::CoreError ServiceRuntime::post_command(const core::CoreCommand& command) noexcept {
+    if (command.type == core::CoreCommandType::kUpdateReportingProfile) {
+        if (command.correlation_id == core::kNoCorrelationId) {
+            return core::CoreError::kInvalidArgument;
+        }
+
+        if (command.device_short_addr == 0U ||
+            command.device_short_addr == core::kUnknownDeviceShortAddr ||
+            command.reporting_endpoint == 0U ||
+            command.reporting_cluster_id == 0U) {
+            return core::CoreError::kInvalidArgument;
+        }
+
+        if (command.reporting_max_interval_seconds == 0U ||
+            command.reporting_min_interval_seconds > command.reporting_max_interval_seconds) {
+            return core::CoreError::kInvalidArgument;
+        }
+
+        ConfigManager::ReportingProfile profile{};
+        profile.in_use = true;
+        profile.key.short_addr = command.device_short_addr;
+        profile.key.endpoint = command.reporting_endpoint;
+        profile.key.cluster_id = command.reporting_cluster_id;
+        profile.min_interval_seconds = command.reporting_min_interval_seconds;
+        profile.max_interval_seconds = command.reporting_max_interval_seconds;
+        profile.reportable_change = command.reporting_reportable_change;
+        profile.capability_flags = command.reporting_capability_flags;
+
+        ConfigManager::ReportingProfile existing{};
+        if (config_manager_.get_reporting_profile(profile.key, &existing) && reporting_profile_equal(existing, profile)) {
+            return core::CoreError::kOk;
+        }
+
+        if (!post_reporting_profile_write(profile)) {
+            return core::CoreError::kNoCapacity;
+        }
+        return core::CoreError::kOk;
+    }
+
     return command_manager_.post_command(*this, command);
 }
 

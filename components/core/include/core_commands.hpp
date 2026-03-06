@@ -16,6 +16,7 @@ enum class CoreCommandType : uint8_t {
     kUnknown = 0,
     kSetDevicePower,
     kRefreshNetwork,
+    kUpdateReportingProfile,
 };
 
 struct CoreCommand {
@@ -24,6 +25,12 @@ struct CoreCommand {
     uint16_t device_short_addr{kUnknownDeviceShortAddr};
     bool desired_power_on{false};
     uint32_t issued_at_ms{0};
+    uint8_t reporting_endpoint{0};
+    uint16_t reporting_cluster_id{0};
+    uint16_t reporting_min_interval_seconds{0};
+    uint16_t reporting_max_interval_seconds{0};
+    uint32_t reporting_reportable_change{0};
+    uint8_t reporting_capability_flags{0};
 };
 
 enum class CoreCommandResultType : uint8_t {

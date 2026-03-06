@@ -255,6 +255,26 @@ add_executable(test_mqtt_device_sync
 target_include_directories(test_mqtt_device_sync PRIVATE
     ../../components/mqtt_bridge/include
     ../../components/core/include
+    ../../components/service/include
+    ../../components/app_hal/include
+    ../../components/common/include
 )
+target_link_libraries(test_mqtt_device_sync PRIVATE service_host)
 zg_apply_component_compile_policy(test_mqtt_device_sync)
 add_test(NAME test_mqtt_device_sync COMMAND test_mqtt_device_sync)
+
+add_executable(test_mqtt_bridge_commands
+    test_mqtt_bridge_commands.cpp
+    ../../components/mqtt_bridge/mqtt_bridge.cpp
+    ../../components/mqtt_bridge/mqtt_discovery.cpp
+)
+target_include_directories(test_mqtt_bridge_commands PRIVATE
+    ../../components/mqtt_bridge/include
+    ../../components/service/include
+    ../../components/core/include
+    ../../components/app_hal/include
+    ../../components/common/include
+)
+target_link_libraries(test_mqtt_bridge_commands PRIVATE service_host)
+zg_apply_component_compile_policy(test_mqtt_bridge_commands)
+add_test(NAME test_mqtt_bridge_commands COMMAND test_mqtt_bridge_commands)
