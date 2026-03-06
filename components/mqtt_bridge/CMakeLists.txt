@@ -8,6 +8,7 @@ idf_component_register(
         "mqtt_bridge.cpp"
         "mqtt_discovery.cpp"
         "mqtt_device_sync.cpp"
+        "mqtt_topics.cpp"
     INCLUDE_DIRS "include"
     REQUIRES core service common
 )

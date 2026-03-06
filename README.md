@@ -81,6 +81,19 @@ Behavior:
 - invalid key/range payload is rejected with `400`;
 - accepted payload returns `{"accepted":true}` and is applied during runtime queue drain.
 
+## MQTT Topic Contract (Phase 2)
+
+Stable topic naming under root `zigbee-gateway`:
+
+- `zigbee-gateway/devices`
+- `zigbee-gateway/state`
+- `zigbee-gateway/devices/<short_addr>/state`
+- `zigbee-gateway/devices/<short_addr>/telemetry`
+- `zigbee-gateway/devices/<short_addr>/availability`
+- `zigbee-gateway/devices/<short_addr>/config`
+
+Implementation API: `components/mqtt_bridge/include/mqtt_topics.hpp`.
+
 ## Requirements
 
 - ESP-IDF `v5.5.x` (`ARCHITECTURE.md` pins `v5.5.2`);

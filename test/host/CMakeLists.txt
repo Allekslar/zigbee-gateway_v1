@@ -222,3 +222,13 @@ add_executable(test_service_reporting_semantics test_service_reporting_semantics
 target_link_libraries(test_service_reporting_semantics PRIVATE service_host)
 zg_apply_component_compile_policy(test_service_reporting_semantics)
 add_test(NAME test_service_reporting_semantics COMMAND test_service_reporting_semantics)
+
+add_executable(test_mqtt_topics
+    test_mqtt_topics.cpp
+    ../../components/mqtt_bridge/mqtt_topics.cpp
+)
+target_include_directories(test_mqtt_topics PRIVATE
+    ../../components/mqtt_bridge/include
+)
+zg_apply_component_compile_policy(test_mqtt_topics)
+add_test(NAME test_mqtt_topics COMMAND test_mqtt_topics)
