@@ -865,6 +865,11 @@ void ServiceRuntime::apply_managers(const core::CoreEvent& event) noexcept {
 
     (void)device_manager_.handle_event(event);
     (void)network_manager_.handle_event(event);
+    network_policy_manager_.maybe_request_auto_rejoin_window(
+        *this,
+        event.type,
+        event.device_short_addr,
+        monotonic_now_ms());
     stats_.network_refresh_requests = network_manager_.refresh_count();
     event_bus_.publish(event);
 }

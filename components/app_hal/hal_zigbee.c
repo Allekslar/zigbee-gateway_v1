@@ -57,7 +57,6 @@ static bool s_endpoint_registered = false;
 static TaskHandle_t s_stack_task_handle = NULL;
 static bool s_permit_join_open = false;
 static int64_t s_permit_join_deadline_us = 0;
-static int64_t s_auto_rejoin_next_open_us = 0;
 static portMUX_TYPE s_join_state_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_primary_channel_mask = (1UL << 13);
 static uint8_t s_max_children = 16U;
@@ -65,8 +64,6 @@ static const uint8_t kGatewayEndpoint = 1U;
 static const uint8_t kDefaultOnOffEndpoint = 1U;
 static const TickType_t kDeviceRemoveLockTimeout = pdMS_TO_TICKS(2000);
 static const int64_t kCommandBridgeEntryTtlUs = 60LL * 1000LL * 1000LL;
-static const uint8_t kAutoRejoinWindowSeconds = 60U;
-static const int64_t kAutoRejoinCooldownUs = 30LL * 1000LL * 1000LL;
 
 typedef struct {
     bool in_use;
@@ -93,7 +90,6 @@ static bool is_valid_short_addr(uint16_t short_addr) {
     return short_addr != 0xFFFFU && short_addr != 0x0000U;
 }
 
-static void maybe_open_auto_rejoin_window(const char* reason_tag);
 static uint16_t resolve_short_from_ieee(esp_zb_ieee_addr_t ieee_addr);
 
 static bool is_valid_ieee_addr(const esp_zb_ieee_addr_t ieee_addr) {
@@ -126,25 +122,6 @@ static bool find_known_device_by_ieee(
     for (size_t i = 0; i < kKnownDeviceIdentityCapacity; ++i) {
         if (!s_known_device_identities[i].in_use ||
             memcmp(s_known_device_identities[i].ieee_addr, ieee_addr, sizeof(esp_zb_ieee_addr_t)) != 0) {
-            continue;
-        }
-        *out_identity = s_known_device_identities[i];
-        found = true;
-        break;
-    }
-    portEXIT_CRITICAL(&s_known_device_identities_lock);
-    return found;
-}
-
-static bool find_known_device_by_short(uint16_t short_addr, known_device_identity_t* out_identity) {
-    if (!is_valid_short_addr(short_addr) || out_identity == NULL) {
-        return false;
-    }
-
-    bool found = false;
-    portENTER_CRITICAL(&s_known_device_identities_lock);
-    for (size_t i = 0; i < kKnownDeviceIdentityCapacity; ++i) {
-        if (!s_known_device_identities[i].in_use || s_known_device_identities[i].short_addr != short_addr) {
             continue;
         }
         *out_identity = s_known_device_identities[i];
@@ -354,34 +331,6 @@ static void zigbee_command_send_status_handler(esp_zb_zcl_command_send_status_me
         return;
     }
 
-    bool remap_retry_started = false;
-    if (bridge_entry.command_id == ESP_ZB_ZCL_CMD_ON_OFF_ON_ID ||
-        bridge_entry.command_id == ESP_ZB_ZCL_CMD_ON_OFF_OFF_ID) {
-        known_device_identity_t identity = {0};
-        if (find_known_device_by_short(bridge_entry.short_addr, &identity)) {
-            const uint16_t resolved_short = resolve_short_from_ieee(identity.ieee_addr);
-            if (is_valid_short_addr(resolved_short) && resolved_short != bridge_entry.short_addr) {
-                const bool desired_on = bridge_entry.command_id == ESP_ZB_ZCL_CMD_ON_OFF_ON_ID;
-                ESP_LOGW(
-                    kTag,
-                    "Retry on remapped short_addr old=0x%04x new=0x%04x correlation_id=%lu",
-                    (unsigned)bridge_entry.short_addr,
-                    (unsigned)resolved_short,
-                    (unsigned long)bridge_entry.correlation_id);
-                upsert_known_device_identity(identity.ieee_addr, resolved_short);
-                if (hal_zigbee_send_on_off(bridge_entry.correlation_id, resolved_short, desired_on) ==
-                    HAL_ZIGBEE_STATUS_OK) {
-                    remap_retry_started = true;
-                }
-            }
-        }
-    }
-
-    if (remap_retry_started) {
-        maybe_open_auto_rejoin_window("send_status_failed_remap_retry");
-        return;
-    }
-
     const hal_zigbee_result_t result = map_send_status_to_hal_result(message.status);
     ESP_LOGW(
         kTag,
@@ -391,7 +340,6 @@ static void zigbee_command_send_status_handler(esp_zb_zcl_command_send_status_me
         (unsigned long)bridge_entry.correlation_id,
         esp_err_to_name(message.status));
     hal_zigbee_notify_command_result(bridge_entry.correlation_id, result);
-    maybe_open_auto_rejoin_window("send_status_failed");
 }
 
 static esp_err_t zigbee_core_action_handler(esp_zb_core_action_callback_id_t callback_id, const void* message) {
@@ -440,37 +388,6 @@ static void set_join_window_state(bool open, uint8_t duration_seconds) {
         s_permit_join_deadline_us = 0;
     }
     portEXIT_CRITICAL(&s_join_state_lock);
-}
-
-static void maybe_open_auto_rejoin_window(const char* reason_tag) {
-    if (!s_stack_started || !esp_zb_is_started() || !s_network_formed) {
-        return;
-    }
-
-    const int64_t now_us = esp_timer_get_time();
-    if (now_us < s_auto_rejoin_next_open_us) {
-        return;
-    }
-
-    if (!esp_zb_lock_acquire(pdMS_TO_TICKS(200))) {
-        ESP_LOGW(kTag, "Auto-rejoin window skipped (%s): Zigbee lock timeout", reason_tag);
-        return;
-    }
-
-    const esp_err_t err = esp_zb_bdb_open_network(kAutoRejoinWindowSeconds);
-    esp_zb_lock_release();
-    if (err != ESP_OK) {
-        ESP_LOGW(kTag, "Auto-rejoin window open failed (%s): %s", reason_tag, esp_err_to_name(err));
-        return;
-    }
-
-    set_join_window_state(true, kAutoRejoinWindowSeconds);
-    s_auto_rejoin_next_open_us = now_us + kAutoRejoinCooldownUs;
-    ESP_LOGI(
-        kTag,
-        "Auto-opened rejoin window for %u seconds (%s)",
-        (unsigned)kAutoRejoinWindowSeconds,
-        reason_tag);
 }
 
 static void notify_join_with_source(uint16_t short_addr, const char* source_tag) {
@@ -729,7 +646,6 @@ static int start_zigbee_stack_if_needed(void) {
     }
 
     s_stack_started = true;
-    s_auto_rejoin_next_open_us = 0;
     ESP_LOGI(kTag, "Zigbee stack started in no-autostart mode");
     return 0;
 }
@@ -1499,7 +1415,6 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
                         (unsigned)params->short_addr);
                     // Keep device in snapshot. "Unavailable" can be transient and
                     // should not be treated as a definitive leave/removal.
-                    maybe_open_auto_rejoin_window("device_unavailable");
                 }
             }
             return;

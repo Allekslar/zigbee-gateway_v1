@@ -94,6 +94,35 @@ bool NetworkPolicyManager::request_join_window_open(
     return true;
 }
 
+void NetworkPolicyManager::maybe_request_auto_rejoin_window(
+    ServiceRuntime& runtime,
+    core::CoreEventType event_type,
+    uint16_t short_addr,
+    uint32_t now_ms) noexcept {
+    if (event_type != core::CoreEventType::kCommandResultFailed &&
+        event_type != core::CoreEventType::kCommandResultTimeout) {
+        return;
+    }
+
+    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0U) {
+        return;
+    }
+
+    if (auto_rejoin_next_open_ms_ != 0U && !is_deadline_reached(now_ms, auto_rejoin_next_open_ms_)) {
+        return;
+    }
+
+    uint16_t seconds_left = 0U;
+    if (runtime.get_join_window_status(&seconds_left) && seconds_left > 0U) {
+        auto_rejoin_next_open_ms_ = now_ms + kAutoRejoinCooldownMs;
+        return;
+    }
+
+    if (request_join_window_open(runtime, kAutoRejoinWindowSeconds, now_ms)) {
+        auto_rejoin_next_open_ms_ = now_ms + kAutoRejoinCooldownMs;
+    }
+}
+
 void NetworkPolicyManager::process_zigbee_join_window_policy(ServiceRuntime& runtime, uint32_t now_ms) noexcept {
     if (!runtime.connectivity_manager_.zigbee_started()) {
         runtime.set_join_window_cache(false, 0U);
