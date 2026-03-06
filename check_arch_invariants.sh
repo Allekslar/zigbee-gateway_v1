@@ -133,6 +133,34 @@ check_present() {
     fi
 }
 
+check_freertos_include_order() {
+    local rule_id="${1}"
+    local severity="${2}"
+    local search_path="${3}"
+    local message="${4}"
+    local matches_file="${TMP_DIR}/${rule_id}.txt"
+    : > "${matches_file}"
+
+    while IFS= read -r file; do
+        [[ -n "${file}" ]] || continue
+        local freertos_line task_line
+        freertos_line="$(grep -n '^[[:space:]]*#include[[:space:]]\+"freertos/FreeRTOS.h"' "${file}" | head -n1 | cut -d: -f1 || true)"
+        task_line="$(grep -n '^[[:space:]]*#include[[:space:]]\+"freertos/task.h"' "${file}" | head -n1 | cut -d: -f1 || true)"
+
+        [[ -n "${task_line}" ]] || continue
+        if [[ -z "${freertos_line}" || "${task_line}" -lt "${freertos_line}" ]]; then
+            {
+                printf '%s: include order invalid (FreeRTOS.h line=%s, task.h line=%s)\n' \
+                    "${file}" "${freertos_line:-missing}" "${task_line}"
+            } >> "${matches_file}"
+        fi
+    done < <(grep -E -l -r -- '^[[:space:]]*#include[[:space:]]+"freertos/task.h"' "${search_path}" 2>/dev/null || true)
+
+    if [[ -s "${matches_file}" ]]; then
+        report_violation "${rule_id}" "${severity}" "${search_path}" "${message}" "${matches_file}"
+    fi
+}
+
 run_checks() {
     print_banner "Running architecture invariants (blocking severities: ${BLOCKING_SEVERITIES})"
 
@@ -220,6 +248,25 @@ run_checks() {
     check_present "INV-M008" "medium" "components/service/service_runtime.cpp" \
         'process_zigbee_network_policy|request_join_window_open|maybe_auto_close_join_window_after_first_join' \
         "ServiceRuntime must own Zigbee formation/join policy flow"
+
+    check_absent "INV-M010" "medium" "components/app_hal/hal_zigbee.c" \
+        'kAutoRejoin|auto_rejoin|maybe_open_auto_rejoin_window|maybe_request_auto_rejoin_window' \
+        "HAL Zigbee must not contain auto-rejoin policy state/handlers"
+    check_present "INV-M010" "medium" "components/service/network_policy_manager.cpp" \
+        'maybe_request_auto_rejoin_window' \
+        "Service NetworkPolicyManager must own auto-rejoin policy"
+    check_present "INV-M010" "medium" "components/service/service_runtime.cpp" \
+        'maybe_request_auto_rejoin_window' \
+        "ServiceRuntime must trigger auto-rejoin policy via NetworkPolicyManager"
+
+    check_freertos_include_order "INV-M011" "medium" "components/service" \
+        "FreeRTOS include order must be FreeRTOS.h before task.h in Service"
+    check_freertos_include_order "INV-M011" "medium" "components/app_hal" \
+        "FreeRTOS include order must be FreeRTOS.h before task.h in HAL"
+
+    check_absent "INV-M012" "medium" "components/service" \
+        'vTaskDelay[[:space:]]*\([[:space:]]*1[[:space:]]*\)' \
+        "Service spinlock paths must not block via vTaskDelay(1); use taskYIELD/backoff-safe approach"
 
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \

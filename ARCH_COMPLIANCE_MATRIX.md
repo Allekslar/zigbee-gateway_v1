@@ -27,6 +27,9 @@ This file defines the architecture rules that are enforced by `check_arch_invari
 | `INV-M006` | Medium | `ARCHITECTURE.md` (HAL thin-wrapper + Service policy ownership) | `components/app_hal/hal_wifi.c`, `components/service/service_runtime.cpp` | Wi-Fi scan/connect mode policy must live in ServiceRuntime, not HAL Wi-Fi. |
 | `INV-M007` | Medium | `ARCHITECTURE.md` (snapshot consistency for read APIs) | `components/web_ui/web_handlers_device.cpp`, `components/service/service_runtime.*` | `/api/devices` must use ServiceRuntime-owned atomic devices API snapshot, not mixed registry/HAL reads. |
 | `INV-M008` | Medium | `ARCHITECTURE.md` (HAL thin-wrapper + Zigbee policy ownership) | `components/app_hal/hal_zigbee.c`, `components/service/service_runtime.cpp` | Zigbee formation/join policy state machine must live in ServiceRuntime, not HAL Zigbee. |
+| `INV-M010` | Medium | `ARCHITECTURE.md` (HAL thin-wrapper + Service policy ownership) | `components/app_hal/hal_zigbee.c`, `components/service/network_policy_manager.cpp`, `components/service/service_runtime.cpp` | Auto-rejoin policy markers must not exist in HAL; Service `NetworkPolicyManager` must own and trigger this policy. |
+| `INV-M011` | Medium | `CODING_GUIDELINES.md` (platform include hygiene) | `components/service`, `components/app_hal` | FreeRTOS include order must be `freertos/FreeRTOS.h` before `freertos/task.h`. |
+| `INV-M012` | Medium | `ARCHITECTURE.md` (single-writer/concurrency safety) | `components/service` | Service spinlock paths must not use `vTaskDelay(1)` busy waits. |
 | `INV-M009` | Medium | `ARCHITECTURE.md` + `README.md` (quality gates) | `.github/workflows/ci.yml` | CI must include blocking `reporting-regression` job that runs dedicated reporting lifecycle tests. |
 | `INV-L001` | Low | `CODING_GUIDELINES.md` (central log tags) | `components/common/include/log_tags.h` | Registry should contain runtime/HAL tags used by critical modules. |
 
