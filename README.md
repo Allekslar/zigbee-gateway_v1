@@ -135,6 +135,15 @@ Matter endpoint mapping contract:
 
 Implementation API: `components/matter_bridge/include/matter_endpoint_map.hpp`.
 
+Matter snapshot-to-attribute bridge contract:
+
+- `MatterBridge::set_endpoint_map(...)` installs a bounded endpoint mapping table.
+- `MatterBridge::sync_snapshot(const core::CoreState&)` translates active Core snapshot devices to Matter attribute updates.
+- `MatterBridge::drain_attribute_updates(...)` returns deterministic, bounded deltas for publishing.
+- Translation keeps Core domain types (`CoreState/CoreDeviceRecord`) and does not introduce Matter-specific types into Core.
+
+Implementation API: `components/matter_bridge/include/matter_bridge.hpp`.
+
 ## Requirements
 
 - ESP-IDF `v5.5.x` (`ARCHITECTURE.md` pins `v5.5.2`);

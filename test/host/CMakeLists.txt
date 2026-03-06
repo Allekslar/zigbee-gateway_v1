@@ -288,3 +288,15 @@ target_include_directories(test_matter_device_map PRIVATE
 )
 zg_apply_component_compile_policy(test_matter_device_map)
 add_test(NAME test_matter_device_map COMMAND test_matter_device_map)
+
+add_executable(test_matter_bridge
+    test_matter_bridge.cpp
+    ../../components/matter_bridge/matter_bridge.cpp
+    ../../components/matter_bridge/matter_device_map.cpp
+)
+target_include_directories(test_matter_bridge PRIVATE
+    ../../components/matter_bridge/include
+    ../../components/core/include
+)
+zg_apply_component_compile_policy(test_matter_bridge)
+add_test(NAME test_matter_bridge COMMAND test_matter_bridge)
