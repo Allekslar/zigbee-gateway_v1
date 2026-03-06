@@ -184,7 +184,7 @@ struct RuntimeFixture {
     service::ServiceRuntime runtime;
     web_ui::WebServer web_server;
 
-    RuntimeFixture() : runtime(registry, effect_executor), web_server(registry, runtime) {}
+    RuntimeFixture() : runtime(registry, effect_executor), web_server(runtime) {}
 };
 
 }  // namespace
