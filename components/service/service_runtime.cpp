@@ -219,6 +219,7 @@ ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& eff
     config_timeout_ms_cache_.store(config_manager_.command_timeout_ms(), std::memory_order_relaxed);
     config_max_retries_cache_.store(config_manager_.max_command_retries(), std::memory_order_relaxed);
     set_join_window_cache(false, 0U);
+    sync_api_snapshots();
 }
 
 void ServiceRuntime::set_join_window_cache(bool open, uint16_t seconds_left) noexcept {
@@ -703,7 +704,7 @@ bool ServiceRuntime::build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnaps
     return true;
 }
 
-bool ServiceRuntime::build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept {
+bool ServiceRuntime::capture_core_read_model(CoreReadModel* out) const noexcept {
     if (out == nullptr) {
         return false;
     }
@@ -713,13 +714,77 @@ bool ServiceRuntime::build_network_api_snapshot(NetworkApiSnapshot* out) const n
         return false;
     }
 
-    const RuntimeStats runtime_stats = stats();
     out->revision = snapshot.state->revision;
-    out->connected = snapshot.state->network_connected;
-    out->refresh_requests = runtime_stats.network_refresh_requests;
-    out->current_backoff_ms = runtime_stats.current_backoff_ms;
+    out->network_connected = snapshot.state->network_connected;
+    out->last_command_status = snapshot.state->last_command_status;
     registry_->release_snapshot(&snapshot);
     return true;
+}
+
+void ServiceRuntime::publish_network_api_snapshot(const CoreReadModel& core_snapshot) noexcept {
+    const uint32_t start_seq = network_api_snapshot_.seq.load(std::memory_order_relaxed);
+    network_api_snapshot_.seq.store(start_seq + 1U, std::memory_order_release);
+    network_api_snapshot_.revision.store(core_snapshot.revision, std::memory_order_relaxed);
+    network_api_snapshot_.connected.store(core_snapshot.network_connected, std::memory_order_relaxed);
+    network_api_snapshot_.refresh_requests.store(
+        stats_.network_refresh_requests.load(std::memory_order_relaxed),
+        std::memory_order_relaxed);
+    network_api_snapshot_.current_backoff_ms.store(
+        stats_.current_backoff_ms.load(std::memory_order_relaxed),
+        std::memory_order_relaxed);
+    network_api_snapshot_.seq.store(start_seq + 2U, std::memory_order_release);
+}
+
+void ServiceRuntime::publish_config_api_snapshot(const CoreReadModel& core_snapshot) noexcept {
+    const uint32_t start_seq = config_api_snapshot_.seq.load(std::memory_order_relaxed);
+    config_api_snapshot_.seq.store(start_seq + 1U, std::memory_order_release);
+    config_api_snapshot_.revision.store(core_snapshot.revision, std::memory_order_relaxed);
+    config_api_snapshot_.last_command_status.store(core_snapshot.last_command_status, std::memory_order_relaxed);
+    config_api_snapshot_.command_timeout_ms.store(
+        config_timeout_ms_cache_.load(std::memory_order_relaxed),
+        std::memory_order_relaxed);
+    config_api_snapshot_.max_command_retries.store(
+        config_max_retries_cache_.load(std::memory_order_relaxed),
+        std::memory_order_relaxed);
+    config_api_snapshot_.autoconnect_failures.store(
+        stats_.autoconnect_failures.load(std::memory_order_relaxed),
+        std::memory_order_relaxed);
+    config_api_snapshot_.seq.store(start_seq + 2U, std::memory_order_release);
+}
+
+void ServiceRuntime::sync_api_snapshots() noexcept {
+    CoreReadModel core_snapshot{};
+    if (!capture_core_read_model(&core_snapshot)) {
+        return;
+    }
+
+    publish_network_api_snapshot(core_snapshot);
+    publish_config_api_snapshot(core_snapshot);
+}
+
+bool ServiceRuntime::build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept {
+    if (out == nullptr) {
+        return false;
+    }
+
+    for (;;) {
+        const uint32_t start_seq = network_api_snapshot_.seq.load(std::memory_order_acquire);
+        if ((start_seq & 1U) != 0U) {
+            continue;
+        }
+
+        NetworkApiSnapshot snapshot{};
+        snapshot.revision = network_api_snapshot_.revision.load(std::memory_order_relaxed);
+        snapshot.connected = network_api_snapshot_.connected.load(std::memory_order_relaxed);
+        snapshot.refresh_requests = network_api_snapshot_.refresh_requests.load(std::memory_order_relaxed);
+        snapshot.current_backoff_ms = network_api_snapshot_.current_backoff_ms.load(std::memory_order_relaxed);
+
+        const uint32_t end_seq = network_api_snapshot_.seq.load(std::memory_order_acquire);
+        if (start_seq == end_seq) {
+            *out = snapshot;
+            return true;
+        }
+    }
 }
 
 bool ServiceRuntime::build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept {
@@ -727,20 +792,27 @@ bool ServiceRuntime::build_config_api_snapshot(ConfigApiSnapshot* out) const noe
         return false;
     }
 
-    core::CoreRegistry::SnapshotRef snapshot{};
-    if (!registry_->pin_current(&snapshot) || !snapshot.valid()) {
-        return false;
-    }
+    for (;;) {
+        const uint32_t start_seq = config_api_snapshot_.seq.load(std::memory_order_acquire);
+        if ((start_seq & 1U) != 0U) {
+            continue;
+        }
 
-    const ConfigSnapshot config = config_snapshot();
-    const RuntimeStats runtime_stats = stats();
-    out->revision = snapshot.state->revision;
-    out->last_command_status = snapshot.state->last_command_status;
-    out->command_timeout_ms = config.command_timeout_ms;
-    out->max_command_retries = config.max_command_retries;
-    out->autoconnect_failures = runtime_stats.autoconnect_failures;
-    registry_->release_snapshot(&snapshot);
-    return true;
+        ConfigApiSnapshot snapshot{};
+        snapshot.revision = config_api_snapshot_.revision.load(std::memory_order_relaxed);
+        snapshot.last_command_status = static_cast<uint8_t>(
+            config_api_snapshot_.last_command_status.load(std::memory_order_relaxed));
+        snapshot.command_timeout_ms = config_api_snapshot_.command_timeout_ms.load(std::memory_order_relaxed);
+        snapshot.max_command_retries = static_cast<uint8_t>(
+            config_api_snapshot_.max_command_retries.load(std::memory_order_relaxed));
+        snapshot.autoconnect_failures = config_api_snapshot_.autoconnect_failures.load(std::memory_order_relaxed);
+
+        const uint32_t end_seq = config_api_snapshot_.seq.load(std::memory_order_acquire);
+        if (start_seq == end_seq) {
+            *out = snapshot;
+            return true;
+        }
+    }
 }
 
 bool ServiceRuntime::get_force_remove_remaining_ms(
@@ -805,7 +877,9 @@ bool ServiceRuntime::start_provisioning_ap(const char* ssid, const char* passwor
 }
 
 ServiceRuntime::BootAutoconnectResult ServiceRuntime::autoconnect_from_saved_credentials() noexcept {
-    return connectivity_manager_.autoconnect_from_saved_credentials(*this);
+    const BootAutoconnectResult result = connectivity_manager_.autoconnect_from_saved_credentials(*this);
+    sync_api_snapshots();
+    return result;
 }
 
 bool ServiceRuntime::has_saved_wifi_credentials() noexcept {
@@ -931,6 +1005,7 @@ void ServiceRuntime::execute_effects(const core::CoreEffectList& effects) noexce
 
 std::size_t ServiceRuntime::process_pending() noexcept {
     std::size_t processed = 0;
+    bool overall_progress = false;
     for (;;) {
         if (processed >= kMaxProcessedEventsPerCycle) {
             break;
@@ -940,6 +1015,7 @@ std::size_t ServiceRuntime::process_pending() noexcept {
 
         const uint32_t dropped_ingress = dropped_ingress_events_.exchange(0, std::memory_order_acq_rel);
         (void)stats_.dropped_events.fetch_add(dropped_ingress, std::memory_order_relaxed);
+        overall_progress = overall_progress || (dropped_ingress != 0U);
 
         if (drain_nvs_writes()) {
             made_progress = true;
@@ -970,10 +1046,12 @@ std::size_t ServiceRuntime::process_pending() noexcept {
             if (!made_progress) {
                 break;
             }
+            overall_progress = true;
             continue;
         }
 
         ++processed;
+        overall_progress = true;
         (void)stats_.processed_events.fetch_add(1, std::memory_order_relaxed);
 
         apply_managers(event);
@@ -1012,6 +1090,10 @@ std::size_t ServiceRuntime::process_pending() noexcept {
         execute_effects(reduced.effects);
     }
 
+    if (overall_progress) {
+        sync_api_snapshots();
+    }
+
     return processed;
 }
 
@@ -1039,12 +1121,15 @@ std::size_t ServiceRuntime::tick(uint32_t now_ms) noexcept {
     queued += process_pending_sta_connect(now_ms);
     queued += process_force_remove_timeouts(now_ms);
 
-    if (!state().network_connected &&
+    CoreReadModel core_snapshot{};
+    const bool have_core_snapshot = capture_core_read_model(&core_snapshot);
+    if (have_core_snapshot && !core_snapshot.network_connected &&
         !network_policy_manager_.has_pending_sta_connect() &&
         connectivity_manager_.can_attempt_autoconnect(now_ms, kMaxAutoconnectRetries)) {
         (void)autoconnect_from_saved_credentials();
     }
 
+    sync_api_snapshots();
     return queued;
 }
 

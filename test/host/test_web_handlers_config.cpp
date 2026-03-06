@@ -6,6 +6,7 @@
 #include <cstring>
 #include <string>
 
+#include "core_events.hpp"
 #include "web_handler_common.hpp"
 
 std::string g_last_response;
@@ -68,11 +69,12 @@ int main() {
     }
     assert(runtime.stats().autoconnect_failures == 3);
 
-    
-    core::CoreState state = registry.snapshot_copy();
-    state.revision = 42;
-    state.last_command_status = 1; // Success
-    registry.publish(state);
+    core::CoreEvent ok_event{};
+    ok_event.type = core::CoreEventType::kCommandResultSuccess;
+    ok_event.correlation_id = 42U;
+    ok_event.value_u32 = current_time + 100U;
+    assert(runtime.post_event(ok_event));
+    assert(runtime.process_pending() == 1U);
 
     
     std::atomic<uint32_t> next_id{1};
@@ -97,7 +99,7 @@ int main() {
     
     printf("Response: %s\n", g_last_response.c_str());
 
-    assert(g_last_response.find("\"revision\":42") != std::string::npos);
+    assert(g_last_response.find("\"revision\":1") != std::string::npos);
     assert(g_last_response.find("\"last_command_status\":1") != std::string::npos);
     assert(g_last_response.find("\"autoconnect_failures\":3") != std::string::npos);
     assert(g_last_response.find("\"command_timeout_ms\":5000") != std::string::npos);

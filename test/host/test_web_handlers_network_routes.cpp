@@ -105,14 +105,14 @@ int main() {
     bad_req.user_ctx = nullptr;
     assert(web_ui::network_get_handler(&bad_req) == ESP_FAIL);
 
-    core::CoreState state = registry.snapshot_copy();
-    state.revision = 5U;
-    state.network_connected = true;
-    assert(registry.publish(state));
+    core::CoreEvent network_up{};
+    network_up.type = core::CoreEventType::kNetworkUp;
+    assert(runtime.post_event(network_up));
+    assert(runtime.process_pending() == 1U);
 
     clear_http_capture();
     assert(web_ui::network_get_handler(&req) == ESP_OK);
-    assert(g_last_response.find("\"revision\":5") != std::string::npos);
+    assert(g_last_response.find("\"revision\":1") != std::string::npos);
     assert(g_last_response.find("\"connected\":true") != std::string::npos);
     assert(g_last_response.find("\"refresh_requests\":0") != std::string::npos);
     assert(g_last_response.find("\"current_backoff_ms\":0") != std::string::npos);

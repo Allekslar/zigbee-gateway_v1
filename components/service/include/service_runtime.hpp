@@ -244,6 +244,34 @@ private:
         std::atomic<uint32_t> network_refresh_requests{0};
     };
 
+    struct NetworkApiSnapshotStorage {
+        std::atomic<uint32_t> seq{0};
+        std::atomic<uint32_t> revision{0};
+        std::atomic<bool> connected{false};
+        std::atomic<uint32_t> refresh_requests{0};
+        std::atomic<uint32_t> current_backoff_ms{0};
+    };
+
+    struct ConfigApiSnapshotStorage {
+        std::atomic<uint32_t> seq{0};
+        std::atomic<uint32_t> revision{0};
+        std::atomic<uint32_t> last_command_status{0};
+        std::atomic<uint32_t> command_timeout_ms{5000};
+        std::atomic<uint32_t> max_command_retries{1};
+        std::atomic<uint32_t> autoconnect_failures{0};
+    };
+
+    struct CoreReadModel {
+        uint32_t revision{0};
+        bool network_connected{false};
+        uint8_t last_command_status{0};
+    };
+
+    bool capture_core_read_model(CoreReadModel* out) const noexcept;
+    void publish_network_api_snapshot(const CoreReadModel& core_snapshot) noexcept;
+    void publish_config_api_snapshot(const CoreReadModel& core_snapshot) noexcept;
+    void sync_api_snapshots() noexcept;
+
     core::CoreRegistry* registry_{nullptr};
     EffectExecutor* effect_executor_{nullptr};
     ConfigManager config_manager_{};
@@ -275,6 +303,8 @@ private:
     std::atomic<uint32_t> dropped_ingress_events_{0};
 
     RuntimeStatsStorage stats_{};
+    NetworkApiSnapshotStorage network_api_snapshot_{};
+    ConfigApiSnapshotStorage config_api_snapshot_{};
     std::atomic<uint32_t> last_tick_ms_{0};
 #ifdef ESP_PLATFORM
     void* runtime_task_handle_{nullptr};
