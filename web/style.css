@@ -101,6 +101,52 @@ button.danger {
   font-size: 0.82rem;
 }
 
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  background: #f6f9fd;
+  color: var(--muted);
+}
+
+.chip-ok {
+  border-color: #93d4a8;
+  background: #edf9f1;
+  color: var(--ok);
+}
+
+.chip-warn {
+  border-color: #ffd3a8;
+  background: #fff4e8;
+  color: var(--warn);
+}
+
+.chip-error {
+  border-color: #efb0aa;
+  background: #fff0ef;
+  color: var(--error);
+}
+
+.telemetry-grid {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.telemetry-value {
+  font-size: 0.82rem;
+  line-height: 1.2;
+  color: var(--text);
+}
+
 button.joining {
   border-color: #0f7e3f;
   background: linear-gradient(90deg, #0f7e3f var(--join-progress, 0%), var(--accent) var(--join-progress, 0%));

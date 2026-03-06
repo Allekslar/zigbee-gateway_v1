@@ -93,7 +93,8 @@
 
   async function requestJson(url, options) {
     log("request:start", url, options && options.method ? options.method : "GET");
-    const response = await fetch(url, options);
+    const requestOptions = Object.assign({ cache: "no-store" }, options || {});
+    const response = await fetch(url, requestOptions);
     const text = await response.text();
     log("request:response", url, response.status, text);
     let payload = {};
@@ -116,10 +117,98 @@
     return payload;
   }
 
+  function formatTemperature(value) {
+    if (value === null || value === undefined) {
+      return "n/a";
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return "n/a";
+    }
+    return parsed.toFixed(2) + " °C";
+  }
+
+  function formatBattery(battery) {
+    if (!battery || (battery.percent === null || battery.percent === undefined) && (battery.voltage_mv === null || battery.voltage_mv === undefined)) {
+      return "n/a";
+    }
+    const parts = [];
+    if (battery.percent !== null && battery.percent !== undefined) {
+      parts.push(String(battery.percent) + "%");
+    }
+    if (battery.voltage_mv !== null && battery.voltage_mv !== undefined) {
+      parts.push(String(battery.voltage_mv) + " mV");
+    }
+    return parts.join(" / ");
+  }
+
+  function formatContact(contact) {
+    if (!contact) {
+      return "unknown";
+    }
+    let text = String(withDefault(contact.state, "unknown"));
+    if (contact.tamper) {
+      text += ", tamper";
+    }
+    if (contact.battery_low) {
+      text += ", battery_low";
+    }
+    return text;
+  }
+
+  function reportingStateClass(reportingState) {
+    switch (reportingState) {
+      case "reporting_active":
+        return "chip-ok";
+      case "stale":
+        return "chip-warn";
+      case "unknown":
+        return "chip-error";
+      default:
+        return "chip";
+    }
+  }
+
+  function sleep(ms) {
+    return new Promise(function (resolve) {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
+  function extractRequestId(payload) {
+    const requestId = Number(withDefault(payload && payload.request_id, payload && payload.correlation_id));
+    if (!Number.isFinite(requestId) || requestId <= 0) {
+      throw new Error("invalid_request_id");
+    }
+    return requestId;
+  }
+
+  async function pollNetworkResult(requestId, timeoutMs, pollIntervalMs, onPending) {
+    const startedAt = Date.now();
+    const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000;
+    const interval = Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 150;
+
+    while (Date.now() - startedAt <= timeout) {
+      const result = await requestJson(
+        "/api/network/result?request_id=" + String(requestId) + "&_ts=" + String(Date.now()),
+        { method: "GET" }
+      );
+      if (Boolean(result.ready)) {
+        return result;
+      }
+      if (typeof onPending === "function") {
+        onPending(result);
+      }
+      await sleep(interval);
+    }
+
+    throw new Error("operation_timeout");
+  }
+
   function renderDevices(data) {
     const devices = Array.isArray(data.devices) ? data.devices : [];
     if (devices.length === 0) {
-      ui.devicesBody.innerHTML = '<tr><td colspan="4">No devices</td></tr>';
+      ui.devicesBody.innerHTML = '<tr><td colspan="6">No devices</td></tr>';
       return;
     }
 
@@ -138,16 +227,51 @@
             "s left)</div>"
           : "";
         const removeDisabledAttr = forceRemoveArmed ? " disabled" : "";
+        const offline = !Boolean(device.online);
+        const stale = Boolean(device.stale);
+        const healthChips =
+          '<div class="chip-row">' +
+          '<span class="chip ' + (offline ? "chip-error" : "chip-ok") + '">' + (offline ? "offline" : "online") + "</span>" +
+          (stale ? '<span class="chip chip-warn">stale</span>' : "") +
+          "</div>";
+        const reportingState = String(withDefault(device.reporting_state, "unknown"));
+        const reportingClass = reportingStateClass(reportingState);
+        const reportingCell =
+          '<div class="chip-row"><span class="chip ' +
+          reportingClass +
+          '">' +
+          reportingState +
+          '</span><span class="chip">last=' +
+          String(withDefault(device.last_report_at, 0)) +
+          " ms</span></div>";
+        const telemetryCell =
+          '<div class="telemetry-grid">' +
+          '<div class="telemetry-value">T: ' + formatTemperature(device.temperature_c) + "</div>" +
+          '<div class="telemetry-value">Occ: ' + String(withDefault(device.occupancy, "unknown")) + "</div>" +
+          '<div class="telemetry-value">Contact: ' + formatContact(device.contact) + "</div>" +
+          '<div class="telemetry-value">Battery: ' + formatBattery(device.battery) + "</div>" +
+          '<div class="telemetry-value">LQI/RSSI: ' +
+          String(withDefault(device.lqi, "n/a")) +
+          " / " +
+          String(withDefault(device.rssi, "n/a")) +
+          "</div>" +
+          "</div>";
         return (
           "<tr>" +
           "<td>" +
           shortAddr +
           "</td>" +
           "<td>" +
-          (device.online ? "yes" : "no") +
+          healthChips +
           "</td>" +
           "<td>" +
           (powerOn ? "on" : "off") +
+          "</td>" +
+          "<td>" +
+          reportingCell +
+          "</td>" +
+          "<td>" +
+          telemetryCell +
           "</td>" +
           '<td><button class="secondary" data-device-toggle="' +
           shortAddr +
@@ -240,7 +364,9 @@
 
   async function loadCredentialsStatus() {
     log("loadCredentialsStatus");
-    const data = await requestJson("/api/network/credentials/status", { method: "GET" });
+    const accepted = await requestJson("/api/network/credentials/status", { method: "GET" });
+    const requestId = extractRequestId(accepted);
+    const data = await pollNetworkResult(requestId, 2000, 100);
     const saved = Boolean(data.saved);
     const hasPassword = Boolean(data.has_password);
     ui.wifiCredentialsStatus.textContent = saved
@@ -329,9 +455,28 @@
     log("scanNetworks:button-click");
     setStatus("Scanning Wi-Fi...", "warn");
     try {
-      const data = await requestJson("/api/network/scan", { method: "GET" });
+      const accepted = await requestJson("/api/network/scan", { method: "GET" });
+      const requestId = extractRequestId(accepted);
+      let scanQueuedShown = false;
+      let scanProgressShown = false;
+      const data = await pollNetworkResult(requestId, 15000, 200, function (pending) {
+        if (pending && pending.status === "scan_queued" && !scanQueuedShown) {
+          scanQueuedShown = true;
+          setStatus("Scanning Wi-Fi... (queued)", "warn");
+          return;
+        }
+        if (pending && pending.status === "scan_in_progress" && !scanProgressShown) {
+          scanProgressShown = true;
+          setStatus("Scanning Wi-Fi... (scan in progress)", "warn");
+        }
+      });
+      if (!Boolean(data.ok)) {
+        throw new Error(String(withDefault(data.error, "scan_failed")));
+      }
       renderScanResult(data);
-      const count = Number(withDefault(data.count, withDefault(data.scan_count, Array.isArray(data.networks) ? data.networks.length : 0)));
+      const count = Number(
+        withDefault(data.count, withDefault(data.scan_count, Array.isArray(data.networks) ? data.networks.length : 0))
+      );
       setStatus("Scan complete: " + String(Number.isFinite(count) ? count : 0) + " network(s)", "ok");
     } catch (error) {
       setStatus("Scan failed: " + error.message, "error");
@@ -358,7 +503,7 @@
 
     setStatus("Connecting to Wi-Fi...", "warn");
     try {
-      await requestJson("/api/network/connect", {
+      const accepted = await requestJson("/api/network/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -367,6 +512,11 @@
           save_credentials: saveCredentials,
         }),
       });
+      const requestId = extractRequestId(accepted);
+      const result = await pollNetworkResult(requestId, 15000, 200);
+      if (!Boolean(result.ok)) {
+        throw new Error(String(withDefault(result.error, "connect_failed")));
+      }
       setStatus("Wi-Fi connect request accepted", "ok");
       await loadNetwork();
       await loadCredentialsStatus();
@@ -405,7 +555,7 @@
       tableRow.remove();
     }
     if (!ui.devicesBody.querySelector("tr")) {
-      ui.devicesBody.innerHTML = '<tr><td colspan="4">No devices</td></tr>';
+      ui.devicesBody.innerHTML = '<tr><td colspan="6">No devices</td></tr>';
     }
   }
 
@@ -429,7 +579,7 @@
 
     setStatus("Removing device...", "warn");
     try {
-      const result = await requestJson("/api/devices/remove", {
+      const accepted = await requestJson("/api/devices/remove", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -438,6 +588,11 @@
           force_remove_timeout_ms: forceRemoveTimeoutMs,
         }),
       });
+      const requestId = extractRequestId(accepted);
+      const result = await pollNetworkResult(requestId, 8000, 200);
+      if (!Boolean(result.ok)) {
+        throw new Error(String(withDefault(result.error, "remove_failed")));
+      }
       if (result.force_remove) {
         setStatus(
           "Force remove armed, fallback timeout " +
@@ -473,11 +628,16 @@
     ui.deviceJoinBtn.disabled = true;
     setStatus("Starting join window...", "warn");
     try {
-      const result = await requestJson("/api/devices/join", {
+      const accepted = await requestJson("/api/devices/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ duration_seconds: durationSeconds }),
       });
+      const requestId = extractRequestId(accepted);
+      const result = await pollNetworkResult(requestId, 5000, 150);
+      if (!Boolean(result.ok)) {
+        throw new Error(String(withDefault(result.error, "join_failed")));
+      }
       const activeWindow = Number(withDefault(result.duration_seconds, durationSeconds));
       setStatus("Join window opened for " + String(activeWindow) + "s", "ok");
       await loadDevices();

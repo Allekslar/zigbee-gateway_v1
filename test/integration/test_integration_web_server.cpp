@@ -21,6 +21,7 @@ typedef int (*httpd_uri_match_fn_t)(const char* reference_uri, const char* uri_t
 typedef struct {
     httpd_uri_match_fn_t uri_match_fn;
     int max_uri_handlers;
+    int stack_size;
 } httpd_config_t;
 
 static int stub_uri_match_wildcard(const char* reference_uri, const char* uri_to_match, std::size_t match_upto) {
@@ -36,6 +37,7 @@ static httpd_config_t make_default_httpd_config() {
     httpd_config_t cfg{};
     cfg.uri_match_fn = nullptr;
     cfg.max_uri_handlers = 8;
+    cfg.stack_size = 4096;
     return cfg;
 }
 

@@ -117,6 +117,58 @@
     return payload;
   }
 
+  function formatTemperature(value) {
+    if (value === null || value === undefined) {
+      return "n/a";
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return "n/a";
+    }
+    return parsed.toFixed(2) + " °C";
+  }
+
+  function formatBattery(battery) {
+    if (!battery || (battery.percent === null || battery.percent === undefined) && (battery.voltage_mv === null || battery.voltage_mv === undefined)) {
+      return "n/a";
+    }
+    const parts = [];
+    if (battery.percent !== null && battery.percent !== undefined) {
+      parts.push(String(battery.percent) + "%");
+    }
+    if (battery.voltage_mv !== null && battery.voltage_mv !== undefined) {
+      parts.push(String(battery.voltage_mv) + " mV");
+    }
+    return parts.join(" / ");
+  }
+
+  function formatContact(contact) {
+    if (!contact) {
+      return "unknown";
+    }
+    let text = String(withDefault(contact.state, "unknown"));
+    if (contact.tamper) {
+      text += ", tamper";
+    }
+    if (contact.battery_low) {
+      text += ", battery_low";
+    }
+    return text;
+  }
+
+  function reportingStateClass(reportingState) {
+    switch (reportingState) {
+      case "reporting_active":
+        return "chip-ok";
+      case "stale":
+        return "chip-warn";
+      case "unknown":
+        return "chip-error";
+      default:
+        return "chip";
+    }
+  }
+
   function sleep(ms) {
     return new Promise(function (resolve) {
       window.setTimeout(resolve, ms);
@@ -156,7 +208,7 @@
   function renderDevices(data) {
     const devices = Array.isArray(data.devices) ? data.devices : [];
     if (devices.length === 0) {
-      ui.devicesBody.innerHTML = '<tr><td colspan="4">No devices</td></tr>';
+      ui.devicesBody.innerHTML = '<tr><td colspan="6">No devices</td></tr>';
       return;
     }
 
@@ -175,16 +227,51 @@
             "s left)</div>"
           : "";
         const removeDisabledAttr = forceRemoveArmed ? " disabled" : "";
+        const offline = !Boolean(device.online);
+        const stale = Boolean(device.stale);
+        const healthChips =
+          '<div class="chip-row">' +
+          '<span class="chip ' + (offline ? "chip-error" : "chip-ok") + '">' + (offline ? "offline" : "online") + "</span>" +
+          (stale ? '<span class="chip chip-warn">stale</span>' : "") +
+          "</div>";
+        const reportingState = String(withDefault(device.reporting_state, "unknown"));
+        const reportingClass = reportingStateClass(reportingState);
+        const reportingCell =
+          '<div class="chip-row"><span class="chip ' +
+          reportingClass +
+          '">' +
+          reportingState +
+          '</span><span class="chip">last=' +
+          String(withDefault(device.last_report_at, 0)) +
+          " ms</span></div>";
+        const telemetryCell =
+          '<div class="telemetry-grid">' +
+          '<div class="telemetry-value">T: ' + formatTemperature(device.temperature_c) + "</div>" +
+          '<div class="telemetry-value">Occ: ' + String(withDefault(device.occupancy, "unknown")) + "</div>" +
+          '<div class="telemetry-value">Contact: ' + formatContact(device.contact) + "</div>" +
+          '<div class="telemetry-value">Battery: ' + formatBattery(device.battery) + "</div>" +
+          '<div class="telemetry-value">LQI/RSSI: ' +
+          String(withDefault(device.lqi, "n/a")) +
+          " / " +
+          String(withDefault(device.rssi, "n/a")) +
+          "</div>" +
+          "</div>";
         return (
           "<tr>" +
           "<td>" +
           shortAddr +
           "</td>" +
           "<td>" +
-          (device.online ? "yes" : "no") +
+          healthChips +
           "</td>" +
           "<td>" +
           (powerOn ? "on" : "off") +
+          "</td>" +
+          "<td>" +
+          reportingCell +
+          "</td>" +
+          "<td>" +
+          telemetryCell +
           "</td>" +
           '<td><button class="secondary" data-device-toggle="' +
           shortAddr +
@@ -468,7 +555,7 @@
       tableRow.remove();
     }
     if (!ui.devicesBody.querySelector("tr")) {
-      ui.devicesBody.innerHTML = '<tr><td colspan="4">No devices</td></tr>';
+      ui.devicesBody.innerHTML = '<tr><td colspan="6">No devices</td></tr>';
     }
   }
 
