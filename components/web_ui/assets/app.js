@@ -15,6 +15,7 @@
   let statusToastTimer = null;
   let lastDevicesPayload = { devices: [], join_window_open: false, join_window_seconds_left: 0 };
   const pendingPowerCommands = new Map();
+  const optimisticPowerState = new Map();
   const pendingPowerFeedbackMs = 8000;
 
   const ui = {
@@ -193,6 +194,7 @@
     }
     if (Date.now() - pending.startedAt > pendingPowerFeedbackMs) {
       pendingPowerCommands.delete(shortAddr);
+      optimisticPowerState.delete(shortAddr);
       return null;
     }
     return pending;
@@ -212,12 +214,14 @@
       }
       if (Boolean(device.power_on) === pending.nextPower) {
         pendingPowerCommands.delete(shortAddr);
+        optimisticPowerState.delete(shortAddr);
       }
     });
 
     Array.from(pendingPowerCommands.keys()).forEach(function (shortAddr) {
       if (!activeShortAddrs.has(shortAddr)) {
         pendingPowerCommands.delete(shortAddr);
+        optimisticPowerState.delete(shortAddr);
       } else {
         getPendingPowerCommand(shortAddr);
       }
@@ -227,7 +231,7 @@
   function renderPowerButton(shortAddr, desiredPower, selectedPower, pending) {
     const isSelected = selectedPower === desiredPower;
     const isPending = Boolean(pending) && pending.nextPower === desiredPower;
-    const label = isPending ? (desiredPower ? "Turning On..." : "Turning Off...") : desiredPower ? "Turn On" : "Turn Off";
+    const label = desiredPower ? "Turn On" : "Turn Off";
     const classes = [
       "secondary",
       "device-power-btn",
@@ -285,6 +289,7 @@
     const devices = Array.isArray(data.devices) ? data.devices : [];
     if (devices.length === 0) {
       pendingPowerCommands.clear();
+      optimisticPowerState.clear();
       ui.devicesBody.innerHTML = '<tr><td colspan="6">No devices</td></tr>';
       return;
     }
@@ -294,7 +299,8 @@
         const shortAddr = Number(device.short_addr || 0);
         const powerOn = Boolean(device.power_on);
         const pendingPower = getPendingPowerCommand(shortAddr);
-        const selectedPower = pendingPower ? pendingPower.nextPower : powerOn;
+        const optimisticSelection = optimisticPowerState.get(shortAddr);
+        const selectedPower = optimisticSelection === undefined ? powerOn : optimisticSelection;
         const forceRemoveArmed = Boolean(device.force_remove_armed);
         const forceRemoveMsLeft = Number(withDefault(device.force_remove_ms_left, 0));
         const forceRemoveSecondsLeft = Math.max(0, Math.ceil(forceRemoveMsLeft / 1000));
@@ -611,6 +617,7 @@
 
   async function submitDevicePower(shortAddr, nextPower) {
     log("submitDevicePower", shortAddr, nextPower);
+    optimisticPowerState.set(shortAddr, Boolean(nextPower));
     pendingPowerCommands.set(shortAddr, {
       nextPower: Boolean(nextPower),
       startedAt: Date.now(),
@@ -631,6 +638,7 @@
       await loadConfig();
     } catch (error) {
       pendingPowerCommands.delete(shortAddr);
+      optimisticPowerState.delete(shortAddr);
       rerenderDevicesFromCache();
       setStatus("Device command failed: " + error.message, "error");
     }
