@@ -331,6 +331,13 @@ run_checks() {
         'class[[:space:]]+ServiceRuntimeApi' \
         "service facade header must define ServiceRuntimeApi"
 
+    check_absent "INV-M020" "medium" "components/service/include/service_runtime.hpp" \
+        'SERVICE_RUNTIME_TEST_HOOKS|pop_scan_worker_request_for_test|set_scan_request_in_progress_for_test|clear_scan_request_in_progress_for_test|push_network_result_for_test|monotonic_now_ms_for_test' \
+        "production ServiceRuntime header must not expose macro-gated runtime test hooks"
+    check_present "INV-M020" "medium" "components/service/include/service_runtime_test_access.hpp" \
+        'class[[:space:]]+ServiceRuntimeTestAccess' \
+        "test-only runtime access header must define ServiceRuntimeTestAccess facade"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

@@ -9,6 +9,7 @@
 #include "hal_nvs.h"
 #include "hal_zigbee.h"
 #include "service_runtime.hpp"
+#include "service_runtime_test_access.hpp"
 
 int main() {
     assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
@@ -29,7 +30,7 @@ int main() {
     assert(runtime.zigbee_started());
     assert(!hal_zigbee_is_network_formed());
 
-    const uint32_t base_ms = runtime.monotonic_now_ms_for_test();
+    const uint32_t base_ms = service::ServiceRuntimeTestAccess::monotonic_now_ms(runtime);
     runtime.tick(base_ms + 1000U);
     assert(hal_zigbee_is_network_formed());
 

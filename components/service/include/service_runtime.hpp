@@ -26,6 +26,8 @@
 
 namespace service {
 
+class ServiceRuntimeTestAccess;
+
 // External app/web/bridge code should depend on ServiceRuntimeApi. This concrete
 // runtime stays visible for bootstrap, internal managers, and tests.
 class ServiceRuntime : public ServiceRuntimeApi {
@@ -114,6 +116,10 @@ public:
 
     std::size_t pending_events() const noexcept;
     std::size_t pending_commands() const noexcept;
+    std::size_t process_pending() noexcept;
+    std::size_t tick(uint32_t now_ms) noexcept;
+
+    ConfigManager& config_manager() noexcept;
 
 private:
     friend class CommandManager;
@@ -122,22 +128,7 @@ private:
     friend class NetworkPolicyManager;
     friend class PersistenceManager;
     friend class ScanManager;
-#if defined(SERVICE_RUNTIME_TEST_HOOKS)
-public:
-#else
-private:
-#endif
-    std::size_t process_pending() noexcept;
-    std::size_t tick(uint32_t now_ms) noexcept;
-
-    ConfigManager& config_manager() noexcept;
-#if defined(SERVICE_RUNTIME_TEST_HOOKS)
-    bool pop_scan_worker_request_for_test(uint32_t* request_id) noexcept;
-    void set_scan_request_in_progress_for_test(uint32_t request_id) noexcept;
-    void clear_scan_request_in_progress_for_test() noexcept;
-    bool push_network_result_for_test(const NetworkResult& result) noexcept;
-    uint32_t monotonic_now_ms_for_test() const noexcept;
-#endif
+    friend class ServiceRuntimeTestAccess;
 
 private:
 #ifdef ESP_PLATFORM

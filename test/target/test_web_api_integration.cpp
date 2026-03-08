@@ -14,6 +14,7 @@
 #include "hal_wifi.h"
 #include "hal_zigbee.h"
 #include "service_runtime.hpp"
+#include "service_runtime_test_access.hpp"
 #include "unity.h"
 #include "web_server.hpp"
 
@@ -587,11 +588,12 @@ extern "C" void test_web_api_network_scan_result_status_transitions(void) {
     }
 
     (void)runtime.process_pending();
-    if (!runtime.pop_scan_worker_request_for_test(&scan_worker_request_id) || scan_worker_request_id != request_id) {
+    if (!service::ServiceRuntimeTestAccess::pop_scan_worker_request(runtime, &scan_worker_request_id) ||
+        scan_worker_request_id != request_id) {
         failure = "failed to pop scan worker request in test hook";
         goto cleanup;
     }
-    runtime.set_scan_request_in_progress_for_test(request_id);
+    service::ServiceRuntimeTestAccess::set_scan_request_in_progress(runtime, request_id);
 
     if (!http_request_with_retry(url, HTTP_METHOD_GET, nullptr, response, sizeof(response), &status_code)) {
         failure = "GET /api/network/result (in_progress) failed";
@@ -606,8 +608,8 @@ extern "C" void test_web_api_network_scan_result_status_transitions(void) {
     ready.operation = service::ServiceRuntime::NetworkOperationType::kScan;
     ready.status = service::ServiceRuntime::NetworkOperationStatus::kOk;
     ready.scan_count = 0U;
-    runtime.clear_scan_request_in_progress_for_test();
-    if (!runtime.push_network_result_for_test(ready)) {
+    service::ServiceRuntimeTestAccess::clear_scan_request_in_progress(runtime);
+    if (!service::ServiceRuntimeTestAccess::push_network_result(runtime, ready)) {
         failure = "failed to queue ready network result via test hook";
         goto cleanup;
     }
@@ -687,11 +689,12 @@ extern "C" void test_web_api_network_scan_result_failure_transition(void) {
     }
 
     (void)runtime.process_pending();
-    if (!runtime.pop_scan_worker_request_for_test(&scan_worker_request_id) || scan_worker_request_id != request_id) {
+    if (!service::ServiceRuntimeTestAccess::pop_scan_worker_request(runtime, &scan_worker_request_id) ||
+        scan_worker_request_id != request_id) {
         failure = "failed to pop scan worker request in test hook";
         goto cleanup;
     }
-    runtime.set_scan_request_in_progress_for_test(request_id);
+    service::ServiceRuntimeTestAccess::set_scan_request_in_progress(runtime, request_id);
 
     if (!http_request_with_retry(url, HTTP_METHOD_GET, nullptr, response, sizeof(response), &status_code)) {
         failure = "GET /api/network/result (in_progress) failed";
@@ -705,8 +708,8 @@ extern "C" void test_web_api_network_scan_result_failure_transition(void) {
     failed.request_id = request_id;
     failed.operation = service::ServiceRuntime::NetworkOperationType::kScan;
     failed.status = service::ServiceRuntime::NetworkOperationStatus::kHalFailed;
-    runtime.clear_scan_request_in_progress_for_test();
-    if (!runtime.push_network_result_for_test(failed)) {
+    service::ServiceRuntimeTestAccess::clear_scan_request_in_progress(runtime);
+    if (!service::ServiceRuntimeTestAccess::push_network_result(runtime, failed)) {
         failure = "failed to queue failed network result via test hook";
         goto cleanup;
     }

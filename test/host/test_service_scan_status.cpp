@@ -7,6 +7,7 @@
 #include "core_registry.hpp"
 #include "effect_executor.hpp"
 #include "service_runtime.hpp"
+#include "service_runtime_test_access.hpp"
 
 int main() {
     core::CoreRegistry registry;
@@ -18,9 +19,9 @@ int main() {
     assert(runtime.is_scan_request_queued(request_id));
     assert(!runtime.is_scan_request_in_progress(request_id));
 
-    runtime.set_scan_request_in_progress_for_test(request_id);
+    service::ServiceRuntimeTestAccess::set_scan_request_in_progress(runtime, request_id);
     assert(runtime.is_scan_request_in_progress(request_id));
-    runtime.clear_scan_request_in_progress_for_test();
+    service::ServiceRuntimeTestAccess::clear_scan_request_in_progress(runtime);
     assert(!runtime.is_scan_request_in_progress(request_id));
 
     // Host path processes scan synchronously in process_pending().
@@ -34,15 +35,15 @@ int main() {
     assert(!runtime.is_scan_request_queued(request_id));
 
     const uint32_t failed_request_id = 7002U;
-    runtime.set_scan_request_in_progress_for_test(failed_request_id);
+    service::ServiceRuntimeTestAccess::set_scan_request_in_progress(runtime, failed_request_id);
     assert(runtime.is_scan_request_in_progress(failed_request_id));
 
     service::ServiceRuntime::NetworkResult failed{};
     failed.request_id = failed_request_id;
     failed.operation = service::ServiceRuntime::NetworkOperationType::kScan;
     failed.status = service::ServiceRuntime::NetworkOperationStatus::kHalFailed;
-    runtime.clear_scan_request_in_progress_for_test();
-    assert(runtime.push_network_result_for_test(failed));
+    service::ServiceRuntimeTestAccess::clear_scan_request_in_progress(runtime);
+    assert(service::ServiceRuntimeTestAccess::push_network_result(runtime, failed));
 
     service::ServiceRuntime::NetworkResult failed_out{};
     assert(runtime.take_network_result(failed_request_id, &failed_out));

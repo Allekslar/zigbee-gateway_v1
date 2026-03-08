@@ -917,28 +917,6 @@ bool ServiceRuntime::is_scan_request_in_progress(uint32_t request_id) const noex
     return scan_manager_.is_request_in_progress(request_id);
 }
 
-#if defined(SERVICE_RUNTIME_TEST_HOOKS)
-bool ServiceRuntime::pop_scan_worker_request_for_test(uint32_t* request_id) noexcept {
-    return scan_manager_.pop_request_for_test(request_id);
-}
-
-void ServiceRuntime::set_scan_request_in_progress_for_test(uint32_t request_id) noexcept {
-    scan_manager_.set_request_in_progress_for_test(request_id);
-}
-
-void ServiceRuntime::clear_scan_request_in_progress_for_test() noexcept {
-    scan_manager_.clear_request_in_progress_for_test();
-}
-
-bool ServiceRuntime::push_network_result_for_test(const NetworkResult& result) noexcept {
-    return queue_network_result(result);
-}
-
-uint32_t ServiceRuntime::monotonic_now_ms_for_test() const noexcept {
-    return monotonic_now_ms();
-}
-#endif
-
 bool ServiceRuntime::initialize_hal_adapter() noexcept {
     if (!init_hal_event_adapter(*this)) {
         return false;
