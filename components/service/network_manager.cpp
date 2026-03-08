@@ -132,8 +132,6 @@ bool NetworkManager::handle_request(
             return handle_connect(runtime, request, result, queue_result);
         case NetworkOperationType::kCredentialsStatus:
             return handle_credentials_status(request, result);
-        case NetworkOperationType::kCredentialsRawDebug:
-            return handle_credentials_raw_debug(request, result);
         case NetworkOperationType::kOpenJoinWindow:
             return handle_open_join_window(runtime, request, result);
         case NetworkOperationType::kRemoveDevice:
@@ -252,28 +250,6 @@ bool NetworkManager::handle_credentials_status(const NetworkRequest& request, Ne
     if (result->saved) {
         std::strncpy(result->ssid, ssid, sizeof(result->ssid) - 1U);
     }
-    return true;
-}
-
-bool NetworkManager::handle_credentials_raw_debug(const NetworkRequest& request, NetworkResult* result) noexcept {
-    (void)request;
-    char ssid[33]{};
-    char password[65]{};
-    const bool ssid_ok = hal_nvs_get_str("wifi_ssid", ssid, sizeof(ssid)) == HAL_NVS_STATUS_OK;
-    const bool password_ok = hal_nvs_get_str("wifi_password", password, sizeof(password)) == HAL_NVS_STATUS_OK;
-
-    result->debug_ssid_present = ssid_ok && ssid[0] != '\0';
-    result->debug_password_present = password_ok && password[0] != '\0';
-    result->debug_ssid_len = static_cast<uint8_t>(strnlen(ssid, sizeof(ssid)));
-    result->debug_password_len = static_cast<uint8_t>(strnlen(password, sizeof(password)));
-
-    if (result->debug_ssid_present) {
-        std::strncpy(result->debug_ssid, ssid, sizeof(result->debug_ssid) - 1U);
-        std::strncpy(result->ssid, ssid, sizeof(result->ssid) - 1U);
-    }
-
-    result->saved = result->debug_ssid_present;
-    result->has_password = result->debug_password_present;
     return true;
 }
 

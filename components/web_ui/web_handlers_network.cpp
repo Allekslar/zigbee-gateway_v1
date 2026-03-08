@@ -29,12 +29,6 @@ namespace {
 
 constexpr const char* kTag = LOG_TAG_WEB_NETWORK;
 
-#if defined(CONFIG_COMPILER_OPTIMIZATION_DEBUG) && CONFIG_COMPILER_OPTIMIZATION_DEBUG
-#define WEB_NETWORK_RAW_DEBUG_ENABLED 1
-#else
-#define WEB_NETWORK_RAW_DEBUG_ENABLED 0
-#endif
-
 const char* operation_to_string(service::ServiceRuntime::NetworkOperationType operation) {
     using Op = service::ServiceRuntime::NetworkOperationType;
     switch (operation) {
@@ -46,8 +40,6 @@ const char* operation_to_string(service::ServiceRuntime::NetworkOperationType op
             return "credentials_status";
         case Op::kOpenJoinWindow:
             return "open_join_window";
-        case Op::kCredentialsRawDebug:
-            return "credentials_raw_debug";
         case Op::kRemoveDevice:
             return "remove_device";
         case Op::kUnknown:
@@ -80,8 +72,6 @@ const char* operation_error_token(
             return "credentials_failed";
         case Op::kOpenJoinWindow:
             return "join_failed";
-        case Op::kCredentialsRawDebug:
-            return "credentials_raw_debug_failed";
         case Op::kRemoveDevice:
             return "remove_failed";
         case Op::kUnknown:
@@ -252,46 +242,6 @@ esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::N
                 "\"saved\":%s,\"has_password\":%s}",
                 "false",
                 result.has_password ? "true" : "false");
-        }
-        if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
-            return ESP_FAIL;
-        }
-        (void)httpd_resp_set_type(req, "application/json");
-        return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
-    }
-
-    if (result.operation == service::ServiceRuntime::NetworkOperationType::kCredentialsRawDebug) {
-        char escaped_ssid[96]{};
-        if (result.debug_ssid_present &&
-            !escape_json_string(result.debug_ssid, escaped_ssid, sizeof(escaped_ssid))) {
-            return ESP_FAIL;
-        }
-
-        char response[352]{};
-        int written = 0;
-        if (result.debug_ssid_present) {
-            written = std::snprintf(
-                response,
-                sizeof(response),
-                "{\"ready\":true,\"ok\":true,\"operation\":\"credentials_raw_debug\","
-                "\"ssid_present\":%s,\"ssid_len\":%u,\"ssid\":\"%s\","
-                "\"password_present\":%s,\"password_len\":%u}",
-                "true",
-                static_cast<unsigned>(result.debug_ssid_len),
-                escaped_ssid,
-                result.debug_password_present ? "true" : "false",
-                static_cast<unsigned>(result.debug_password_len));
-        } else {
-            written = std::snprintf(
-                response,
-                sizeof(response),
-                "{\"ready\":true,\"ok\":true,\"operation\":\"credentials_raw_debug\","
-                "\"ssid_present\":%s,\"ssid_len\":%u,"
-                "\"password_present\":%s,\"password_len\":%u}",
-                "false",
-                static_cast<unsigned>(result.debug_ssid_len),
-                result.debug_password_present ? "true" : "false",
-                static_cast<unsigned>(result.debug_password_len));
         }
         if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
             return ESP_FAIL;
@@ -484,23 +434,6 @@ esp_err_t network_credentials_status_get_handler(httpd_req_t* req) {
     return send_async_accept(req, request_id, "credentials_status");
 }
 
-#if WEB_NETWORK_RAW_DEBUG_ENABLED
-esp_err_t network_credentials_raw_debug_get_handler(httpd_req_t* req) {
-    if (req == nullptr || req->user_ctx == nullptr) {
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(kTag, "HTTP GET /api/network/credentials/raw-debug");
-
-    auto* context = static_cast<WebRouteContext*>(req->user_ctx);
-    const uint32_t request_id = allocate_correlation_id(context);
-    if (!context->runtime->post_network_credentials_raw_debug(request_id)) {
-        return send_json_error(req, "503 Service Unavailable", "credentials_raw_debug_queue_full");
-    }
-    return send_async_accept(req, request_id, "credentials_raw_debug");
-}
-#endif
-
 esp_err_t network_connect_post_handler(httpd_req_t* req) {
     if (req == nullptr || req->user_ctx == nullptr) {
         return ESP_FAIL;
@@ -617,14 +550,6 @@ bool register_network_routes(void* server_handle, WebRouteContext* context) noex
     credentials_status_get_uri.handler = network_credentials_status_get_handler;
     credentials_status_get_uri.user_ctx = context;
 
-#if WEB_NETWORK_RAW_DEBUG_ENABLED
-    httpd_uri_t credentials_raw_debug_get_uri{};
-    credentials_raw_debug_get_uri.uri = "/api/network/credentials/raw-debug";
-    credentials_raw_debug_get_uri.method = HTTP_GET;
-    credentials_raw_debug_get_uri.handler = network_credentials_raw_debug_get_handler;
-    credentials_raw_debug_get_uri.user_ctx = context;
-#endif
-
     httpd_uri_t connect_post_uri{};
     connect_post_uri.uri = "/api/network/connect";
     connect_post_uri.method = HTTP_POST;
@@ -651,12 +576,6 @@ bool register_network_routes(void* server_handle, WebRouteContext* context) noex
     if (httpd_register_uri_handler(handle, &credentials_status_get_uri) != ESP_OK) {
         return false;
     }
-
-#if WEB_NETWORK_RAW_DEBUG_ENABLED
-    if (httpd_register_uri_handler(handle, &credentials_raw_debug_get_uri) != ESP_OK) {
-        return false;
-    }
-#endif
 
     if (httpd_register_uri_handler(handle, &connect_post_uri) != ESP_OK) {
         return false;

@@ -126,7 +126,6 @@ public:
         const char* password,
         bool save_credentials) noexcept;
     bool post_network_credentials_status(uint32_t request_id) noexcept;
-    bool post_network_credentials_raw_debug(uint32_t request_id) noexcept;
     bool post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept;
     bool post_zigbee_join_candidate(uint16_t short_addr) noexcept;
     bool post_zigbee_interview_result(

@@ -515,17 +515,6 @@ bool ServiceRuntime::post_network_credentials_status(uint32_t request_id) noexce
     return network_manager_.enqueue_request(*this, request);
 }
 
-bool ServiceRuntime::post_network_credentials_raw_debug(uint32_t request_id) noexcept {
-    if (request_id == 0) {
-        return false;
-    }
-
-    NetworkRequest request{};
-    request.request_id = request_id;
-    request.operation = NetworkOperationType::kCredentialsRawDebug;
-    return network_manager_.enqueue_request(*this, request);
-}
-
 bool ServiceRuntime::post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept {
     if (request_id == 0 || duration_seconds == 0U) {
         return false;

@@ -311,6 +311,16 @@ run_checks() {
         'kDiagTarget|DIAG target|should_suppress_on_off_for_diag_target|Suppress On/Off short_addr=.*age_ms' \
         "HAL Zigbee must not contain hardcoded target-device diagnostics or per-device suppression logic"
 
+    check_absent "INV-M018" "medium" "components/service/include/network_manager.hpp" \
+        'kCredentialsRawDebug|debug_ssid|debug_password|handle_credentials_raw_debug' \
+        "production network service DTO contract must not contain raw credential debug fields or operations"
+    check_absent "INV-M018" "medium" "components/service/include/service_runtime.hpp" \
+        'post_network_credentials_raw_debug' \
+        "ServiceRuntime public API must not expose raw credential debug requests"
+    check_absent "INV-M018" "medium" "components/web_ui/web_handlers_network.cpp" \
+        'credentials_raw_debug|raw-debug' \
+        "web network handler must not expose raw credential debug endpoint in production contract"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

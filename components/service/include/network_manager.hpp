@@ -23,8 +23,7 @@ enum class NetworkOperationType : uint8_t {
     kConnect = 2,
     kCredentialsStatus = 3,
     kOpenJoinWindow = 4,
-    kCredentialsRawDebug = 5,
-    kRemoveDevice = 6,
+    kRemoveDevice = 5,
 };
 
 enum class NetworkOperationStatus : uint8_t {
@@ -59,17 +58,12 @@ struct NetworkResult {
     bool force_remove{false};
     bool saved{false};
     bool has_password{false};
-    bool debug_ssid_present{false};
-    bool debug_password_present{false};
-    uint8_t debug_ssid_len{0};
-    uint8_t debug_password_len{0};
     uint32_t force_remove_timeout_ms{0};
     uint16_t join_window_seconds{0};
     uint16_t device_short_addr{core::kUnknownDeviceShortAddr};
     uint8_t scan_count{0};
     std::array<NetworkScanRecord, kNetworkScanMaxRecords> scan_records{};
     char ssid[33]{};
-    char debug_ssid[33]{};
 };
 
 struct PendingStaConnect {
@@ -111,9 +105,6 @@ private:
         NetworkResult* result,
         bool* queue_result) noexcept;
     bool handle_credentials_status(
-        const NetworkRequest& request,
-        NetworkResult* result) noexcept;
-    bool handle_credentials_raw_debug(
         const NetworkRequest& request,
         NetworkResult* result) noexcept;
     bool handle_open_join_window(

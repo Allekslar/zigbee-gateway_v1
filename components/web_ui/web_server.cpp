@@ -36,7 +36,6 @@ bool WebServer::start() noexcept {
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
-    // Route count can exceed 16 in debug builds (extra raw-debug endpoint).
     // Keep headroom for future API additions.
     config.max_uri_handlers = 24;
     // Some handlers format multi-field JSON responses and can overflow
