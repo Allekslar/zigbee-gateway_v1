@@ -9,6 +9,7 @@ void test_hal_nvs_blob_roundtrip(void);
 void test_hal_zigbee_notifies_registered_callbacks(void);
 void test_hal_zigbee_rejects_null_callbacks(void);
 void test_hal_zigbee_diag_target_on_off_is_not_suppressed_after_join(void);
+void test_hal_zigbee_suppresses_implicit_permit_join_after_authorization(void);
 void test_reporting_flow_join_to_first_report_and_reboot_recovery(void);
 void test_reporting_faults_malformed_duplicate_out_of_order_timeout(void);
 void test_config_manager_migrates_legacy_v1(void);
@@ -30,6 +31,7 @@ void app_main(void) {
     RUN_TEST(test_hal_zigbee_notifies_registered_callbacks);
     RUN_TEST(test_hal_zigbee_rejects_null_callbacks);
     RUN_TEST(test_hal_zigbee_diag_target_on_off_is_not_suppressed_after_join);
+    RUN_TEST(test_hal_zigbee_suppresses_implicit_permit_join_after_authorization);
     RUN_TEST(test_reporting_flow_join_to_first_report_and_reboot_recovery);
     RUN_TEST(test_reporting_faults_malformed_duplicate_out_of_order_timeout);
     RUN_TEST(test_config_manager_migrates_legacy_v1);

@@ -1953,4 +1953,23 @@ bool hal_zigbee_test_should_suppress_on_off(uint16_t short_addr, int64_t* age_ms
     return false;
 #endif
 }
+
+void hal_zigbee_test_apply_permit_join_status(uint8_t duration_seconds) {
+#if defined(ESP_PLATFORM) && HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    if (duration_seconds != 0U) {
+        if (should_suppress_implicit_permit_join(duration_seconds)) {
+            set_join_window_state(false, 0U);
+            s_implicit_permit_join_close_scheduled = false;
+            return;
+        }
+        set_join_window_state(true, duration_seconds);
+        return;
+    }
+
+    set_join_window_state(false, 0U);
+    set_explicit_join_window_expectation(false, 0U);
+#else
+    (void)duration_seconds;
+#endif
+}
 #endif

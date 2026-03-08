@@ -271,3 +271,25 @@ void test_hal_zigbee_diag_target_on_off_is_not_suppressed_after_join(void) {
     int64_t age_ms = -1;
     TEST_ASSERT_FALSE(hal_zigbee_test_should_suppress_on_off(0x2201, &age_ms));
 }
+
+void test_hal_zigbee_suppresses_implicit_permit_join_after_authorization(void) {
+    static const uint8_t kDiagTargetIeee[8] = {0x44, 0xfe, 0x9e, 0xfe, 0xff, 0x16, 0xa3, 0x98};
+    const hal_zigbee_status_t init_status = hal_zigbee_init();
+    if (init_status == HAL_ZIGBEE_STATUS_NOT_LINKED) {
+        TEST_IGNORE_MESSAGE("Real Zigbee adapter is not linked in this target test build");
+    }
+    TEST_ASSERT_EQUAL_INT(HAL_ZIGBEE_STATUS_OK, init_status);
+
+    hal_zigbee_test_seed_known_device(0x2201, kDiagTargetIeee);
+
+    bool join_open = true;
+    uint16_t seconds_left = 99U;
+
+    hal_zigbee_test_apply_permit_join_status(180U);
+    TEST_ASSERT_EQUAL_INT(HAL_ZIGBEE_STATUS_OK, hal_zigbee_get_join_window_status(&join_open, &seconds_left));
+    TEST_ASSERT_FALSE(join_open);
+    TEST_ASSERT_EQUAL_UINT16(0U, seconds_left);
+
+    int64_t age_ms = -1;
+    TEST_ASSERT_FALSE(hal_zigbee_test_should_suppress_on_off(0x2201, &age_ms));
+}
