@@ -4,11 +4,11 @@
 #pragma once
 
 #include <array>
-#include <atomic>
 #include <cstdint>
 
 #include "core_events.hpp"
 #include "core_state.hpp"
+#include "runtime_lock.hpp"
 
 namespace service {
 
@@ -64,7 +64,7 @@ private:
     void clear_join_candidate(uint16_t short_addr) noexcept;
     static bool is_deadline_reached(uint32_t now_ms, uint32_t deadline_ms) noexcept;
 
-    mutable std::atomic_flag lock_ = ATOMIC_FLAG_INIT;
+    mutable RuntimeLock lock_{};
     std::array<PendingForceRemove, kMaxPendingForceRemove> pending_force_remove_{};
     std::array<JoinCandidateEntry, kJoinCandidateHistory> join_candidate_history_{};
 };

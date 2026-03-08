@@ -3,42 +3,7 @@
 
 #include "device_manager.hpp"
 
-#ifdef ESP_PLATFORM
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#endif
-
 namespace service {
-
-namespace {
-
-class SpinLockGuard {
-public:
-    explicit SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
-        uint32_t spin_count = 0U;
-#ifndef ESP_PLATFORM
-        (void)spin_count;
-#endif
-        while (lock_.test_and_set(std::memory_order_acquire)) {
-#ifdef ESP_PLATFORM
-            if ((++spin_count & 0x7U) == 0U) {
-                vTaskDelay(1);
-            } else {
-                taskYIELD();
-            }
-#endif
-        }
-    }
-
-    ~SpinLockGuard() noexcept {
-        lock_.clear(std::memory_order_release);
-    }
-
-private:
-    std::atomic_flag& lock_;
-};
-
-}  // namespace
 
 bool DeviceManager::is_deadline_reached(uint32_t now_ms, uint32_t deadline_ms) noexcept {
     return static_cast<int32_t>(now_ms - deadline_ms) >= 0;
@@ -51,7 +16,7 @@ bool DeviceManager::handle_event(const core::CoreEvent& event) noexcept {
         return false;
     }
 
-    SpinLockGuard guard(lock_);
+    RuntimeLockGuard guard(lock_);
     bool changed = false;
     for (std::size_t i = 0; i < pending_force_remove_.size(); ++i) {
         PendingForceRemove& pending = pending_force_remove_[i];
@@ -70,7 +35,7 @@ bool DeviceManager::is_duplicate_join_candidate(uint16_t short_addr, uint32_t no
         return true;
     }
 
-    SpinLockGuard guard(lock_);
+    RuntimeLockGuard guard(lock_);
 
     JoinCandidateEntry* free_slot = nullptr;
     JoinCandidateEntry* oldest = &join_candidate_history_[0];
@@ -109,7 +74,7 @@ bool DeviceManager::schedule_force_remove(uint16_t short_addr, uint32_t deadline
         return false;
     }
 
-    SpinLockGuard guard(lock_);
+    RuntimeLockGuard guard(lock_);
     PendingForceRemove* free_slot = nullptr;
 
     for (std::size_t i = 0; i < pending_force_remove_.size(); ++i) {
@@ -146,7 +111,7 @@ bool DeviceManager::get_force_remove_remaining_ms(
     }
 
     *remaining_ms = 0U;
-    SpinLockGuard guard(lock_);
+    RuntimeLockGuard guard(lock_);
     for (std::size_t i = 0; i < pending_force_remove_.size(); ++i) {
         const PendingForceRemove& pending = pending_force_remove_[i];
         if (!pending.in_use || pending.short_addr != short_addr) {
@@ -178,7 +143,7 @@ bool DeviceManager::build_runtime_snapshot(
     out->join_window_open = join_window_open;
     out->join_window_seconds_left = join_window_open ? join_window_seconds_left : 0U;
 
-    SpinLockGuard guard(lock_);
+    RuntimeLockGuard guard(lock_);
     for (std::size_t i = 0; i < state.devices.size(); ++i) {
         const uint16_t short_addr = state.devices[i].short_addr;
         if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U || !state.devices[i].online) {
@@ -223,7 +188,7 @@ std::size_t DeviceManager::collect_expired_force_remove(
     }
 
     std::size_t expired_count = 0;
-    SpinLockGuard guard(lock_);
+    RuntimeLockGuard guard(lock_);
     for (std::size_t i = 0; i < pending_force_remove_.size(); ++i) {
         PendingForceRemove& pending = pending_force_remove_[i];
         if (!pending.in_use || !is_deadline_reached(now_ms, pending.deadline_ms)) {

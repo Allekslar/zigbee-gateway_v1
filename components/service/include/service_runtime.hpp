@@ -21,6 +21,7 @@
 #include "persistence_manager.hpp"
 #include "reporting_manager.hpp"
 #include "scan_manager.hpp"
+#include "runtime_lock.hpp"
 
 namespace service {
 
@@ -299,7 +300,7 @@ private:
     std::array<NetworkResult, kNetworkResultQueueCapacity> network_result_queue_{};
     std::size_t network_result_count_{0};
 
-    mutable std::atomic_flag ingress_lock_ = ATOMIC_FLAG_INIT;
+    mutable RuntimeLock ingress_lock_{};
 
     std::atomic<uint32_t> config_timeout_ms_cache_{5000};
     std::atomic<uint32_t> config_max_retries_cache_{1};

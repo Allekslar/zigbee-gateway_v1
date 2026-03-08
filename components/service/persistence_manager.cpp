@@ -5,41 +5,12 @@
 
 #include <cstring>
 
-#ifdef ESP_PLATFORM
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#else
-#include <thread>
-#endif
-
 #include "service_runtime.hpp"
 
 namespace service {
 
-PersistenceManager::SpinLockGuard::SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
-    uint32_t spin_count = 0U;
-#ifndef ESP_PLATFORM
-    (void)spin_count;
-#endif
-    while (lock_.test_and_set(std::memory_order_acquire)) {
-#ifdef ESP_PLATFORM
-        if ((++spin_count & 0x7U) == 0U) {
-            vTaskDelay(1);
-        } else {
-            taskYIELD();
-        }
-#else
-        std::this_thread::yield();
-#endif
-    }
-}
-
-PersistenceManager::SpinLockGuard::~SpinLockGuard() noexcept {
-    lock_.clear(std::memory_order_release);
-}
-
 bool PersistenceManager::queue_nvs_write(const NvsWriteNotification& notification) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (nvs_write_count_ >= kNvsWriteQueueCapacity) {
         return false;
     }
@@ -51,7 +22,7 @@ bool PersistenceManager::queue_nvs_write(const NvsWriteNotification& notificatio
 }
 
 bool PersistenceManager::pop_nvs_write(NvsWriteNotification* out) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (out == nullptr || nvs_write_count_ == 0) {
         return false;
     }
@@ -63,7 +34,7 @@ bool PersistenceManager::pop_nvs_write(NvsWriteNotification* out) noexcept {
 }
 
 bool PersistenceManager::queue_config_write(const ConfigWriteNotification& notification) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (config_write_count_ >= kConfigWriteQueueCapacity) {
         return false;
     }
@@ -75,7 +46,7 @@ bool PersistenceManager::queue_config_write(const ConfigWriteNotification& notif
 }
 
 bool PersistenceManager::pop_config_write(ConfigWriteNotification* out) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (out == nullptr || config_write_count_ == 0) {
         return false;
     }
@@ -87,7 +58,7 @@ bool PersistenceManager::pop_config_write(ConfigWriteNotification* out) noexcept
 }
 
 bool PersistenceManager::queue_reporting_profile_write(const ReportingProfileWriteNotification& notification) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (reporting_profile_write_count_ >= kConfigWriteQueueCapacity) {
         return false;
     }
@@ -99,7 +70,7 @@ bool PersistenceManager::queue_reporting_profile_write(const ReportingProfileWri
 }
 
 bool PersistenceManager::pop_reporting_profile_write(ReportingProfileWriteNotification* out) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (out == nullptr || reporting_profile_write_count_ == 0) {
         return false;
     }
@@ -224,7 +195,7 @@ bool PersistenceManager::drain_reporting_profile_writes(ServiceRuntime& runtime)
 }
 
 std::size_t PersistenceManager::pending_ingress_count() const noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     return nvs_write_count_ + config_write_count_ + reporting_profile_write_count_;
 }
 

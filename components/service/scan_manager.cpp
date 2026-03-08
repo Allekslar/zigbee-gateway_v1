@@ -33,34 +33,12 @@ constexpr const char* kTag = LOG_TAG_SERVICE_RUNTIME;
 
 }  // namespace
 
-ScanManager::SpinLockGuard::SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
-    uint32_t spin_count = 0U;
-#ifndef ESP_PLATFORM
-    (void)spin_count;
-#endif
-    while (lock_.test_and_set(std::memory_order_acquire)) {
-#ifdef ESP_PLATFORM
-        if ((++spin_count & 0x7U) == 0U) {
-            vTaskDelay(1);
-        } else {
-            taskYIELD();
-        }
-#else
-        std::this_thread::yield();
-#endif
-    }
-}
-
-ScanManager::SpinLockGuard::~SpinLockGuard() noexcept {
-    lock_.clear(std::memory_order_release);
-}
-
 bool ScanManager::enqueue_request(uint32_t request_id) noexcept {
     if (request_id == 0U) {
         return false;
     }
 
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (queue_count_ >= queue_.size()) {
         return false;
     }
@@ -73,7 +51,7 @@ bool ScanManager::enqueue_request(uint32_t request_id) noexcept {
 }
 
 bool ScanManager::pop_request(Request* out) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (out == nullptr || queue_count_ == 0U) {
         return false;
     }
@@ -104,7 +82,7 @@ bool ScanManager::is_request_queued(uint32_t request_id) const noexcept {
         return false;
     }
 
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     std::size_t index = queue_head_;
     for (std::size_t i = 0; i < queue_count_; ++i) {
         if (queue_[index].request_id == request_id) {

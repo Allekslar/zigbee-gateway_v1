@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "runtime_lock.hpp"
+
 namespace service {
 
 class ServiceRuntime;
@@ -35,18 +37,9 @@ private:
         uint32_t request_id{0};
     };
 
-    class SpinLockGuard {
-    public:
-        explicit SpinLockGuard(std::atomic_flag& lock) noexcept;
-        ~SpinLockGuard() noexcept;
-
-    private:
-        std::atomic_flag& lock_;
-    };
-
     bool pop_request(Request* out) noexcept;
 
-    mutable std::atomic_flag queue_lock_ = ATOMIC_FLAG_INIT;
+    mutable RuntimeLock queue_lock_{};
     std::array<Request, kQueueCapacity> queue_{};
     std::size_t queue_head_{0};
     std::size_t queue_tail_{0};

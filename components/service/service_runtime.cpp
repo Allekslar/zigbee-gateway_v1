@@ -33,34 +33,6 @@ constexpr const char* kTag = LOG_TAG_SERVICE_RUNTIME;
 #define SR_LOGW(...) ((void)0)
 #endif
 
-class SpinLockGuard {
-public:
-    explicit SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
-        uint32_t spin_count = 0U;
-#ifndef ESP_PLATFORM
-        (void)spin_count;
-#endif
-        while (lock_.test_and_set(std::memory_order_acquire)) {
-#ifdef ESP_PLATFORM
-            // On single-core FreeRTOS, taskYIELD() does not unblock lower-priority
-            // lock owners. Periodically sleep one tick to avoid watchdog deadlocks.
-            if ((++spin_count & 0x7U) == 0U) {
-                vTaskDelay(1);
-            } else {
-                taskYIELD();
-            }
-#endif
-        }
-    }
-
-    ~SpinLockGuard() noexcept {
-        lock_.clear(std::memory_order_release);
-    }
-
-private:
-    std::atomic_flag& lock_;
-};
-
 constexpr uint32_t kForceRemoveDefaultTimeoutMs = 5000U;
 constexpr uint32_t kForceRemoveMinTimeoutMs = 500U;
 constexpr uint32_t kForceRemoveMaxTimeoutMs = 30000U;
@@ -365,7 +337,7 @@ void ServiceRuntime::runtime_task_entry(void* arg) {
 #endif
 
 bool ServiceRuntime::push_event(const core::CoreEvent& event) noexcept {
-    SpinLockGuard guard(ingress_lock_);
+    RuntimeLockGuard guard(ingress_lock_);
     if (queue_count_ >= kEventQueueCapacity) {
         (void)dropped_ingress_events_.fetch_add(1, std::memory_order_relaxed);
         return false;
@@ -378,7 +350,7 @@ bool ServiceRuntime::push_event(const core::CoreEvent& event) noexcept {
 }
 
 bool ServiceRuntime::pop_event(core::CoreEvent* out) noexcept {
-    SpinLockGuard guard(ingress_lock_);
+    RuntimeLockGuard guard(ingress_lock_);
     if (out == nullptr || queue_count_ == 0) {
         return false;
     }
@@ -394,7 +366,7 @@ bool ServiceRuntime::post_event(const core::CoreEvent& event) noexcept {
 }
 
 bool ServiceRuntime::queue_network_result(const NetworkResult& result) noexcept {
-    SpinLockGuard guard(ingress_lock_);
+    RuntimeLockGuard guard(ingress_lock_);
 
     for (std::size_t i = 0; i < network_result_count_; ++i) {
         if (network_result_queue_[i].request_id == result.request_id && result.request_id != 0U) {
@@ -941,7 +913,7 @@ bool ServiceRuntime::get_force_remove_remaining_ms(
 }
 
 bool ServiceRuntime::take_network_result(uint32_t request_id, NetworkResult* out) noexcept {
-    SpinLockGuard guard(ingress_lock_);
+    RuntimeLockGuard guard(ingress_lock_);
     return take_network_result_locked(request_id, out);
 }
 
@@ -1301,7 +1273,7 @@ std::size_t ServiceRuntime::pending_events() const noexcept {
     std::size_t local_queue_count = 0;
     std::size_t local_network_result_count = 0;
     {
-        SpinLockGuard guard(ingress_lock_);
+        RuntimeLockGuard guard(ingress_lock_);
         local_queue_count = queue_count_;
         local_network_result_count = network_result_count_;
     }

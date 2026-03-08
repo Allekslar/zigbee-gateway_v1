@@ -9,6 +9,7 @@
 #include <cstdint>
 
 #include "core_commands.hpp"
+#include "runtime_lock.hpp"
 
 namespace service {
 
@@ -40,15 +41,6 @@ private:
         core::CoreCommand command{};
     };
 
-    class SpinLockGuard {
-    public:
-        explicit SpinLockGuard(std::atomic_flag& lock) noexcept;
-        ~SpinLockGuard() noexcept;
-
-    private:
-        std::atomic_flag& lock_;
-    };
-
     bool queue_command_request(const CommandIngressNotification& notification) noexcept;
     bool pop_command_request(CommandIngressNotification* out) noexcept;
     bool queue_command_result(const core::CoreCommandResult& result) noexcept;
@@ -62,7 +54,7 @@ private:
     core::CoreError submit_command_internal(ServiceRuntime& runtime, const core::CoreCommand& command) noexcept;
     core::CoreError resolve_command_result(ServiceRuntime& runtime, const core::CoreCommandResult& result) noexcept;
 
-    mutable std::atomic_flag queue_lock_ = ATOMIC_FLAG_INIT;
+    mutable RuntimeLock queue_lock_{};
 
     std::array<CommandIngressNotification, kCommandIngressQueueCapacity> command_request_queue_{};
     std::size_t command_request_head_{0};

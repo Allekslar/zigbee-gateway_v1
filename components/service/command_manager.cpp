@@ -3,38 +3,9 @@
 
 #include "command_manager.hpp"
 
-#ifdef ESP_PLATFORM
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#else
-#include <thread>
-#endif
-
 #include "service_runtime.hpp"
 
 namespace service {
-
-CommandManager::SpinLockGuard::SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
-    uint32_t spin_count = 0U;
-#ifndef ESP_PLATFORM
-    (void)spin_count;
-#endif
-    while (lock_.test_and_set(std::memory_order_acquire)) {
-#ifdef ESP_PLATFORM
-        if ((++spin_count & 0x7U) == 0U) {
-            vTaskDelay(1);
-        } else {
-            taskYIELD();
-        }
-#else
-        std::this_thread::yield();
-#endif
-    }
-}
-
-CommandManager::SpinLockGuard::~SpinLockGuard() noexcept {
-    lock_.clear(std::memory_order_release);
-}
 
 core::CoreError CommandManager::post_command(ServiceRuntime& runtime, const core::CoreCommand& command) noexcept {
     if (command.correlation_id == core::kNoCorrelationId || command.type == core::CoreCommandType::kUnknown) {
@@ -67,7 +38,7 @@ core::CoreError CommandManager::handle_command_result(
 }
 
 bool CommandManager::queue_command_request(const CommandIngressNotification& notification) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (command_request_count_ >= kCommandIngressQueueCapacity) {
         return false;
     }
@@ -79,7 +50,7 @@ bool CommandManager::queue_command_request(const CommandIngressNotification& not
 }
 
 bool CommandManager::pop_command_request(CommandIngressNotification* out) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (out == nullptr || command_request_count_ == 0) {
         return false;
     }
@@ -91,7 +62,7 @@ bool CommandManager::pop_command_request(CommandIngressNotification* out) noexce
 }
 
 bool CommandManager::queue_command_result(const core::CoreCommandResult& result) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (command_result_count_ >= kCommandResultQueueCapacity) {
         return false;
     }
@@ -103,7 +74,7 @@ bool CommandManager::queue_command_result(const core::CoreCommandResult& result)
 }
 
 bool CommandManager::pop_command_result(core::CoreCommandResult* out) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (out == nullptr || command_result_count_ == 0) {
         return false;
     }
@@ -269,12 +240,12 @@ std::size_t CommandManager::process_timeouts(ServiceRuntime& runtime, uint32_t n
 }
 
 std::size_t CommandManager::pending_ingress_count() const noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     return command_request_count_ + command_result_count_;
 }
 
 std::size_t CommandManager::pending_commands() const noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     return pending_dispatcher_commands_cache_.load(std::memory_order_acquire) + command_request_count_;
 }
 

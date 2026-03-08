@@ -4,11 +4,11 @@
 #pragma once
 
 #include <array>
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
 #include "core_events.hpp"
+#include "runtime_lock.hpp"
 
 namespace service {
 
@@ -94,15 +94,6 @@ public:
     std::size_t pending_ingress_count() const noexcept;
 
 private:
-    class SpinLockGuard {
-    public:
-        explicit SpinLockGuard(std::atomic_flag& lock) noexcept;
-        ~SpinLockGuard() noexcept;
-
-    private:
-        std::atomic_flag& lock_;
-    };
-
     bool pop_request(NetworkRequest* out) noexcept;
     bool handle_request(
         ServiceRuntime& runtime,
@@ -137,7 +128,7 @@ private:
     bool refresh_requested_{false};
     uint32_t refresh_count_{0};
 
-    mutable std::atomic_flag queue_lock_ = ATOMIC_FLAG_INIT;
+    mutable RuntimeLock queue_lock_{};
     std::array<NetworkRequest, kRequestQueueCapacity> request_queue_{};
     std::size_t request_head_{0};
     std::size_t request_tail_{0};

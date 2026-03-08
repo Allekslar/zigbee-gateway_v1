@@ -4,11 +4,11 @@
 #pragma once
 
 #include <array>
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
 #include "config_manager.hpp"
+#include "runtime_lock.hpp"
 
 namespace service {
 
@@ -50,15 +50,6 @@ private:
         ConfigManager::ReportingProfile profile{};
     };
 
-    class SpinLockGuard {
-    public:
-        explicit SpinLockGuard(std::atomic_flag& lock) noexcept;
-        ~SpinLockGuard() noexcept;
-
-    private:
-        std::atomic_flag& lock_;
-    };
-
     bool queue_nvs_write(const NvsWriteNotification& notification) noexcept;
     bool pop_nvs_write(NvsWriteNotification* out) noexcept;
     bool queue_config_write(const ConfigWriteNotification& notification) noexcept;
@@ -66,7 +57,7 @@ private:
     bool queue_reporting_profile_write(const ReportingProfileWriteNotification& notification) noexcept;
     bool pop_reporting_profile_write(ReportingProfileWriteNotification* out) noexcept;
 
-    mutable std::atomic_flag queue_lock_ = ATOMIC_FLAG_INIT;
+    mutable RuntimeLock queue_lock_{};
 
     std::array<NvsWriteNotification, kNvsWriteQueueCapacity> nvs_write_queue_{};
     std::size_t nvs_write_head_{0};

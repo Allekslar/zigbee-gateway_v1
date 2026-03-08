@@ -5,41 +5,12 @@
 
 #include <cstring>
 
-#ifdef ESP_PLATFORM
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#else
-#include <thread>
-#endif
-
 #include "hal_nvs.h"
 #include "hal_wifi.h"
 #include "hal_zigbee.h"
 #include "service_runtime.hpp"
 
 namespace service {
-
-NetworkManager::SpinLockGuard::SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
-    uint32_t spin_count = 0U;
-#ifndef ESP_PLATFORM
-    (void)spin_count;
-#endif
-    while (lock_.test_and_set(std::memory_order_acquire)) {
-#ifdef ESP_PLATFORM
-        if ((++spin_count & 0x7U) == 0U) {
-            vTaskDelay(1);
-        } else {
-            taskYIELD();
-        }
-#else
-        std::this_thread::yield();
-#endif
-    }
-}
-
-NetworkManager::SpinLockGuard::~SpinLockGuard() noexcept {
-    lock_.clear(std::memory_order_release);
-}
 
 bool NetworkManager::handle_event(const core::CoreEvent& event) noexcept {
     if (event.type != core::CoreEventType::kCommandRefreshNetworkRequested) {
@@ -68,7 +39,7 @@ bool NetworkManager::enqueue_request(ServiceRuntime& runtime, const NetworkReque
         return false;
     }
 
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (request_count_ >= request_queue_.size()) {
         (void)runtime.dropped_ingress_events_.fetch_add(1, std::memory_order_relaxed);
         return false;
@@ -81,7 +52,7 @@ bool NetworkManager::enqueue_request(ServiceRuntime& runtime, const NetworkReque
 }
 
 bool NetworkManager::pop_request(NetworkRequest* out) noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     if (out == nullptr || request_count_ == 0) {
         return false;
     }
@@ -121,7 +92,7 @@ bool NetworkManager::is_scan_request_queued(uint32_t request_id) const noexcept 
         return false;
     }
 
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     std::size_t index = request_head_;
     for (std::size_t i = 0; i < request_count_; ++i) {
         const NetworkRequest& pending_request = request_queue_[index];
@@ -135,7 +106,7 @@ bool NetworkManager::is_scan_request_queued(uint32_t request_id) const noexcept 
 }
 
 std::size_t NetworkManager::pending_ingress_count() const noexcept {
-    SpinLockGuard guard(queue_lock_);
+    RuntimeLockGuard guard(queue_lock_);
     return request_count_;
 }
 
