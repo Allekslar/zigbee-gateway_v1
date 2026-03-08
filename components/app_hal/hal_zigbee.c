@@ -62,10 +62,6 @@ static bool s_implicit_permit_join_close_scheduled = false;
 static portMUX_TYPE s_join_state_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_primary_channel_mask = (1UL << 13);
 static uint8_t s_max_children = 16U;
-static const bool kDiagTargetTraceEnabled = true;
-static const bool kDiagSuppressOnOffForTargetAfterJoin = false;
-static const int64_t kDiagSuppressOnOffAfterJoinUs = 30LL * 1000LL * 1000LL;
-static const uint8_t kDiagTargetIeee[8] = {0x44, 0xfe, 0x9e, 0xfe, 0xff, 0x16, 0xa3, 0x98};
 static const uint8_t kGatewayEndpoint = 1U;
 static const uint8_t kDefaultOnOffEndpoint = 1U;
 static const TickType_t kDeviceRemoveLockTimeout = pdMS_TO_TICKS(2000);
@@ -88,9 +84,6 @@ typedef struct {
     bool in_use;
     esp_zb_ieee_addr_t ieee_addr;
     uint16_t short_addr;
-    int64_t last_join_at_us;
-    uint32_t join_count;
-    uint32_t leave_count;
 } known_device_identity_t;
 static known_device_identity_t s_known_device_identities[kKnownDeviceIdentityCapacity];
 static portMUX_TYPE s_known_device_identities_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -101,10 +94,6 @@ static bool is_valid_short_addr(uint16_t short_addr) {
 
 static uint16_t resolve_short_from_ieee(esp_zb_ieee_addr_t ieee_addr);
 static bool is_valid_ieee_addr(const esp_zb_ieee_addr_t ieee_addr);
-
-static bool is_diag_target_ieee(const esp_zb_ieee_addr_t ieee_addr) {
-    return ieee_addr != NULL && memcmp(ieee_addr, kDiagTargetIeee, sizeof(kDiagTargetIeee)) == 0;
-}
 
 static const char* device_update_status_to_string(uint8_t status) {
     switch (status) {
@@ -222,32 +211,12 @@ static bool find_known_device_by_ieee(
     return found;
 }
 
-static bool find_known_device_by_short(uint16_t short_addr, known_device_identity_t* out_identity) {
-    if (!is_valid_short_addr(short_addr) || out_identity == NULL) {
-        return false;
-    }
-
-    bool found = false;
-    portENTER_CRITICAL(&s_known_device_identities_lock);
-    for (size_t i = 0; i < kKnownDeviceIdentityCapacity; ++i) {
-        if (!s_known_device_identities[i].in_use || s_known_device_identities[i].short_addr != short_addr) {
-            continue;
-        }
-        *out_identity = s_known_device_identities[i];
-        found = true;
-        break;
-    }
-    portEXIT_CRITICAL(&s_known_device_identities_lock);
-    return found;
-}
-
 static void upsert_known_device_identity(const esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr) {
     if (!is_valid_ieee_addr(ieee_addr)) {
         return;
     }
 
     known_device_identity_t* slot = NULL;
-    const int64_t now_us = esp_timer_get_time();
     portENTER_CRITICAL(&s_known_device_identities_lock);
 
     for (size_t i = 0; i < kKnownDeviceIdentityCapacity; ++i) {
@@ -270,15 +239,9 @@ static void upsert_known_device_identity(const esp_zb_ieee_addr_t ieee_addr, uin
     }
 
     if (slot != NULL) {
-        const bool is_new_identity = !slot->in_use;
-        const bool short_changed = slot->in_use && slot->short_addr != short_addr;
         slot->in_use = true;
         memcpy(slot->ieee_addr, ieee_addr, sizeof(esp_zb_ieee_addr_t));
         slot->short_addr = short_addr;
-        slot->last_join_at_us = now_us;
-        if (is_new_identity || short_changed) {
-            ++slot->join_count;
-        }
     }
     portEXIT_CRITICAL(&s_known_device_identities_lock);
 }
@@ -294,11 +257,6 @@ static void remove_known_device_identity(const esp_zb_ieee_addr_t ieee_addr, uin
             memcmp(s_known_device_identities[i].ieee_addr, ieee_addr, sizeof(esp_zb_ieee_addr_t)) == 0;
         const bool short_match = is_valid_short_addr(short_addr) && s_known_device_identities[i].short_addr == short_addr;
         if (!ieee_match && !short_match) {
-            continue;
-        }
-        if (kDiagTargetTraceEnabled && is_diag_target_ieee(s_known_device_identities[i].ieee_addr)) {
-            s_known_device_identities[i].short_addr = 0xFFFFU;
-            ++s_known_device_identities[i].leave_count;
             continue;
         }
         memset(&s_known_device_identities[i], 0, sizeof(s_known_device_identities[i]));
@@ -648,18 +606,6 @@ static void notify_join_with_identity(
     }
 
     upsert_known_device_identity(ieee_addr, short_addr);
-    if (kDiagTargetTraceEnabled && is_diag_target_ieee(ieee_addr)) {
-        known_device_identity_t known = {0};
-        if (find_known_device_by_ieee(ieee_addr, &known)) {
-            ESP_LOGI(
-                kTag,
-                "DIAG target join source=%s short_addr=0x%04x join_count=%lu leave_count=%lu",
-                source_tag,
-                (unsigned)short_addr,
-                (unsigned long)known.join_count,
-                (unsigned long)known.leave_count);
-        }
-    }
     notify_join_with_source(short_addr, source_tag);
 }
 
@@ -671,57 +617,8 @@ static void notify_left_with_identity(
         return;
     }
 
-    if (kDiagTargetTraceEnabled) {
-        known_device_identity_t known = {0};
-        bool tracked = false;
-        if (is_valid_ieee_addr(ieee_addr)) {
-            tracked = find_known_device_by_ieee(ieee_addr, &known);
-        }
-        if (!tracked) {
-            tracked = find_known_device_by_short(short_addr, &known);
-        }
-        if (tracked && is_diag_target_ieee(known.ieee_addr)) {
-            const int64_t now_us = esp_timer_get_time();
-            const int64_t lived_ms =
-                known.last_join_at_us > 0 && now_us >= known.last_join_at_us ? (now_us - known.last_join_at_us) / 1000LL : -1LL;
-            ESP_LOGW(
-                kTag,
-                "DIAG target leave source=%s short_addr=0x%04x lived_ms=%lld joins=%lu leaves=%lu",
-                source_tag,
-                (unsigned)short_addr,
-                (long long)lived_ms,
-                (unsigned long)known.join_count,
-                (unsigned long)known.leave_count);
-        }
-    }
-
     remove_known_device_identity(ieee_addr, short_addr);
     notify_left_with_source(short_addr, source_tag);
-}
-
-static bool should_suppress_on_off_for_diag_target(uint16_t short_addr, int64_t* out_age_ms) {
-    if (out_age_ms != NULL) {
-        *out_age_ms = -1LL;
-    }
-    if (!kDiagSuppressOnOffForTargetAfterJoin || !is_valid_short_addr(short_addr)) {
-        return false;
-    }
-
-    known_device_identity_t known = {0};
-    if (!find_known_device_by_short(short_addr, &known) || !is_diag_target_ieee(known.ieee_addr)) {
-        return false;
-    }
-
-    const int64_t now_us = esp_timer_get_time();
-    if (known.last_join_at_us <= 0 || now_us < known.last_join_at_us) {
-        return false;
-    }
-
-    const int64_t age_us = now_us - known.last_join_at_us;
-    if (out_age_ms != NULL) {
-        *out_age_ms = age_us / 1000LL;
-    }
-    return age_us < kDiagSuppressOnOffAfterJoinUs;
 }
 
 static uint16_t resolve_short_from_ieee(esp_zb_ieee_addr_t ieee_addr) {
@@ -1016,17 +913,6 @@ hal_zigbee_status_t hal_zigbee_send_on_off(uint32_t correlation_id, uint16_t sho
     if (!is_valid_short_addr(short_addr)) {
         ESP_LOGE(kTag, "Reject on/off command for invalid short_addr=0x%04x", (unsigned)short_addr);
         return HAL_ZIGBEE_STATUS_INVALID_ARG;
-    }
-
-    int64_t diag_age_ms = -1LL;
-    if (should_suppress_on_off_for_diag_target(short_addr, &diag_age_ms)) {
-        ESP_LOGW(
-            kTag,
-            "DIAG suppress On/Off short_addr=0x%04x correlation_id=%lu age_ms=%lld",
-            (unsigned)short_addr,
-            (unsigned long)correlation_id,
-            (long long)diag_age_ms);
-        return HAL_ZIGBEE_STATUS_ERR;
     }
 
     if (!s_stack_started || !esp_zb_is_started()) {
@@ -1929,31 +1815,6 @@ void hal_zigbee_simulate_start_network_formation_status_once(hal_zigbee_status_t
 }
 
 #if defined(SERVICE_RUNTIME_TEST_HOOKS)
-void hal_zigbee_test_seed_known_device(uint16_t short_addr, const uint8_t ieee_addr[8]) {
-#if defined(ESP_PLATFORM) && HAL_ZIGBEE_HAS_ESP_ZB_SDK
-    if (!is_valid_short_addr(short_addr) || ieee_addr == NULL || !is_valid_ieee_addr(ieee_addr)) {
-        return;
-    }
-
-    upsert_known_device_identity(ieee_addr, short_addr);
-#else
-    (void)short_addr;
-    (void)ieee_addr;
-#endif
-}
-
-bool hal_zigbee_test_should_suppress_on_off(uint16_t short_addr, int64_t* age_ms) {
-#if defined(ESP_PLATFORM) && HAL_ZIGBEE_HAS_ESP_ZB_SDK
-    return should_suppress_on_off_for_diag_target(short_addr, age_ms);
-#else
-    if (age_ms != NULL) {
-        *age_ms = -1LL;
-    }
-    (void)short_addr;
-    return false;
-#endif
-}
-
 void hal_zigbee_test_apply_permit_join_status(uint8_t duration_seconds) {
 #if defined(ESP_PLATFORM) && HAL_ZIGBEE_HAS_ESP_ZB_SDK
     if (duration_seconds != 0U) {

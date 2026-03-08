@@ -151,8 +151,6 @@ void hal_zigbee_simulate_network_formed(bool formed);
 void hal_zigbee_simulate_start_network_formation_status_once(hal_zigbee_status_t status);
 
 #if defined(SERVICE_RUNTIME_TEST_HOOKS)
-void hal_zigbee_test_seed_known_device(uint16_t short_addr, const uint8_t ieee_addr[8]);
-bool hal_zigbee_test_should_suppress_on_off(uint16_t short_addr, int64_t* age_ms);
 void hal_zigbee_test_apply_permit_join_status(uint8_t duration_seconds);
 #endif
 

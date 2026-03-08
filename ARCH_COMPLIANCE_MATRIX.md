@@ -34,6 +34,7 @@ This file defines the architecture rules that are enforced by `check_arch_invari
 | `INV-M014` | Medium | `CODING_GUIDELINES.md` (explicit concurrency-safe reads) | `components/service/include/service_runtime.hpp` | `ServiceRuntime::stats()` must return a snapshot by value, not a reference to mutable live state. |
 | `INV-M015` | Medium | `ARCHITECTURE.md` (HAL boundary ownership) | `components/service/include/service_runtime.hpp` | Public ServiceRuntime header must not expose `hal_zigbee_*` types or include `hal_zigbee.h`. |
 | `INV-M016` | Medium | `ARCHITECTURE.md` + `CODING_GUIDELINES.md` (Immutable Core State / Single Writer ownership) | `components/service/*_manager.cpp` | Service managers must not call `snapshot_copy()` or `pin_current()` directly; they must consume ServiceRuntime-owned state fragments or snapshot helpers. |
+| `INV-M017` | Medium | `ARCHITECTURE.md` + `CODING_GUIDELINES.md` (HAL thin-wrapper / clean modularity) | `components/app_hal/hal_zigbee.c` | HAL Zigbee must not contain hardcoded target-device diagnostics or per-device suppression logic. |
 | `INV-M009` | Medium | `ARCHITECTURE.md` + `README.md` (quality gates) | `.github/workflows/ci.yml` | CI must include blocking `reporting-regression` job that runs dedicated reporting lifecycle tests. |
 | `INV-L001` | Low | `CODING_GUIDELINES.md` (central log tags) | `components/common/include/log_tags.h` | Registry should contain runtime/HAL tags used by critical modules. |
 

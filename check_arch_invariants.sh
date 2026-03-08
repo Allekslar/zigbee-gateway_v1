@@ -307,6 +307,10 @@ run_checks() {
             "${manager_registry_reads}"
     fi
 
+    check_absent "INV-M017" "medium" "components/app_hal/hal_zigbee.c" \
+        'kDiagTarget|DIAG target|should_suppress_on_off_for_diag_target|Suppress On/Off short_addr=.*age_ms' \
+        "HAL Zigbee must not contain hardcoded target-device diagnostics or per-device suppression logic"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"
