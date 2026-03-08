@@ -202,6 +202,7 @@ ARCH_BLOCKING_SEVERITIES=high,medium,low bash ./check_arch_invariants.sh
 - Host integration tests (`test/integration`): web handlers/routes and platform shims.
 - Target HAL tests (`test/target`): HAL verification on ESP32-C6.
 - HIL smoke/full: run in CI on a self-hosted runner.
+- Gateway Zigbee HIL smoke (`test/hil`): real gateway reboot/join/on-off/remove scenario.
 
 Host integration:
 
@@ -216,6 +217,12 @@ Target HAL build:
 ```bash
 idf.py -C test/target -B build-target-tests set-target esp32c6
 idf.py -C test/target -B build-target-tests build
+```
+
+Gateway Zigbee HIL smoke:
+
+```bash
+GW_BASE_URL=http://192.168.178.171 scripts/run_gateway_zigbee_smoke.sh
 ```
 
 ## Code Coverage (Core + Service)

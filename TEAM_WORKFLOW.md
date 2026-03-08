@@ -85,6 +85,7 @@ Mandatory requirements:
 - `target-hal-tests-build`: build verification for target tests.
 - `target-hal-tests-hil-smoke`: blocking HIL smoke on push/PR.
 - `target-hal-tests-hil`: nightly/manual full HIL run.
+- `test/hil`: manual or semi-automated real-gateway smoke scenarios such as reboot/join/on-off/remove.
 - `architecture-invariants`: `check_arch_invariants.sh` + migration smoke.
 - `static-analysis`: `clang-tidy` + `cppcheck` for core/service/critical app_hal/web_ui.
 
