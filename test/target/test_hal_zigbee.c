@@ -257,3 +257,17 @@ void test_hal_zigbee_request_api_contract(void) {
         hal_zigbee_request_configure_reporting(3, 0x2201, 1, 0x0402, 0x0000, 5, 300, 10)));
     TEST_ASSERT_TRUE(is_valid_request_status(hal_zigbee_request_read_attribute(4, 0x2201, 1, 0x0402, 0x0000)));
 }
+
+void test_hal_zigbee_diag_target_on_off_is_not_suppressed_after_join(void) {
+    static const uint8_t kDiagTargetIeee[8] = {0x44, 0xfe, 0x9e, 0xfe, 0xff, 0x16, 0xa3, 0x98};
+    const hal_zigbee_status_t init_status = hal_zigbee_init();
+    if (init_status == HAL_ZIGBEE_STATUS_NOT_LINKED) {
+        TEST_IGNORE_MESSAGE("Real Zigbee adapter is not linked in this target test build");
+    }
+    TEST_ASSERT_EQUAL_INT(HAL_ZIGBEE_STATUS_OK, init_status);
+
+    hal_zigbee_test_seed_known_device(0x2201, kDiagTargetIeee);
+
+    int64_t age_ms = -1;
+    TEST_ASSERT_FALSE(hal_zigbee_test_should_suppress_on_off(0x2201, &age_ms));
+}

@@ -178,6 +178,11 @@ target_link_libraries(test_service_force_remove PRIVATE service_host)
 zg_apply_component_compile_policy(test_service_force_remove)
 add_test(NAME test_service_force_remove COMMAND test_service_force_remove)
 
+add_executable(test_service_remove_device test_service_remove_device.cpp)
+target_link_libraries(test_service_remove_device PRIVATE service_host)
+zg_apply_component_compile_policy(test_service_remove_device)
+add_test(NAME test_service_remove_device COMMAND test_service_remove_device)
+
 add_executable(test_web_json_helpers test_web_json_helpers.cpp)
 target_link_libraries(test_web_json_helpers PRIVATE service_host web_ui_host) 
 zg_apply_component_compile_policy(test_web_json_helpers)

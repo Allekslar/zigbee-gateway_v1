@@ -63,7 +63,7 @@ static portMUX_TYPE s_join_state_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_primary_channel_mask = (1UL << 13);
 static uint8_t s_max_children = 16U;
 static const bool kDiagTargetTraceEnabled = true;
-static const bool kDiagSuppressOnOffForTargetAfterJoin = true;
+static const bool kDiagSuppressOnOffForTargetAfterJoin = false;
 static const int64_t kDiagSuppressOnOffAfterJoinUs = 30LL * 1000LL * 1000LL;
 static const uint8_t kDiagTargetIeee[8] = {0x44, 0xfe, 0x9e, 0xfe, 0xff, 0x16, 0xa3, 0x98};
 static const uint8_t kGatewayEndpoint = 1U;
@@ -1927,3 +1927,30 @@ void hal_zigbee_simulate_start_network_formation_status_once(hal_zigbee_status_t
     (void)status;
 #endif
 }
+
+#if defined(SERVICE_RUNTIME_TEST_HOOKS)
+void hal_zigbee_test_seed_known_device(uint16_t short_addr, const uint8_t ieee_addr[8]) {
+#if defined(ESP_PLATFORM) && HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    if (!is_valid_short_addr(short_addr) || ieee_addr == NULL || !is_valid_ieee_addr(ieee_addr)) {
+        return;
+    }
+
+    upsert_known_device_identity(ieee_addr, short_addr);
+#else
+    (void)short_addr;
+    (void)ieee_addr;
+#endif
+}
+
+bool hal_zigbee_test_should_suppress_on_off(uint16_t short_addr, int64_t* age_ms) {
+#if defined(ESP_PLATFORM) && HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    return should_suppress_on_off_for_diag_target(short_addr, age_ms);
+#else
+    if (age_ms != NULL) {
+        *age_ms = -1LL;
+    }
+    (void)short_addr;
+    return false;
+#endif
+}
+#endif
