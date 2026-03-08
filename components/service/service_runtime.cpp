@@ -1363,7 +1363,16 @@ bool ServiceRuntime::schedule_force_remove(uint16_t short_addr, uint32_t deadlin
 }
 
 std::size_t ServiceRuntime::process_pending_sta_connect(uint32_t now_ms) noexcept {
-    return network_policy_manager_.process_pending_sta_connect(*this, now_ms);
+    CoreReadModel core_snapshot{};
+    if (!capture_core_read_model(&core_snapshot)) {
+        return 0;
+    }
+
+    return network_policy_manager_.process_pending_sta_connect(*this, core_snapshot.network_connected, now_ms);
+}
+
+void ServiceRuntime::note_dropped_event() noexcept {
+    (void)stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
 }
 
 std::size_t ServiceRuntime::process_force_remove_timeouts(uint32_t now_ms) noexcept {

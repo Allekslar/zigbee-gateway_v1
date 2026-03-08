@@ -33,12 +33,14 @@ void NetworkPolicyManager::arm_pending_sta_connect(
     }
 }
 
-std::size_t NetworkPolicyManager::process_pending_sta_connect(ServiceRuntime& runtime, uint32_t now_ms) noexcept {
+std::size_t NetworkPolicyManager::process_pending_sta_connect(
+    ServiceRuntime& runtime,
+    bool connected,
+    uint32_t now_ms) noexcept {
     if (!pending_sta_connect_.in_use) {
         return 0;
     }
 
-    const bool connected = runtime.registry_->snapshot_copy().network_connected;
     if (!connected && !is_deadline_reached(now_ms, pending_sta_connect_.deadline_ms)) {
         return 0;
     }
@@ -57,7 +59,7 @@ std::size_t NetworkPolicyManager::process_pending_sta_connect(ServiceRuntime& ru
     }
 
     if (!runtime.queue_network_result(result)) {
-        (void)runtime.stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
+        runtime.note_dropped_event();
         return 0;
     }
     return 1;
@@ -124,7 +126,7 @@ void NetworkPolicyManager::maybe_request_auto_rejoin_window(
 }
 
 void NetworkPolicyManager::process_zigbee_join_window_policy(ServiceRuntime& runtime, uint32_t now_ms) noexcept {
-    if (!runtime.connectivity_manager_.zigbee_started()) {
+    if (!runtime.zigbee_started()) {
         runtime.set_join_window_cache(false, 0U);
         return;
     }

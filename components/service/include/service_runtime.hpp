@@ -224,6 +224,7 @@ private:
     bool request_join_window_open(uint16_t duration_seconds) noexcept;
     void process_zigbee_network_policy(uint32_t now_ms) noexcept;
     void set_join_window_cache(bool open, uint16_t seconds_left) noexcept;
+    void note_dropped_event() noexcept;
     bool persist_current_core_state() noexcept;
     bool restore_persisted_core_state() noexcept;
     bool schedule_force_remove(uint16_t short_addr, uint32_t deadline_ms) noexcept;
@@ -279,6 +280,8 @@ private:
     void publish_config_api_snapshot(const CoreReadModel& core_snapshot) noexcept;
     void sync_api_snapshots() noexcept;
 
+    // CoreRegistry is owned by ServiceRuntime; managers must consume prepared
+    // runtime state fragments instead of reading snapshots directly.
     core::CoreRegistry* registry_{nullptr};
     EffectExecutor* effect_executor_{nullptr};
     ConfigManager config_manager_{};

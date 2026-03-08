@@ -292,6 +292,21 @@ run_checks() {
         '#include[[:space:]]+"hal_zigbee\.h"|hal_zigbee_' \
         "public ServiceRuntime header must not expose HAL Zigbee boundary types"
 
+    local manager_registry_reads="${TMP_DIR}/INV-M016.txt"
+    : > "${manager_registry_reads}"
+    while IFS= read -r file; do
+        [[ -n "${file}" ]] || continue
+        grep -E -n -- 'snapshot_copy[[:space:]]*\(|pin_current[[:space:]]*\(' "${file}" >> "${manager_registry_reads}" || true
+    done < <(find components/service -maxdepth 1 -type f -name '*_manager.cpp' | sort)
+    if [[ -s "${manager_registry_reads}" ]]; then
+        report_violation \
+            "INV-M016" \
+            "medium" \
+            "components/service" \
+            "service managers must not read CoreRegistry snapshots directly; consume ServiceRuntime-owned state fragments" \
+            "${manager_registry_reads}"
+    fi
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

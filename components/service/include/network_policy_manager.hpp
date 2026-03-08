@@ -17,7 +17,7 @@ class NetworkPolicyManager {
 public:
     bool has_pending_sta_connect() const noexcept;
     void arm_pending_sta_connect(uint32_t request_id, bool saved, const char* ssid, uint32_t deadline_ms) noexcept;
-    std::size_t process_pending_sta_connect(ServiceRuntime& runtime, uint32_t now_ms) noexcept;
+    std::size_t process_pending_sta_connect(ServiceRuntime& runtime, bool connected, uint32_t now_ms) noexcept;
 
     bool request_join_window_open(ServiceRuntime& runtime, uint16_t duration_seconds, uint32_t now_ms) noexcept;
     void maybe_request_auto_rejoin_window(
