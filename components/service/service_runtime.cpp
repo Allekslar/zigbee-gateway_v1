@@ -3,6 +3,7 @@
 
 #include "service_runtime.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <chrono>
 #include <type_traits>
@@ -113,12 +114,12 @@ bool has_restorable_devices(const core::CoreState& state) noexcept {
         return true;
     }
 
-    for (const auto& device : state.devices) {
-        if (device.short_addr != core::kUnknownDeviceShortAddr) {
-            return true;
-        }
-    }
-    return false;
+    return std::any_of(
+        state.devices.begin(),
+        state.devices.end(),
+        [](const core::CoreDeviceRecord& device) noexcept {
+            return device.short_addr != core::kUnknownDeviceShortAddr;
+        });
 }
 
 bool decode_raw_u32_le(const ZigbeeRawAttributeReport& report, uint32_t* out_value) noexcept {
