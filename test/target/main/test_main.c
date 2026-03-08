@@ -5,6 +5,7 @@
 
 void test_hal_nvs_set_get_roundtrip(void);
 void test_hal_nvs_missing_key_returns_error(void);
+void test_hal_nvs_blob_roundtrip(void);
 void test_hal_zigbee_notifies_registered_callbacks(void);
 void test_hal_zigbee_rejects_null_callbacks(void);
 void test_reporting_flow_join_to_first_report_and_reboot_recovery(void);
@@ -24,6 +25,7 @@ void app_main(void) {
 
     RUN_TEST(test_hal_nvs_set_get_roundtrip);
     RUN_TEST(test_hal_nvs_missing_key_returns_error);
+    RUN_TEST(test_hal_nvs_blob_roundtrip);
     RUN_TEST(test_hal_zigbee_notifies_registered_callbacks);
     RUN_TEST(test_hal_zigbee_rejects_null_callbacks);
     RUN_TEST(test_reporting_flow_join_to_first_report_and_reboot_recovery);

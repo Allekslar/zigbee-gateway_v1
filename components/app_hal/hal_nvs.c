@@ -35,8 +35,16 @@ typedef struct {
     char value[129];
 } host_str_entry_t;
 
+typedef struct {
+    bool used;
+    char key[32];
+    uint8_t value[4096];
+    uint32_t value_len;
+} host_blob_entry_t;
+
 static host_u32_entry_t s_u32_entries[16];
 static host_str_entry_t s_str_entries[16];
+static host_blob_entry_t s_blob_entries[8];
 static bool s_host_storage_initialized = false;
 
 static void host_copy_cstr(char* dst, size_t dst_capacity, const char* src) {
@@ -103,6 +111,32 @@ static host_str_entry_t* host_find_str_entry(const char* key, bool allow_create)
     free_entry->used = true;
     return free_entry;
 }
+
+static host_blob_entry_t* host_find_blob_entry(const char* key, bool allow_create) {
+    host_blob_entry_t* free_entry = NULL;
+    for (size_t i = 0; i < (sizeof(s_blob_entries) / sizeof(s_blob_entries[0])); ++i) {
+        host_blob_entry_t* entry = &s_blob_entries[i];
+        if (entry->used) {
+            if (strcmp(entry->key, key) == 0) {
+                return entry;
+            }
+            continue;
+        }
+
+        if (free_entry == NULL) {
+            free_entry = entry;
+        }
+    }
+
+    if (!allow_create || free_entry == NULL) {
+        return NULL;
+    }
+
+    *free_entry = (host_blob_entry_t){0};
+    host_copy_cstr(free_entry->key, sizeof(free_entry->key), key);
+    free_entry->used = true;
+    return free_entry;
+}
 #endif
 
 hal_nvs_status_t hal_nvs_init(void) {
@@ -133,6 +167,9 @@ hal_nvs_status_t hal_nvs_init(void) {
         }
         for (size_t i = 0; i < (sizeof(s_str_entries) / sizeof(s_str_entries[0])); ++i) {
             s_str_entries[i] = (host_str_entry_t){0};
+        }
+        for (size_t i = 0; i < (sizeof(s_blob_entries) / sizeof(s_blob_entries[0])); ++i) {
+            s_blob_entries[i] = (host_blob_entry_t){0};
         }
         s_host_storage_initialized = true;
     }
@@ -293,6 +330,100 @@ hal_nvs_status_t hal_nvs_get_str(const char* key, char* value_out, uint32_t valu
     }
 
     host_copy_cstr(value_out, value_out_capacity, entry->value);
+    return HAL_NVS_STATUS_OK;
+#endif
+}
+
+hal_nvs_status_t hal_nvs_set_blob(const char* key, const void* value, uint32_t value_len) {
+    if (key == 0 || key[0] == '\0' || value == 0 || value_len == 0U) {
+        return HAL_NVS_STATUS_INVALID_ARG;
+    }
+
+#ifdef ESP_PLATFORM
+    nvs_handle_t handle = 0;
+    if (nvs_open("zigbee_gateway", NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGE(kTag, "set_blob open failed, key='%s'", key);
+        return HAL_NVS_STATUS_ERR;
+    }
+
+    esp_err_t err = nvs_set_blob(handle, key, value, (size_t)value_len);
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+    if (err == ESP_OK) {
+        ESP_LOGI(kTag, "set_blob ok, key='%s' len=%u", key, (unsigned)value_len);
+    } else {
+        ESP_LOGE(kTag, "set_blob failed, key='%s' err=%s", key, esp_err_to_name(err));
+    }
+    return err == ESP_OK ? HAL_NVS_STATUS_OK : HAL_NVS_STATUS_ERR;
+#else
+    host_blob_entry_t* entry = host_find_blob_entry(key, true);
+    if (entry == NULL) {
+        return HAL_NVS_STATUS_NO_SPACE;
+    }
+    if (value_len > sizeof(entry->value)) {
+        return HAL_NVS_STATUS_NO_SPACE;
+    }
+
+    memcpy(entry->value, value, value_len);
+    entry->value_len = value_len;
+    return HAL_NVS_STATUS_OK;
+#endif
+}
+
+hal_nvs_status_t hal_nvs_get_blob(
+    const char* key,
+    void* value_out,
+    uint32_t value_out_capacity,
+    uint32_t* value_len_out) {
+    if (key == 0 || key[0] == '\0' || value_out == 0 || value_len_out == 0) {
+        return HAL_NVS_STATUS_INVALID_ARG;
+    }
+
+#ifdef ESP_PLATFORM
+    nvs_handle_t handle = 0;
+    if (nvs_open("zigbee_gateway", NVS_READONLY, &handle) != ESP_OK) {
+        ESP_LOGE(kTag, "get_blob open failed, key='%s'", key);
+        return HAL_NVS_STATUS_ERR;
+    }
+
+    size_t required_len = 0U;
+    esp_err_t err = nvs_get_blob(handle, key, NULL, &required_len);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_close(handle);
+        return HAL_NVS_STATUS_NOT_FOUND;
+    }
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        return HAL_NVS_STATUS_ERR;
+    }
+    if (required_len > (size_t)value_out_capacity) {
+        *value_len_out = (uint32_t)required_len;
+        nvs_close(handle);
+        return HAL_NVS_STATUS_NO_SPACE;
+    }
+
+    err = nvs_get_blob(handle, key, value_out, &required_len);
+    nvs_close(handle);
+    if (err != ESP_OK) {
+        return err == ESP_ERR_NVS_NOT_FOUND ? HAL_NVS_STATUS_NOT_FOUND : HAL_NVS_STATUS_ERR;
+    }
+
+    *value_len_out = (uint32_t)required_len;
+    return HAL_NVS_STATUS_OK;
+#else
+    const host_blob_entry_t* entry = host_find_blob_entry(key, false);
+    if (entry == NULL || !entry->used) {
+        return HAL_NVS_STATUS_NOT_FOUND;
+    }
+    if (entry->value_len > value_out_capacity) {
+        *value_len_out = entry->value_len;
+        return HAL_NVS_STATUS_NO_SPACE;
+    }
+
+    memcpy(value_out, entry->value, entry->value_len);
+    *value_len_out = entry->value_len;
     return HAL_NVS_STATUS_OK;
 #endif
 }

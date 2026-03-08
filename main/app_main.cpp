@@ -67,6 +67,13 @@ extern "C" void app_main(void) {
             break;
     }
 
+    if (!g_runtime.start()) {
+        ESP_LOGE(kTag, "Service runtime task start failed");
+        while (true) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+
     if (!g_web_server.start()) {
         ESP_LOGE(kTag, "Web server start failed");
         while (true) {
@@ -76,11 +83,4 @@ extern "C" void app_main(void) {
 
     g_mqtt.start();
     g_matter.start();
-
-    if (!g_runtime.start()) {
-        ESP_LOGE(kTag, "Service runtime task start failed");
-        while (true) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
-    }
 }

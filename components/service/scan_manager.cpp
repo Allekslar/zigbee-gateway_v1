@@ -34,9 +34,17 @@ constexpr const char* kTag = LOG_TAG_SERVICE_RUNTIME;
 }  // namespace
 
 ScanManager::SpinLockGuard::SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
+    uint32_t spin_count = 0U;
+#ifndef ESP_PLATFORM
+    (void)spin_count;
+#endif
     while (lock_.test_and_set(std::memory_order_acquire)) {
 #ifdef ESP_PLATFORM
-        taskYIELD();
+        if ((++spin_count & 0x7U) == 0U) {
+            vTaskDelay(1);
+        } else {
+            taskYIELD();
+        }
 #else
         std::this_thread::yield();
 #endif

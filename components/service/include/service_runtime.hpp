@@ -223,6 +223,8 @@ private:
     bool request_join_window_open(uint16_t duration_seconds) noexcept;
     void process_zigbee_network_policy(uint32_t now_ms) noexcept;
     void set_join_window_cache(bool open, uint16_t seconds_left) noexcept;
+    bool persist_current_core_state() noexcept;
+    bool restore_persisted_core_state() noexcept;
     bool schedule_force_remove(uint16_t short_addr, uint32_t deadline_ms) noexcept;
     std::size_t process_force_remove_timeouts(uint32_t now_ms) noexcept;
     std::size_t process_pending_sta_connect(uint32_t now_ms) noexcept;
@@ -267,6 +269,10 @@ private:
         uint8_t last_command_status{0};
     };
 
+    struct PersistedCoreStateStorage {
+        alignas(core::CoreState) std::array<uint8_t, sizeof(core::CoreState) + sizeof(uint32_t) * 2U> bytes{};
+    };
+
     bool capture_core_read_model(CoreReadModel* out) const noexcept;
     void publish_network_api_snapshot(const CoreReadModel& core_snapshot) noexcept;
     void publish_config_api_snapshot(const CoreReadModel& core_snapshot) noexcept;
@@ -305,6 +311,8 @@ private:
     RuntimeStatsStorage stats_{};
     NetworkApiSnapshotStorage network_api_snapshot_{};
     ConfigApiSnapshotStorage config_api_snapshot_{};
+    mutable PersistedCoreStateStorage persisted_core_state_storage_{};
+    std::atomic<bool> restore_core_state_pending_{false};
     std::atomic<uint32_t> last_tick_ms_{0};
 #ifdef ESP_PLATFORM
     void* runtime_task_handle_{nullptr};

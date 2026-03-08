@@ -15,10 +15,17 @@ namespace {
 class SpinLockGuard {
 public:
     explicit SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
+        uint32_t spin_count = 0U;
+#ifndef ESP_PLATFORM
+        (void)spin_count;
+#endif
         while (lock_.test_and_set(std::memory_order_acquire)) {
 #ifdef ESP_PLATFORM
-            // Avoid priority inversion: let lower-priority lock owner run.
-            taskYIELD();
+            if ((++spin_count & 0x7U) == 0U) {
+                vTaskDelay(1);
+            } else {
+                taskYIELD();
+            }
 #endif
         }
     }

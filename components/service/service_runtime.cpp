@@ -5,8 +5,10 @@
 
 #include <cstring>
 #include <chrono>
+#include <type_traits>
 
 #include "hal_event_adapter_internal.hpp"
+#include "hal_nvs.h"
 #include "log_tags.h"
 
 #ifdef ESP_PLATFORM
@@ -34,10 +36,19 @@ constexpr const char* kTag = LOG_TAG_SERVICE_RUNTIME;
 class SpinLockGuard {
 public:
     explicit SpinLockGuard(std::atomic_flag& lock) noexcept : lock_(lock) {
+        uint32_t spin_count = 0U;
+#ifndef ESP_PLATFORM
+        (void)spin_count;
+#endif
         while (lock_.test_and_set(std::memory_order_acquire)) {
 #ifdef ESP_PLATFORM
-            // Yield to let lock owner run; never force-clear a lock held by another context.
-            taskYIELD();
+            // On single-core FreeRTOS, taskYIELD() does not unblock lower-priority
+            // lock owners. Periodically sleep one tick to avoid watchdog deadlocks.
+            if ((++spin_count & 0x7U) == 0U) {
+                vTaskDelay(1);
+            } else {
+                taskYIELD();
+            }
 #endif
         }
     }
@@ -54,6 +65,9 @@ constexpr uint32_t kForceRemoveDefaultTimeoutMs = 5000U;
 constexpr uint32_t kForceRemoveMinTimeoutMs = 500U;
 constexpr uint32_t kForceRemoveMaxTimeoutMs = 30000U;
 constexpr std::size_t kMaxProcessedEventsPerCycle = 64U;
+constexpr const char* kPersistedCoreStateKey = "core_state_v1";
+constexpr uint32_t kPersistedCoreStateMagic = 0x43535445U;  // "CSTE"
+constexpr uint32_t kPersistedCoreStateVersion = 1U;
 #ifdef ESP_PLATFORM
 constexpr const char* kRuntimeTaskName = "service_runtime";
 // NVS + network request processing can exceed 6KB on ESP32-C6 in AP provisioning flow.
@@ -73,6 +87,66 @@ uint32_t clamp_force_remove_timeout(uint32_t timeout_ms) noexcept {
         return kForceRemoveMaxTimeoutMs;
     }
     return timeout_ms;
+}
+
+struct PersistedCoreStateV1 {
+    uint32_t magic{kPersistedCoreStateMagic};
+    uint32_t version{kPersistedCoreStateVersion};
+    core::CoreState state{};
+};
+
+static_assert(std::is_trivially_copyable<PersistedCoreStateV1>::value, "PersistedCoreStateV1 must be POD-like");
+static_assert(
+    sizeof(PersistedCoreStateV1) == sizeof(core::CoreState) + sizeof(uint32_t) * 2U,
+    "Persisted core-state storage size must match serialized payload");
+
+bool sanitize_restored_core_state(core::CoreState* state) noexcept {
+    if (state == nullptr) {
+        return false;
+    }
+
+    uint16_t active_devices = 0U;
+    for (std::size_t i = 0; i < state->devices.size(); ++i) {
+        core::CoreDeviceRecord& device = state->devices[i];
+        if (!device.online || device.short_addr == core::kUnknownDeviceShortAddr || device.short_addr == 0x0000U) {
+            device = core::CoreDeviceRecord{};
+            continue;
+        }
+
+        bool duplicate = false;
+        for (std::size_t j = 0; j < i; ++j) {
+            const core::CoreDeviceRecord& previous = state->devices[j];
+            if (previous.online && previous.short_addr == device.short_addr) {
+                duplicate = true;
+                break;
+            }
+        }
+
+        if (duplicate) {
+            device = core::CoreDeviceRecord{};
+            continue;
+        }
+
+        ++active_devices;
+    }
+
+    state->device_count = active_devices;
+    state->network_connected = false;
+    state->last_command_status = 0U;
+    return true;
+}
+
+bool has_restorable_devices(const core::CoreState& state) noexcept {
+    if (state.device_count != 0U) {
+        return true;
+    }
+
+    for (const auto& device : state.devices) {
+        if (device.short_addr != core::kUnknownDeviceShortAddr) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool decode_raw_u32_le(const ZigbeeRawAttributeReport& report, uint32_t* out_value) noexcept {
@@ -227,12 +301,56 @@ void ServiceRuntime::set_join_window_cache(bool open, uint16_t seconds_left) noe
     join_window_seconds_left_cache_.store(open ? static_cast<uint32_t>(seconds_left) : 0U, std::memory_order_release);
 }
 
+bool ServiceRuntime::persist_current_core_state() noexcept {
+    auto* persisted = reinterpret_cast<PersistedCoreStateV1*>(persisted_core_state_storage_.bytes.data());
+    *persisted = PersistedCoreStateV1{};
+    persisted->state = state();
+    return hal_nvs_set_blob(kPersistedCoreStateKey, persisted, sizeof(*persisted)) == HAL_NVS_STATUS_OK;
+}
+
+bool ServiceRuntime::restore_persisted_core_state() noexcept {
+    auto* persisted = reinterpret_cast<PersistedCoreStateV1*>(persisted_core_state_storage_.bytes.data());
+    *persisted = PersistedCoreStateV1{};
+    uint32_t persisted_len = 0U;
+    const hal_nvs_status_t status =
+        hal_nvs_get_blob(kPersistedCoreStateKey, persisted, sizeof(*persisted), &persisted_len);
+    if (status == HAL_NVS_STATUS_NOT_FOUND) {
+        return false;
+    }
+    if (status != HAL_NVS_STATUS_OK || persisted_len != sizeof(*persisted) ||
+        persisted->magic != kPersistedCoreStateMagic || persisted->version != kPersistedCoreStateVersion) {
+        SR_LOGW("Persisted CoreState restore skipped: status=%d len=%u", static_cast<int>(status), persisted_len);
+        return false;
+    }
+
+    core::CoreState restored = persisted->state;
+    if (!sanitize_restored_core_state(&restored) || !has_restorable_devices(restored)) {
+        return false;
+    }
+
+    if (!registry_->publish(restored)) {
+        SR_LOGW("Persisted CoreState restore failed: registry publish rejected");
+        return false;
+    }
+
+    SR_LOGI(
+        "Restored persisted CoreState devices=%u revision=%lu",
+        static_cast<unsigned>(restored.device_count),
+        static_cast<unsigned long>(restored.revision));
+    sync_api_snapshots();
+    return true;
+}
+
 #ifdef ESP_PLATFORM
 void ServiceRuntime::runtime_task_entry(void* arg) {
     ServiceRuntime* runtime = static_cast<ServiceRuntime*>(arg);
     if (runtime == nullptr) {
         vTaskDelete(nullptr);
         return;
+    }
+
+    if (runtime->restore_core_state_pending_.exchange(false, std::memory_order_acq_rel)) {
+        (void)runtime->restore_persisted_core_state();
     }
 
     const TickType_t delay_ticks = kRuntimeTaskPeriodTicks > 0 ? kRuntimeTaskPeriodTicks : 1U;
@@ -861,7 +979,13 @@ uint32_t ServiceRuntime::monotonic_now_ms_for_test() const noexcept {
 #endif
 
 bool ServiceRuntime::initialize_hal_adapter() noexcept {
-    return init_hal_event_adapter(*this);
+    if (!init_hal_event_adapter(*this)) {
+        return false;
+    }
+
+    restore_core_state_pending_.store(true, std::memory_order_release);
+    sync_api_snapshots();
+    return true;
 }
 
 bool ServiceRuntime::ensure_wifi_mode_for_scan() noexcept {
@@ -939,6 +1063,9 @@ bool ServiceRuntime::start() noexcept {
     SR_LOGI("Service runtime task started");
     return true;
 #else
+    if (restore_core_state_pending_.exchange(false, std::memory_order_acq_rel)) {
+        (void)restore_persisted_core_state();
+    }
     return true;
 #endif
 }
@@ -999,6 +1126,9 @@ void ServiceRuntime::execute_effects(const core::CoreEffectList& effects) noexce
 
         if (effect.type == core::CoreEffectType::kPersistState) {
             (void)config_manager_.save();
+            if (!persist_current_core_state()) {
+                (void)stats_.failed_effects.fetch_add(1, std::memory_order_relaxed);
+            }
         }
     }
 }
