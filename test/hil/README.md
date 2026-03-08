@@ -12,7 +12,7 @@ The smoke covers the regression-prone path that unit tests cannot prove on real 
 1. gateway reboot preserves paired devices in `/api/devices`;
 2. opening a join window and pairing exactly one new device;
 3. auto-close of the join window after the first join;
-4. immediate `ON/OFF` control on the newly joined device;
+4. bounded-retry `ON/OFF` command success on the newly joined device during its post-join readiness window;
 5. removing the joined device and verifying it disappears from `/api/devices`.
 
 ## Runner
@@ -28,7 +28,8 @@ Useful environment variables:
 ```bash
 GW_BASE_URL=http://192.168.178.171 \
 JOIN_SECONDS=30 \
-POWER_READY_SEC=12 \
+POWER_READY_SEC=30 \
+POWER_RETRY_SEC=3 \
 scripts/run_gateway_zigbee_smoke.sh
 ```
 

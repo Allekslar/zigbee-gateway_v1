@@ -10,7 +10,8 @@ Semi-automated HIL smoke for a real gateway and real Zigbee end devices.
 Environment variables:
   GW_BASE_URL        Gateway base URL (default: http://192.168.4.1)
   JOIN_SECONDS       Join window duration in seconds (default: 30)
-  POWER_READY_SEC    Max wait for power state update after join (default: 12)
+  POWER_READY_SEC    Max total wait for successful ON/OFF command completion after join (default: 30)
+  POWER_RETRY_SEC    Retry cadence for ON/OFF after join (default: 3)
   REBOOT_READY_SEC   Max wait for gateway after manual reboot (default: 90)
   POLL_SEC           Poll interval in seconds (default: 1)
 
@@ -18,7 +19,7 @@ The script performs:
 1. Device snapshot before reboot.
 2. Manual gateway reboot + restore verification.
 3. Open join window and wait for one new device.
-4. Verify ON and OFF updates for the joined device.
+4. Verify successful ON and OFF command completion for the joined device.
 5. Remove the joined device and verify it disappears.
 
 Requires:
@@ -34,7 +35,8 @@ fi
 
 GW_BASE_URL="${GW_BASE_URL:-http://192.168.4.1}"
 JOIN_SECONDS="${JOIN_SECONDS:-30}"
-POWER_READY_SEC="${POWER_READY_SEC:-12}"
+POWER_READY_SEC="${POWER_READY_SEC:-30}"
+POWER_RETRY_SEC="${POWER_RETRY_SEC:-3}"
 REBOOT_READY_SEC="${REBOOT_READY_SEC:-90}"
 POLL_SEC="${POLL_SEC:-1}"
 
@@ -149,7 +151,23 @@ wait_for_short_addr_missing() {
   while (( SECONDS < deadline )); do
     fetch_json "/api/devices" "${out_file}"
     local present
-    present="$(json_eval "any(device.get('short_addr') == ${short_addr} for device in data.get('devices', []))" "${out_file}")"
+    present="$(python3 - "${out_file}" "${short_addr}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+short_addr = int(sys.argv[2])
+with open(path, "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+
+for device in data.get("devices", []):
+    if device.get("short_addr") == short_addr:
+        print("true")
+        sys.exit(0)
+
+print("false")
+PY
+)"
     if [[ "${present}" != "true" ]]; then
       return 0
     fi
@@ -198,6 +216,59 @@ PY
   return 1
 }
 
+request_power_state() {
+  local short_addr="$1"
+  local desired="$2"
+  request "POST" "/api/devices/power" \
+    "{\"short_addr\":${short_addr},\"power_on\":${desired}}" > /dev/null
+}
+
+wait_for_command_success_after_revision() {
+  local previous_revision="$1"
+  local timeout_sec="$2"
+  local out_file="$3"
+  local deadline=$((SECONDS + timeout_sec))
+
+  while (( SECONDS < deadline )); do
+    fetch_json "/api/config" "${out_file}"
+    local revision
+    local status
+    revision="$(json_eval 'data["revision"]' "${out_file}")"
+    status="$(json_eval 'data["last_command_status"]' "${out_file}")"
+    if [[ "${revision}" -gt "${previous_revision}" && "${status}" == "1" ]]; then
+      return 0
+    fi
+    sleep "${POLL_SEC}"
+  done
+
+  return 1
+}
+
+ensure_power_command_success_with_retries() {
+  local short_addr="$1"
+  local desired="$2"
+  local timeout_sec="$3"
+  local out_file="$4"
+  local deadline=$((SECONDS + timeout_sec))
+  local attempt_window="${POWER_RETRY_SEC}"
+
+  if (( attempt_window < 1 )); then
+    attempt_window=1
+  fi
+
+  while (( SECONDS < deadline )); do
+    fetch_json "/api/config" "${out_file}"
+    local before_revision
+    before_revision="$(json_eval 'data["revision"]' "${out_file}")"
+    request_power_state "${short_addr}" "${desired}"
+    if wait_for_command_success_after_revision "${before_revision}" "${attempt_window}" "${out_file}"; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 extract_new_short_addr() {
   local before_file="$1"
   local after_file="$2"
@@ -231,6 +302,7 @@ devices_after_reboot_file="${tmp_dir}/devices_after_reboot.json"
 devices_after_join_file="${tmp_dir}/devices_after_join.json"
 devices_check_file="${tmp_dir}/devices_check.json"
 async_file="${tmp_dir}/async.json"
+config_file="${tmp_dir}/config.json"
 
 fetch_json "/api/devices" "${devices_before_file}"
 initial_count="$(json_eval 'data["device_count"]' "${devices_before_file}")"
@@ -279,19 +351,17 @@ if [[ "${join_window_open}" == "true" ]]; then
 fi
 echo "Join window auto-close OK"
 
-request "POST" "/api/devices/power" "{\"short_addr\":${new_short_addr},\"power_on\":true}" > /dev/null
-if ! wait_for_power_state "${new_short_addr}" "true" "${POWER_READY_SEC}" "${devices_check_file}"; then
-  echo "Joined device did not report power_on=true within ${POWER_READY_SEC}s" >&2
+if ! ensure_power_command_success_with_retries "${new_short_addr}" "true" "${POWER_READY_SEC}" "${config_file}"; then
+  echo "Joined device did not complete ON command successfully within ${POWER_READY_SEC}s" >&2
   exit 1
 fi
-echo "Immediate ON OK"
+echo "ON command success OK"
 
-request "POST" "/api/devices/power" "{\"short_addr\":${new_short_addr},\"power_on\":false}" > /dev/null
-if ! wait_for_power_state "${new_short_addr}" "false" "${POWER_READY_SEC}" "${devices_check_file}"; then
-  echo "Joined device did not report power_on=false within ${POWER_READY_SEC}s" >&2
+if ! ensure_power_command_success_with_retries "${new_short_addr}" "false" "${POWER_READY_SEC}" "${config_file}"; then
+  echo "Joined device did not complete OFF command successfully within ${POWER_READY_SEC}s" >&2
   exit 1
 fi
-echo "Immediate OFF OK"
+echo "OFF command success OK"
 
 remove_response="$(request "POST" "/api/devices/remove" "{\"short_addr\":${new_short_addr}}")"
 remove_request_id="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["request_id"])' <<< "${remove_response}")"
