@@ -88,5 +88,11 @@ extern "C" void app_main(void) {
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
-    g_matter.start();
+    g_matter.attach_runtime(&g_runtime);
+    if (!g_matter.start()) {
+        ESP_LOGE(kTag, "Matter bridge start failed");
+        while (true) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
 }

@@ -3,11 +3,12 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
-#include "core_state.hpp"
 #include "matter_endpoint_map.hpp"
+#include "service_runtime_api.hpp"
 
 namespace matter_bridge {
 
@@ -35,8 +36,10 @@ public:
     bool start() noexcept;
     void stop() noexcept;
     bool started() const noexcept;
+    void attach_runtime(service::ServiceRuntimeApi* runtime) noexcept;
     bool set_endpoint_map(const MatterEndpointMapEntry* map, std::size_t size) noexcept;
-    std::size_t sync_snapshot(const core::CoreState& state) noexcept;
+    std::size_t sync_runtime_snapshot() noexcept;
+    std::size_t sync_snapshot(const service::MatterBridgeSnapshot& snapshot) noexcept;
     std::size_t drain_attribute_updates(MatterAttributeUpdate* out, std::size_t capacity) noexcept;
 
 private:
@@ -48,18 +51,31 @@ private:
         bool stale{false};
         bool has_temperature{false};
         int16_t temperature_centi_c{0};
-        core::CoreOccupancyState occupancy{core::CoreOccupancyState::kUnknown};
-        core::CoreContactState contact{core::CoreContactState::kUnknown};
+        bool has_occupancy{false};
+        bool occupied{false};
+        bool has_contact{false};
+        bool contact_open{false};
     };
 
     void reset_sync_state() noexcept;
+#ifdef ESP_PLATFORM
+    static void task_entry(void* arg) noexcept;
+    void run_loop() noexcept;
+    bool ensure_task_started() noexcept;
+#endif
 
-    bool started_{false};
+    std::atomic<bool> started_{false};
     MatterEndpointMapEntry endpoint_map_[kMatterMaxEndpointMapEntries]{};
     std::size_t endpoint_map_size_{0};
+    service::MatterBridgeSnapshot runtime_snapshot_cache_{};
     DeviceShadow cached_devices_[core::kMaxDevices]{};
+    DeviceShadow sync_shadow_scratch_[core::kMaxDevices]{};
     std::size_t pending_update_count_{0};
     MatterAttributeUpdate pending_updates_[kMatterMaxUpdatesPerSync]{};
+    service::ServiceRuntimeApi* runtime_{nullptr};
+#ifdef ESP_PLATFORM
+    void* task_handle_{nullptr};
+#endif
 };
 
 }  // namespace matter_bridge

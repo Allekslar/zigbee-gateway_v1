@@ -138,9 +138,10 @@ Implementation API: `components/matter_bridge/include/matter_endpoint_map.hpp`.
 Matter snapshot-to-attribute bridge contract:
 
 - `MatterBridge::set_endpoint_map(...)` installs a bounded endpoint mapping table.
-- `MatterBridge::sync_snapshot(const core::CoreState&)` translates active Core snapshot devices to Matter attribute updates.
+- `ServiceRuntimeApi::build_matter_bridge_snapshot(...)` is the service-owned bridge read model for Matter consumers.
+- `MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot&)` translates normalized Matter bridge snapshot devices to attribute updates.
 - `MatterBridge::drain_attribute_updates(...)` returns deterministic, bounded deltas for publishing.
-- Translation keeps Core domain types (`CoreState/CoreDeviceRecord`) and does not introduce Matter-specific types into Core.
+- Translation keeps Matter-specific transport logic out of Core; Core layout does not leak directly into Matter consumers.
 
 Implementation API: `components/matter_bridge/include/matter_bridge.hpp`.
 

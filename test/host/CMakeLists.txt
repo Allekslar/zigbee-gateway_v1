@@ -334,6 +334,25 @@ add_executable(test_matter_bridge
 target_include_directories(test_matter_bridge PRIVATE
     ../../components/matter_bridge/include
     ../../components/core/include
+    ../../components/service/include
+    ../../components/app_hal/include
+    ../../components/common/include
 )
 zg_apply_component_compile_policy(test_matter_bridge)
 add_test(NAME test_matter_bridge COMMAND test_matter_bridge)
+
+add_executable(test_matter_runtime_feed
+    test_matter_runtime_feed.cpp
+    ../../components/matter_bridge/matter_bridge.cpp
+    ../../components/matter_bridge/matter_device_map.cpp
+)
+target_include_directories(test_matter_runtime_feed PRIVATE
+    ../../components/matter_bridge/include
+    ../../components/service/include
+    ../../components/core/include
+    ../../components/app_hal/include
+    ../../components/common/include
+)
+target_link_libraries(test_matter_runtime_feed PRIVATE service_host)
+zg_apply_component_compile_policy(test_matter_runtime_feed)
+add_test(NAME test_matter_runtime_feed COMMAND test_matter_runtime_feed)

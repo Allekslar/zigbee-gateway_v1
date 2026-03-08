@@ -358,6 +358,19 @@ run_checks() {
         'sync_snapshot[[:space:]]*\([[:space:]]*const[[:space:]]+core::CoreState&|runtime_->state[[:space:]]*\(|copy_state[[:space:]]*\(' \
         "MQTT bridge must not consume raw CoreState snapshot reads; it must use service-owned MQTT snapshots"
 
+    check_present "INV-M023" "medium" "components/service/include/service_runtime_api.hpp" \
+        'build_matter_bridge_snapshot[[:space:]]*\(' \
+        "ServiceRuntimeApi must expose service-owned Matter bridge snapshot builder"
+    check_absent "INV-M023" "medium" "components/matter_bridge" \
+        'sync_snapshot[[:space:]]*\([[:space:]]*const[[:space:]]+core::CoreState&|#include[[:space:]]+\"core_state\\.hpp\"' \
+        "Matter bridge must not consume raw CoreState snapshots"
+    check_present "INV-M023" "medium" "main/app_main.cpp" \
+        'g_matter\.attach_runtime[[:space:]]*\(&g_runtime\)' \
+        "app_main must attach ServiceRuntime to Matter bridge"
+    check_present "INV-M023" "medium" "main/app_main.cpp" \
+        'g_matter\.start[[:space:]]*\(' \
+        "app_main must start Matter bridge runtime feed path"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

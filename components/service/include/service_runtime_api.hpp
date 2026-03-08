@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -117,6 +118,32 @@ struct MqttBridgeSnapshot {
     std::array<MqttBridgeDeviceSnapshot, core::kMaxDevices> devices{};
 };
 
+enum class MatterBridgeDeviceClass : uint8_t {
+    kUnknown = 0,
+    kTemperature = 1,
+    kOccupancy = 2,
+    kContact = 3,
+};
+
+struct MatterBridgeDeviceSnapshot {
+    uint16_t short_addr{core::kUnknownDeviceShortAddr};
+    bool online{false};
+    bool stale{false};
+    MatterBridgeDeviceClass primary_class{MatterBridgeDeviceClass::kUnknown};
+    bool has_temperature{false};
+    int16_t temperature_centi_c{0};
+    bool has_occupancy{false};
+    bool occupied{false};
+    bool has_contact{false};
+    bool contact_open{false};
+};
+
+struct MatterBridgeSnapshot {
+    uint32_t revision{0};
+    uint16_t device_count{0};
+    std::array<MatterBridgeDeviceSnapshot, core::kMaxDevices> devices{};
+};
+
 class ServiceRuntimeApi {
 public:
     virtual ~ServiceRuntimeApi() = default;
@@ -142,6 +169,7 @@ public:
     virtual bool build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept = 0;
     virtual bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept = 0;
     virtual bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept = 0;
+    virtual bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept = 0;
     virtual bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept = 0;
     virtual bool is_scan_request_queued(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_in_progress(uint32_t request_id) const noexcept = 0;

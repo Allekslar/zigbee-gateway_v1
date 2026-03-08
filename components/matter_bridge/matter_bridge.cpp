@@ -7,32 +7,45 @@
 #include <cstring>
 
 #ifdef ESP_PLATFORM
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "hal_matter.h"
 #endif
+#include "log_tags.h"
 
 namespace matter_bridge {
 namespace {
 
-bool is_active_device(const core::CoreDeviceRecord& device) noexcept {
+#ifdef ESP_PLATFORM
+constexpr const char* kTag = LOG_TAG_MATTER_BRIDGE;
+constexpr const char* kMatterBridgeTaskName = "matter_bridge";
+constexpr uint32_t kMatterBridgeTaskStackSize = 6144U;
+constexpr UBaseType_t kMatterBridgeTaskPriority = 4U;
+constexpr TickType_t kMatterBridgeTaskPeriodTicks = pdMS_TO_TICKS(1000);
+#endif
+
+bool is_active_device(const service::MatterBridgeDeviceSnapshot& device) noexcept {
     return device.short_addr != core::kUnknownDeviceShortAddr && device.online;
 }
 
-MatterDeviceClass infer_primary_class(const core::CoreDeviceRecord& device) noexcept {
-    if (device.has_temperature) {
-        return MatterDeviceClass::kTemperature;
+MatterDeviceClass infer_primary_class(const service::MatterBridgeDeviceSnapshot& device) noexcept {
+    switch (device.primary_class) {
+        case service::MatterBridgeDeviceClass::kTemperature:
+            return MatterDeviceClass::kTemperature;
+        case service::MatterBridgeDeviceClass::kOccupancy:
+            return MatterDeviceClass::kOccupancy;
+        case service::MatterBridgeDeviceClass::kContact:
+            return MatterDeviceClass::kContact;
+        case service::MatterBridgeDeviceClass::kUnknown:
+        default:
+            return MatterDeviceClass::kUnknown;
     }
-    if (device.occupancy_state != core::CoreOccupancyState::kUnknown) {
-        return MatterDeviceClass::kOccupancy;
-    }
-    if (device.contact_state != core::CoreContactState::kUnknown) {
-        return MatterDeviceClass::kContact;
-    }
-    return MatterDeviceClass::kTemperature;
 }
 
 uint16_t resolve_status_endpoint(const MatterEndpointMapEntry* map,
                                  std::size_t map_size,
-                                 const core::CoreDeviceRecord& device) noexcept {
+                                 const service::MatterBridgeDeviceSnapshot& device) noexcept {
     uint16_t endpoint = 0;
     (void)map_resolve_endpoint(map, map_size, device.short_addr, infer_primary_class(device), &endpoint);
     return endpoint;
@@ -74,17 +87,38 @@ bool publish_update_to_hal(const MatterAttributeUpdate& update) noexcept {
 
 bool MatterBridge::start() noexcept {
     reset_sync_state();
-    started_ = true;
-    return started_;
+#ifdef ESP_PLATFORM
+    if (hal_matter_init() != 0) {
+        ESP_LOGW(kTag, "Matter HAL init unavailable; bridge will run without platform publisher");
+    }
+#endif
+    started_.store(true, std::memory_order_release);
+#ifdef ESP_PLATFORM
+    return ensure_task_started();
+#else
+    return started();
+#endif
 }
 
 void MatterBridge::stop() noexcept {
     reset_sync_state();
-    started_ = false;
+    started_.store(false, std::memory_order_release);
+#ifdef ESP_PLATFORM
+    for (uint8_t i = 0; i < 20U && task_handle_ != nullptr; ++i) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+#endif
 }
 
 bool MatterBridge::started() const noexcept {
-    return started_;
+    return started_.load(std::memory_order_acquire);
+}
+
+void MatterBridge::attach_runtime(service::ServiceRuntimeApi* runtime) noexcept {
+    runtime_ = runtime;
+#ifdef ESP_PLATFORM
+    (void)ensure_task_started();
+#endif
 }
 
 bool MatterBridge::set_endpoint_map(const MatterEndpointMapEntry* map, std::size_t size) noexcept {
@@ -105,8 +139,20 @@ bool MatterBridge::set_endpoint_map(const MatterEndpointMapEntry* map, std::size
     return true;
 }
 
-std::size_t MatterBridge::sync_snapshot(const core::CoreState& state) noexcept {
-    if (!started_) {
+std::size_t MatterBridge::sync_runtime_snapshot() noexcept {
+    if (!started() || runtime_ == nullptr) {
+        return 0U;
+    }
+
+    if (!runtime_->build_matter_bridge_snapshot(&runtime_snapshot_cache_)) {
+        return 0U;
+    }
+
+    return sync_snapshot(runtime_snapshot_cache_);
+}
+
+std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& snapshot) noexcept {
+    if (!started()) {
         return 0U;
     }
 
@@ -129,11 +175,10 @@ std::size_t MatterBridge::sync_snapshot(const core::CoreState& state) noexcept {
         return nullptr;
     };
 
-    DeviceShadow next_cache[core::kMaxDevices]{};
     std::size_t next_count = 0;
 
-    for (std::size_t i = 0; i < state.devices.size() && next_count < core::kMaxDevices; ++i) {
-        const core::CoreDeviceRecord& device = state.devices[i];
+    for (std::size_t i = 0; i < snapshot.device_count && next_count < core::kMaxDevices; ++i) {
+        const service::MatterBridgeDeviceSnapshot& device = snapshot.devices[i];
         if (!is_active_device(device)) {
             continue;
         }
@@ -145,8 +190,10 @@ std::size_t MatterBridge::sync_snapshot(const core::CoreState& state) noexcept {
         next.stale = device.stale;
         next.has_temperature = device.has_temperature;
         next.temperature_centi_c = device.temperature_centi_c;
-        next.occupancy = device.occupancy_state;
-        next.contact = device.contact_state;
+        next.has_occupancy = device.has_occupancy;
+        next.occupied = device.occupied;
+        next.has_contact = device.has_contact;
+        next.contact_open = device.contact_open;
         next.status_endpoint = resolve_status_endpoint(endpoint_map_, endpoint_map_size_, device);
 
         const DeviceShadow* prev = find_shadow(cached_devices_, core::kMaxDevices, next.short_addr);
@@ -183,7 +230,7 @@ std::size_t MatterBridge::sync_snapshot(const core::CoreState& state) noexcept {
             }
         }
 
-        if (next.occupancy != core::CoreOccupancyState::kUnknown && (is_new || prev->occupancy != next.occupancy)) {
+        if (next.has_occupancy && (is_new || prev->has_occupancy != next.has_occupancy || prev->occupied != next.occupied)) {
             uint16_t endpoint = 0;
             if (map_resolve_endpoint(endpoint_map_, endpoint_map_size_, next.short_addr, MatterDeviceClass::kOccupancy, &endpoint) &&
                 endpoint != 0U) {
@@ -191,12 +238,12 @@ std::size_t MatterBridge::sync_snapshot(const core::CoreState& state) noexcept {
                 update.short_addr = next.short_addr;
                 update.endpoint = endpoint;
                 update.type = MatterAttributeType::kOccupancy;
-                update.bool_value = (next.occupancy == core::CoreOccupancyState::kOccupied);
+                update.bool_value = next.occupied;
                 enqueue(update);
             }
         }
 
-        if (next.contact != core::CoreContactState::kUnknown && (is_new || prev->contact != next.contact)) {
+        if (next.has_contact && (is_new || prev->has_contact != next.has_contact || prev->contact_open != next.contact_open)) {
             uint16_t endpoint = 0;
             if (map_resolve_endpoint(endpoint_map_, endpoint_map_size_, next.short_addr, MatterDeviceClass::kContact, &endpoint) &&
                 endpoint != 0U) {
@@ -204,12 +251,12 @@ std::size_t MatterBridge::sync_snapshot(const core::CoreState& state) noexcept {
                 update.short_addr = next.short_addr;
                 update.endpoint = endpoint;
                 update.type = MatterAttributeType::kContactOpen;
-                update.bool_value = (next.contact == core::CoreContactState::kOpen);
+                update.bool_value = next.contact_open;
                 enqueue(update);
             }
         }
 
-        next_cache[next_count++] = next;
+        sync_shadow_scratch_[next_count++] = next;
     }
 
     for (std::size_t i = 0; i < core::kMaxDevices; ++i) {
@@ -217,7 +264,7 @@ std::size_t MatterBridge::sync_snapshot(const core::CoreState& state) noexcept {
         if (!prev.in_use) {
             continue;
         }
-        if (find_shadow(next_cache, next_count, prev.short_addr) != nullptr) {
+        if (find_shadow(sync_shadow_scratch_, next_count, prev.short_addr) != nullptr) {
             continue;
         }
         if (prev.status_endpoint == 0U) {
@@ -236,7 +283,7 @@ std::size_t MatterBridge::sync_snapshot(const core::CoreState& state) noexcept {
         cached_devices_[i] = DeviceShadow{};
     }
     for (std::size_t i = 0; i < next_count; ++i) {
-        cached_devices_[i] = next_cache[i];
+        cached_devices_[i] = sync_shadow_scratch_[i];
     }
 
     // Keep transport side effects out of Core by publishing normalized updates via HAL C ABI.
@@ -270,7 +317,54 @@ void MatterBridge::reset_sync_state() noexcept {
     pending_update_count_ = 0U;
     for (std::size_t i = 0; i < core::kMaxDevices; ++i) {
         cached_devices_[i] = DeviceShadow{};
+        sync_shadow_scratch_[i] = DeviceShadow{};
     }
 }
+
+#ifdef ESP_PLATFORM
+void MatterBridge::task_entry(void* arg) noexcept {
+    auto* bridge = static_cast<MatterBridge*>(arg);
+    if (bridge != nullptr) {
+        bridge->run_loop();
+    }
+    vTaskDelete(nullptr);
+}
+
+void MatterBridge::run_loop() noexcept {
+    while (started()) {
+        (void)sync_runtime_snapshot();
+        vTaskDelay(kMatterBridgeTaskPeriodTicks);
+    }
+    task_handle_ = nullptr;
+}
+
+bool MatterBridge::ensure_task_started() noexcept {
+    if (!started()) {
+        return false;
+    }
+    if (task_handle_ != nullptr) {
+        return true;
+    }
+    if (runtime_ == nullptr) {
+        return true;
+    }
+
+    TaskHandle_t handle = nullptr;
+    const BaseType_t created = xTaskCreate(
+        &MatterBridge::task_entry,
+        kMatterBridgeTaskName,
+        kMatterBridgeTaskStackSize,
+        this,
+        kMatterBridgeTaskPriority,
+        &handle);
+    if (created != pdPASS) {
+        ESP_LOGE(kTag, "Matter bridge task start failed");
+        return false;
+    }
+
+    task_handle_ = handle;
+    return true;
+}
+#endif
 
 }  // namespace matter_bridge

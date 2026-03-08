@@ -8,23 +8,32 @@
 
 namespace {
 
-core::CoreState make_state(uint16_t short_addr,
-                           bool online,
-                           bool has_temperature,
-                           int16_t temperature_centi_c,
-                           core::CoreOccupancyState occupancy,
-                           core::CoreContactState contact,
-                           bool stale) {
-    core::CoreState state{};
-    state.device_count = online ? 1U : 0U;
-    state.devices[0].short_addr = short_addr;
-    state.devices[0].online = online;
-    state.devices[0].has_temperature = has_temperature;
-    state.devices[0].temperature_centi_c = temperature_centi_c;
-    state.devices[0].occupancy_state = occupancy;
-    state.devices[0].contact_state = contact;
-    state.devices[0].stale = stale;
-    return state;
+service::MatterBridgeSnapshot make_snapshot(uint16_t short_addr,
+                                            bool online,
+                                            bool has_temperature,
+                                            int16_t temperature_centi_c,
+                                            bool has_occupancy,
+                                            bool occupied,
+                                            bool has_contact,
+                                            bool contact_open,
+                                            bool stale) {
+    service::MatterBridgeSnapshot snapshot{};
+    snapshot.revision = online ? 1U : 0U;
+    snapshot.device_count = online ? 1U : 0U;
+    snapshot.devices[0].short_addr = short_addr;
+    snapshot.devices[0].online = online;
+    snapshot.devices[0].primary_class = has_temperature ? service::MatterBridgeDeviceClass::kTemperature
+                                                        : (has_occupancy ? service::MatterBridgeDeviceClass::kOccupancy
+                                                                         : (has_contact ? service::MatterBridgeDeviceClass::kContact
+                                                                                        : service::MatterBridgeDeviceClass::kUnknown));
+    snapshot.devices[0].has_temperature = has_temperature;
+    snapshot.devices[0].temperature_centi_c = temperature_centi_c;
+    snapshot.devices[0].has_occupancy = has_occupancy;
+    snapshot.devices[0].occupied = occupied;
+    snapshot.devices[0].has_contact = has_contact;
+    snapshot.devices[0].contact_open = contact_open;
+    snapshot.devices[0].stale = stale;
+    return snapshot;
 }
 
 bool has_update(const matter_bridge::MatterAttributeUpdate* updates,
@@ -46,13 +55,15 @@ int main() {
 
     MatterBridge bridge;
 
-    const core::CoreState first = make_state(
+    const service::MatterBridgeSnapshot first = make_snapshot(
         0x2201U,
         true,
         true,
         2150,
-        core::CoreOccupancyState::kOccupied,
-        core::CoreContactState::kClosed,
+        true,
+        true,
+        true,
+        false,
         false);
 
     // Not started => no updates.
@@ -80,9 +91,9 @@ int main() {
     assert(bridge.sync_snapshot(first) == 0U);
     assert(bridge.drain_attribute_updates(out, kMatterMaxUpdatesPerSync) == 0U);
 
-    core::CoreState changed = first;
+    service::MatterBridgeSnapshot changed = first;
     changed.devices[0].temperature_centi_c = 2200;
-    changed.devices[0].contact_state = core::CoreContactState::kOpen;
+    changed.devices[0].contact_open = true;
     changed.devices[0].stale = true;
     const std::size_t changed_count = bridge.sync_snapshot(changed);
     assert(changed_count == 3U);
@@ -93,8 +104,7 @@ int main() {
     assert(has_update(out, drained_changed, MatterAttributeType::kStale, 50U));
 
     // Device removed => offline availability.
-    core::CoreState removed{};
-    removed.device_count = 0U;
+    service::MatterBridgeSnapshot removed{};
     const std::size_t removed_count = bridge.sync_snapshot(removed);
     assert(removed_count == 1U);
     const std::size_t drained_removed = bridge.drain_attribute_updates(out, kMatterMaxUpdatesPerSync);
