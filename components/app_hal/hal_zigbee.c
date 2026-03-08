@@ -57,6 +57,8 @@ static bool s_endpoint_registered = false;
 static TaskHandle_t s_stack_task_handle = NULL;
 static bool s_permit_join_open = false;
 static int64_t s_permit_join_deadline_us = 0;
+static int64_t s_explicit_permit_join_deadline_us = 0;
+static bool s_implicit_permit_join_close_scheduled = false;
 static portMUX_TYPE s_join_state_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_primary_channel_mask = (1UL << 13);
 static uint8_t s_max_children = 16U;
@@ -507,6 +509,89 @@ static void set_join_window_state(bool open, uint8_t duration_seconds) {
         s_permit_join_deadline_us = 0;
     }
     portEXIT_CRITICAL(&s_join_state_lock);
+}
+
+static void set_explicit_join_window_expectation(bool open, uint8_t duration_seconds) {
+#if defined(ESP_PLATFORM) && HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    portENTER_CRITICAL(&s_join_state_lock);
+    if (open && duration_seconds > 0U) {
+        s_explicit_permit_join_deadline_us =
+            esp_timer_get_time() + (int64_t)duration_seconds * 1000LL * 1000LL;
+    } else {
+        s_explicit_permit_join_deadline_us = 0;
+        s_implicit_permit_join_close_scheduled = false;
+    }
+    portEXIT_CRITICAL(&s_join_state_lock);
+#else
+    (void)open;
+    (void)duration_seconds;
+#endif
+}
+
+static bool should_suppress_implicit_permit_join(uint8_t duration_seconds) {
+#if defined(ESP_PLATFORM) && HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    if (duration_seconds < ESP_ZB_BDB_MIN_COMMISSIONING_TIME) {
+        return false;
+    }
+
+    const int64_t now_us = esp_timer_get_time();
+    bool suppress = false;
+
+    portENTER_CRITICAL(&s_join_state_lock);
+    if (s_explicit_permit_join_deadline_us > 0 && now_us >= s_explicit_permit_join_deadline_us) {
+        s_explicit_permit_join_deadline_us = 0;
+    }
+    suppress = s_explicit_permit_join_deadline_us == 0;
+    portEXIT_CRITICAL(&s_join_state_lock);
+
+    return suppress;
+#else
+    (void)duration_seconds;
+    return false;
+#endif
+}
+
+static void close_implicit_permit_join_alarm(uint8_t param) {
+#if defined(ESP_PLATFORM) && HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    (void)param;
+
+    portENTER_CRITICAL(&s_join_state_lock);
+    s_implicit_permit_join_close_scheduled = false;
+    portEXIT_CRITICAL(&s_join_state_lock);
+
+    if (!s_stack_started || !esp_zb_is_started()) {
+        set_join_window_state(false, 0U);
+        return;
+    }
+
+    const esp_err_t err = esp_zb_bdb_close_network();
+    if (err != ESP_OK) {
+        ESP_LOGW(kTag, "Failed to suppress implicit permit-join window: %s", esp_err_to_name(err));
+        return;
+    }
+
+    set_join_window_state(false, 0U);
+    ESP_LOGI(kTag, "Suppressed implicit permit-join window opened by stack after authorization");
+#else
+    (void)param;
+#endif
+}
+
+static void schedule_implicit_permit_join_close(void) {
+#if defined(ESP_PLATFORM) && HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    bool schedule = false;
+
+    portENTER_CRITICAL(&s_join_state_lock);
+    if (!s_implicit_permit_join_close_scheduled) {
+        s_implicit_permit_join_close_scheduled = true;
+        schedule = true;
+    }
+    portEXIT_CRITICAL(&s_join_state_lock);
+
+    if (schedule) {
+        esp_zb_scheduler_alarm(close_implicit_permit_join_alarm, 0U, 0U);
+    }
+#endif
 }
 
 static void notify_join_with_source(uint16_t short_addr, const char* source_tag) {
@@ -1242,6 +1327,7 @@ hal_zigbee_status_t hal_zigbee_open_network(uint16_t duration_seconds) {
         return HAL_ZIGBEE_STATUS_ERR;
     }
     set_join_window_state(true, (uint8_t)duration_seconds);
+    set_explicit_join_window_expectation(true, (uint8_t)duration_seconds);
     ESP_LOGI(kTag, "Zigbee join window opened for %u seconds", (unsigned)duration_seconds);
     return HAL_ZIGBEE_STATUS_OK;
 #else
@@ -1280,6 +1366,7 @@ hal_zigbee_status_t hal_zigbee_close_network(void) {
     }
 
     set_join_window_state(false, 0U);
+    set_explicit_join_window_expectation(false, 0U);
     ESP_LOGI(kTag, "Zigbee join window closed by request");
     return HAL_ZIGBEE_STATUS_OK;
 #else
@@ -1494,6 +1581,17 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
                 const uint8_t* permit_join_seconds =
                     (const uint8_t*)esp_zb_app_signal_get_params(signal_s->p_app_signal);
                 if (permit_join_seconds != 0 && *permit_join_seconds != 0U) {
+                    if (should_suppress_implicit_permit_join(*permit_join_seconds)) {
+                        set_join_window_state(false, 0U);
+                        schedule_implicit_permit_join_close();
+                        ESP_LOGI(
+                            kTag,
+                            "Suppress implicit permit-join enabled for %u seconds after authorization (pan_id=0x%04x ch=%u)",
+                            (unsigned)*permit_join_seconds,
+                            (unsigned)esp_zb_get_pan_id(),
+                            (unsigned)esp_zb_get_current_channel());
+                        return;
+                    }
                     set_join_window_state(true, *permit_join_seconds);
                     ESP_LOGI(
                         kTag,
@@ -1503,6 +1601,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
                         (unsigned)esp_zb_get_current_channel());
                 } else {
                     set_join_window_state(false, 0U);
+                    set_explicit_join_window_expectation(false, 0U);
                     ESP_LOGI(
                         kTag,
                         "Network permit-join closed (pan_id=0x%04x ch=%u)",

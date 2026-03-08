@@ -57,6 +57,17 @@ esp_err_t app_js_get_handler(httpd_req_t* req) {
     return send_embedded_file(req, "application/javascript; charset=utf-8", app_js_start, app_js_end);
 }
 
+esp_err_t favicon_get_handler(httpd_req_t* req) {
+    if (req == nullptr) {
+        return ESP_FAIL;
+    }
+
+    (void)httpd_resp_set_status(req, "204 No Content");
+    (void)httpd_resp_set_type(req, "image/x-icon");
+    (void)httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=86400");
+    return httpd_resp_send(req, nullptr, 0);
+}
+
 }  // namespace
 
 bool register_static_routes(void* server_handle, WebRouteContext* context) noexcept {
@@ -88,6 +99,12 @@ bool register_static_routes(void* server_handle, WebRouteContext* context) noexc
     app_js_get_uri.handler = app_js_get_handler;
     app_js_get_uri.user_ctx = context;
 
+    httpd_uri_t favicon_get_uri{};
+    favicon_get_uri.uri = "/favicon.ico";
+    favicon_get_uri.method = HTTP_GET;
+    favicon_get_uri.handler = favicon_get_handler;
+    favicon_get_uri.user_ctx = context;
+
     auto handle = static_cast<httpd_handle_t>(server_handle);
     if (httpd_register_uri_handler(handle, &root_get_uri) != ESP_OK) {
         return false;
@@ -99,6 +116,9 @@ bool register_static_routes(void* server_handle, WebRouteContext* context) noexc
         return false;
     }
     if (httpd_register_uri_handler(handle, &app_js_get_uri) != ESP_OK) {
+        return false;
+    }
+    if (httpd_register_uri_handler(handle, &favicon_get_uri) != ESP_OK) {
         return false;
     }
 
