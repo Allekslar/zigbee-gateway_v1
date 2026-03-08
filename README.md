@@ -178,6 +178,19 @@ idf.py -p /dev/ttyACM0 flash monitor
 ## Local Checks Before Push (Required)
 
 ```bash
+# Canonical blocking local verification bundle
+scripts/run_blocking_local_checks.sh
+```
+
+Strict local mode:
+
+```bash
+scripts/run_blocking_local_checks.sh --strict
+```
+
+Manual equivalent:
+
+```bash
 # Architecture invariants (blocking: high+medium)
 bash ./check_arch_invariants.sh
 
@@ -188,12 +201,9 @@ ctest --test-dir build-host --output-on-failure
 
 # Required migration smoke
 ctest --test-dir build-host --output-on-failure -R test_config_manager_migration
-```
 
-Strict local mode:
-
-```bash
-ARCH_BLOCKING_SEVERITIES=high,medium,low bash ./check_arch_invariants.sh
+# Target HAL build verification
+idf.py -C test/target -B build-target-tests build
 ```
 
 ## Test Matrix

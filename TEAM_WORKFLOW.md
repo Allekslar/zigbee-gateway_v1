@@ -27,22 +27,25 @@ Rule: if prose documentation conflicts with a gate, first record consensus in `A
 ## 3. Local Commands (Required Before Push)
 
 ```bash
-# 1) Architecture invariants (blocking: high+medium)
-bash ./check_arch_invariants.sh
-
-# 2) Host unit tests
-cmake -S test/host -B build-host
-cmake --build build-host --parallel
-ctest --test-dir build-host --output-on-failure
-
-# 3) Migration smoke (separate required test)
-ctest --test-dir build-host --output-on-failure -R test_config_manager_migration
+# Canonical blocking local verification bundle
+scripts/run_blocking_local_checks.sh
 ```
 
 Strict local mode with low-severity treated as blocking:
 
 ```bash
-ARCH_BLOCKING_SEVERITIES=high,medium,low bash ./check_arch_invariants.sh
+scripts/run_blocking_local_checks.sh --strict
+```
+
+If needed, the manual equivalent remains:
+
+```bash
+bash ./check_arch_invariants.sh
+cmake -S test/host -B build-host
+cmake --build build-host --parallel
+ctest --test-dir build-host --output-on-failure
+ctest --test-dir build-host --output-on-failure -R test_config_manager_migration
+idf.py -C test/target -B build-target-tests build
 ```
 
 ## 4. What A Failing Gate Means
