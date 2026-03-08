@@ -6,6 +6,9 @@
 #include <cstring>
 #include <string>
 
+#include "core_registry.hpp"
+#include "effect_executor.hpp"
+#include "service_runtime.hpp"
 #include "web_handler_common.hpp"
 
 #ifndef ESP_PLATFORM

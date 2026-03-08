@@ -20,7 +20,7 @@
 #include "esp_timer.h"
 #endif
 #include "log_tags.h"
-#include "service_runtime.hpp"
+#include "service_runtime_api.hpp"
 #include "web_handler_common.hpp"
 
 namespace web_ui {
@@ -29,8 +29,8 @@ namespace {
 
 constexpr const char* kTag = LOG_TAG_WEB_NETWORK;
 
-const char* operation_to_string(service::ServiceRuntime::NetworkOperationType operation) {
-    using Op = service::ServiceRuntime::NetworkOperationType;
+const char* operation_to_string(service::NetworkOperationType operation) {
+    using Op = service::NetworkOperationType;
     switch (operation) {
         case Op::kScan:
             return "scan";
@@ -49,10 +49,10 @@ const char* operation_to_string(service::ServiceRuntime::NetworkOperationType op
 }
 
 const char* operation_error_token(
-    service::ServiceRuntime::NetworkOperationType operation,
-    service::ServiceRuntime::NetworkOperationStatus status) {
-    using Op = service::ServiceRuntime::NetworkOperationType;
-    using Status = service::ServiceRuntime::NetworkOperationStatus;
+    service::NetworkOperationType operation,
+    service::NetworkOperationStatus status) {
+    using Op = service::NetworkOperationType;
+    using Status = service::NetworkOperationStatus;
     if (status == Status::kInvalidArgument) {
         return "invalid_argument";
     }
@@ -129,13 +129,13 @@ esp_err_t send_async_accept(httpd_req_t* req, uint32_t request_id, const char* o
     return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
 }
 
-esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::NetworkResult& result) {
+esp_err_t send_network_result(httpd_req_t* req, const service::NetworkResult& result) {
     if (req == nullptr) {
         return ESP_FAIL;
     }
 
     const char* operation = operation_to_string(result.operation);
-    if (result.status != service::ServiceRuntime::NetworkOperationStatus::kOk) {
+    if (result.status != service::NetworkOperationStatus::kOk) {
         char response[224]{};
         const int written = std::snprintf(
             response,
@@ -152,7 +152,7 @@ esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::N
         return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
     }
 
-    if (result.operation == service::ServiceRuntime::NetworkOperationType::kScan) {
+    if (result.operation == service::NetworkOperationType::kScan) {
         const std::size_t found_count = result.scan_count;
         (void)httpd_resp_set_type(req, "application/json");
 
@@ -197,7 +197,7 @@ esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::N
         return httpd_resp_send_chunk(req, nullptr, 0);
     }
 
-    if (result.operation == service::ServiceRuntime::NetworkOperationType::kConnect) {
+    if (result.operation == service::NetworkOperationType::kConnect) {
         char escaped_ssid[96]{};
         if (!escape_json_string(result.ssid, escaped_ssid, sizeof(escaped_ssid))) {
             return ESP_FAIL;
@@ -217,7 +217,7 @@ esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::N
         return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
     }
 
-    if (result.operation == service::ServiceRuntime::NetworkOperationType::kCredentialsStatus) {
+    if (result.operation == service::NetworkOperationType::kCredentialsStatus) {
         char escaped_ssid[96]{};
         if (result.saved && !escape_json_string(result.ssid, escaped_ssid, sizeof(escaped_ssid))) {
             return ESP_FAIL;
@@ -250,7 +250,7 @@ esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::N
         return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
     }
 
-    if (result.operation == service::ServiceRuntime::NetworkOperationType::kOpenJoinWindow) {
+    if (result.operation == service::NetworkOperationType::kOpenJoinWindow) {
         char response[224]{};
         const int written = std::snprintf(
             response,
@@ -264,7 +264,7 @@ esp_err_t send_network_result(httpd_req_t* req, const service::ServiceRuntime::N
         return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
     }
 
-    if (result.operation == service::ServiceRuntime::NetworkOperationType::kRemoveDevice) {
+    if (result.operation == service::NetworkOperationType::kRemoveDevice) {
         char response[256]{};
         const int written = std::snprintf(
             response,
@@ -348,7 +348,7 @@ esp_err_t network_get_handler(httpd_req_t* req) {
     }
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
-    service::ServiceRuntime::NetworkApiSnapshot snapshot{};
+    service::NetworkApiSnapshot snapshot{};
     if (!context->runtime->build_network_api_snapshot(&snapshot)) {
         return send_json_error(req, "500 Internal Server Error", "snapshot_unavailable");
     }
@@ -480,7 +480,7 @@ esp_err_t network_result_get_handler(httpd_req_t* req) {
     }
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
-    service::ServiceRuntime::NetworkResult result{};
+    service::NetworkResult result{};
     if (!context->runtime->take_network_result(request_id, &result)) {
         (void)httpd_resp_set_type(req, "application/json");
         if (context->runtime->is_scan_request_queued(request_id)) {

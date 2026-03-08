@@ -11,7 +11,7 @@
 #include "mqtt_topics.hpp"
 
 namespace service {
-class ServiceRuntime;
+class ServiceRuntimeApi;
 }
 
 namespace mqtt_bridge {
@@ -29,7 +29,7 @@ public:
     bool start() noexcept;
     void stop() noexcept;
     bool started() const noexcept;
-    void attach_runtime(service::ServiceRuntime* runtime) noexcept;
+    void attach_runtime(service::ServiceRuntimeApi* runtime) noexcept;
     bool handle_config_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
     std::size_t sync_snapshot(const core::CoreState& state) noexcept;
     std::size_t drain_publications(MqttPublishedMessage* out, std::size_t capacity) noexcept;
@@ -43,7 +43,7 @@ private:
     bool cache_initialized_{false};
     MqttPublishedMessage pending_publications_[kMaxMqttPublicationsPerSync]{};
     std::size_t pending_publication_count_{0};
-    service::ServiceRuntime* runtime_{nullptr};
+    service::ServiceRuntimeApi* runtime_{nullptr};
 };
 
 void publish_discovery() noexcept;

@@ -7,13 +7,13 @@
 #include <cstdint>
 
 namespace service {
-class ServiceRuntime;
+class ServiceRuntimeApi;
 }
 
 namespace web_ui {
 
 struct WebRouteContext {
-    service::ServiceRuntime* runtime{nullptr};
+    service::ServiceRuntimeApi* runtime{nullptr};
     std::atomic<uint32_t>* next_correlation_id{nullptr};
 };
 

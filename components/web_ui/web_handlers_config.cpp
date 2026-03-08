@@ -10,7 +10,7 @@
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
 #endif
-#include "service_runtime.hpp"
+#include "service_runtime_api.hpp"
 #include "web_handler_common.hpp"
 
 namespace web_ui {
@@ -85,7 +85,7 @@ esp_err_t config_get_handler(httpd_req_t* req) {
     }
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
-    service::ServiceRuntime::ConfigApiSnapshot snapshot{};
+    service::ConfigApiSnapshot snapshot{};
     if (!context->runtime->build_config_api_snapshot(&snapshot)) {
         return send_json_error(req, "500 Internal Server Error", "snapshot_unavailable");
     }
@@ -119,7 +119,7 @@ esp_err_t config_post_handler(httpd_req_t* req) {
         return send_json_error(req, "400 Bad Request", "invalid_body");
     }
 
-    service::ServiceRuntime::ConfigWriteRequest request{};
+    service::ConfigWriteRequest request{};
     uint32_t timeout_ms = 0;
     if (find_json_u32_field(body, "command_timeout_ms", &timeout_ms)) {
         if (timeout_ms == 0U) {

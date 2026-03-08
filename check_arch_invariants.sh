@@ -321,6 +321,16 @@ run_checks() {
         'credentials_raw_debug|raw-debug' \
         "web network handler must not expose raw credential debug endpoint in production contract"
 
+    check_absent "INV-M019" "medium" "components/web_ui" \
+        '#include[[:space:]]+"service_runtime\.hpp"' \
+        "web UI must depend on ServiceRuntimeApi facade, not concrete ServiceRuntime header"
+    check_absent "INV-M019" "medium" "components/mqtt_bridge" \
+        '#include[[:space:]]+"service_runtime\.hpp"' \
+        "MQTT bridge must depend on ServiceRuntimeApi facade, not concrete ServiceRuntime header"
+    check_present "INV-M019" "medium" "components/service/include/service_runtime_api.hpp" \
+        'class[[:space:]]+ServiceRuntimeApi' \
+        "service facade header must define ServiceRuntimeApi"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

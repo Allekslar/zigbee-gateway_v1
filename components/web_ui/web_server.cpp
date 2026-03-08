@@ -19,7 +19,7 @@ constexpr const char* kTag = LOG_TAG_WEB_SERVER;
 }
 #endif
 
-WebServer::WebServer(service::ServiceRuntime& runtime) noexcept
+WebServer::WebServer(service::ServiceRuntimeApi& runtime) noexcept
     : runtime_(&runtime) {
     route_context_.runtime = runtime_;
     route_context_.next_correlation_id = &next_correlation_id_;

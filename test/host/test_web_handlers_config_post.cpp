@@ -5,6 +5,9 @@
 #include <cstring>
 #include <string>
 
+#include "core_registry.hpp"
+#include "effect_executor.hpp"
+#include "service_runtime.hpp"
 #include "web_handler_common.hpp"
 
 std::string g_last_response;
@@ -111,7 +114,7 @@ int main() {
     assert(g_last_response.find("\"accepted\":true") != std::string::npos);
 
     runtime.process_pending();
-    const service::ServiceRuntime::ConfigSnapshot snapshot = runtime.config_snapshot();
+    const service::ConfigSnapshot snapshot = runtime.config_snapshot();
     assert(snapshot.command_timeout_ms == 7000U);
     assert(snapshot.max_command_retries == 4U);
 

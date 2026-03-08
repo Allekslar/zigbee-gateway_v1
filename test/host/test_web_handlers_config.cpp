@@ -6,7 +6,10 @@
 #include <cstring>
 #include <string>
 
+#include "core_registry.hpp"
+#include "effect_executor.hpp"
 #include "core_events.hpp"
+#include "service_runtime.hpp"
 #include "web_handler_common.hpp"
 
 std::string g_last_response;

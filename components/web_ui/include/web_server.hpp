@@ -8,21 +8,21 @@
 #include "web_routes.hpp"
 
 namespace service {
-class ServiceRuntime;
+class ServiceRuntimeApi;
 }
 
 namespace web_ui {
 
 class WebServer {
 public:
-    explicit WebServer(service::ServiceRuntime& runtime) noexcept;
+    explicit WebServer(service::ServiceRuntimeApi& runtime) noexcept;
 
     bool start() noexcept;
     void stop() noexcept;
     bool started() const noexcept;
 
 private:
-    service::ServiceRuntime* runtime_{nullptr};
+    service::ServiceRuntimeApi* runtime_{nullptr};
     void* server_handle_{nullptr};
     std::atomic<uint32_t> next_correlation_id_{1};
     WebRouteContext route_context_{};

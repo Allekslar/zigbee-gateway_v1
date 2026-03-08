@@ -10,7 +10,7 @@
 #include <cstring>
 
 #include "core_commands.hpp"
-#include "service_runtime.hpp"
+#include "service_runtime_api.hpp"
 
 namespace mqtt_bridge {
 namespace {
@@ -171,7 +171,7 @@ bool MqttBridge::started() const noexcept {
     return started_;
 }
 
-void MqttBridge::attach_runtime(service::ServiceRuntime* runtime) noexcept {
+void MqttBridge::attach_runtime(service::ServiceRuntimeApi* runtime) noexcept {
     runtime_ = runtime;
 }
 

@@ -9,6 +9,9 @@
 #include <vector>
 #include <algorithm>
 
+#include "core_registry.hpp"
+#include "effect_executor.hpp"
+#include "service_runtime.hpp"
 #include "web_handler_common.hpp"
 
 // Mocks for ESP-IDF components not available on host
@@ -165,10 +168,10 @@ int main() {
     runtime.process_pending();
     runtime.tick(current_time + 1000);
     
-    service::ServiceRuntime::NetworkResult connect_result{};
+    service::NetworkResult connect_result{};
     assert(runtime.take_network_result(200, &connect_result));
-    assert(connect_result.operation == service::ServiceRuntime::NetworkOperationType::kConnect);
-    assert(connect_result.status == service::ServiceRuntime::NetworkOperationStatus::kOk);
+    assert(connect_result.operation == service::NetworkOperationType::kConnect);
+    assert(connect_result.status == service::NetworkOperationStatus::kOk);
     assert(std::strcmp(connect_result.ssid, test_ssid) == 0);
 
     

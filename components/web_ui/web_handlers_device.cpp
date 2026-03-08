@@ -17,7 +17,7 @@
 #include "esp_timer.h"
 #endif
 #include "log_tags.h"
-#include "service_runtime.hpp"
+#include "service_runtime_api.hpp"
 #include "web_handler_common.hpp"
 
 namespace web_ui {
@@ -97,12 +97,12 @@ esp_err_t devices_get_handler(httpd_req_t* req) {
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
     const uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-    service::ServiceRuntime::DevicesApiSnapshot devices_snapshot{};
+    service::DevicesApiSnapshot devices_snapshot{};
     if (!context->runtime->build_devices_api_snapshot(now_ms, &devices_snapshot)) {
         return send_json_error(req, "500 Internal Server Error", "snapshot_unavailable");
     }
     const core::CoreState& state = devices_snapshot.state;
-    const service::ServiceRuntime::DevicesRuntimeSnapshot& runtime_snapshot = devices_snapshot.runtime;
+    const service::DevicesRuntimeSnapshot& runtime_snapshot = devices_snapshot.runtime;
 
     (void)httpd_resp_set_type(req, "application/json");
 
