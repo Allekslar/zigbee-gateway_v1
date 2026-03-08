@@ -204,6 +204,10 @@ zigbee-gateway/
 │   │   └── CMakeLists.txt
 │   │
 │   ├── web_ui/
+│   │   ├── assets/
+│   │   │   ├── index.html
+│   │   │   ├── app.js
+│   │   │   └── style.css
 │   │   ├── include/
 │   │   │   ├── web_server.hpp
 │   │   │   ├── web_routes.hpp
@@ -240,12 +244,6 @@ zigbee-gateway/
 │       │   └── version.hpp
 │       ├── utils.cpp
 │       └── CMakeLists.txt
-│
-├── web/
-│   ├── index.html
-│   ├── app.js
-│   ├── style.css
-│   └── build.sh
 │
 └── test/
     ├── host/

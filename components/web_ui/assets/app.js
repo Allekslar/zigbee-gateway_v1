@@ -13,6 +13,9 @@
   let scanInFlight = false;
   let pendingRemoveRequest = null;
   let statusToastTimer = null;
+  let lastDevicesPayload = { devices: [], join_window_open: false, join_window_seconds_left: 0 };
+  const pendingPowerCommands = new Map();
+  const pendingPowerFeedbackMs = 8000;
 
   const ui = {
     statusLine: byId("status-line"),
@@ -183,6 +186,79 @@
     return requestId;
   }
 
+  function getPendingPowerCommand(shortAddr) {
+    const pending = pendingPowerCommands.get(shortAddr);
+    if (!pending) {
+      return null;
+    }
+    if (Date.now() - pending.startedAt > pendingPowerFeedbackMs) {
+      pendingPowerCommands.delete(shortAddr);
+      return null;
+    }
+    return pending;
+  }
+
+  function reconcilePendingPowerCommands(devices) {
+    const activeShortAddrs = new Set();
+    devices.forEach(function (device) {
+      const shortAddr = Number(device.short_addr || 0);
+      if (!Number.isFinite(shortAddr) || shortAddr <= 0) {
+        return;
+      }
+      activeShortAddrs.add(shortAddr);
+      const pending = getPendingPowerCommand(shortAddr);
+      if (!pending) {
+        return;
+      }
+      if (Boolean(device.power_on) === pending.nextPower) {
+        pendingPowerCommands.delete(shortAddr);
+      }
+    });
+
+    Array.from(pendingPowerCommands.keys()).forEach(function (shortAddr) {
+      if (!activeShortAddrs.has(shortAddr)) {
+        pendingPowerCommands.delete(shortAddr);
+      } else {
+        getPendingPowerCommand(shortAddr);
+      }
+    });
+  }
+
+  function renderPowerButton(shortAddr, desiredPower, selectedPower, pending) {
+    const isSelected = selectedPower === desiredPower;
+    const isPending = Boolean(pending) && pending.nextPower === desiredPower;
+    const label = isPending ? (desiredPower ? "Turning On..." : "Turning Off...") : desiredPower ? "Turn On" : "Turn Off";
+    const classes = [
+      "secondary",
+      "device-power-btn",
+      desiredPower ? "power-on" : "power-off",
+      isSelected ? "is-current" : "is-idle",
+      isPending ? "is-pending" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const disabledAttr = pending ? " disabled" : "";
+
+    return (
+      '<button class="' +
+      classes +
+      '" data-device-toggle="' +
+      shortAddr +
+      '" data-next-power="' +
+      String(desiredPower) +
+      '"' +
+      disabledAttr +
+      ">" +
+      label +
+      "</button>"
+    );
+  }
+
+  function rerenderDevicesFromCache() {
+    reconcilePendingPowerCommands(Array.isArray(lastDevicesPayload.devices) ? lastDevicesPayload.devices : []);
+    renderDevices(lastDevicesPayload);
+  }
+
   async function pollNetworkResult(requestId, timeoutMs, pollIntervalMs, onPending) {
     const startedAt = Date.now();
     const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000;
@@ -208,6 +284,7 @@
   function renderDevices(data) {
     const devices = Array.isArray(data.devices) ? data.devices : [];
     if (devices.length === 0) {
+      pendingPowerCommands.clear();
       ui.devicesBody.innerHTML = '<tr><td colspan="6">No devices</td></tr>';
       return;
     }
@@ -216,6 +293,8 @@
       .map((device) => {
         const shortAddr = Number(device.short_addr || 0);
         const powerOn = Boolean(device.power_on);
+        const pendingPower = getPendingPowerCommand(shortAddr);
+        const selectedPower = pendingPower ? pendingPower.nextPower : powerOn;
         const forceRemoveArmed = Boolean(device.force_remove_armed);
         const forceRemoveMsLeft = Number(withDefault(device.force_remove_ms_left, 0));
         const forceRemoveSecondsLeft = Math.max(0, Math.ceil(forceRemoveMsLeft / 1000));
@@ -256,6 +335,11 @@
           String(withDefault(device.rssi, "n/a")) +
           "</div>" +
           "</div>";
+        const powerButtons =
+          '<div class="device-power-actions">' +
+          renderPowerButton(shortAddr, true, selectedPower, pendingPower) +
+          renderPowerButton(shortAddr, false, selectedPower, pendingPower) +
+          "</div>";
         return (
           "<tr>" +
           "<td>" +
@@ -273,11 +357,9 @@
           "<td>" +
           telemetryCell +
           "</td>" +
-          '<td><button class="secondary" data-device-toggle="' +
-          shortAddr +
-          '" data-next-power="true">Turn On</button> <button class="secondary" data-device-toggle="' +
-          shortAddr +
-          '" data-next-power="false">Turn Off</button> <button class="danger" data-device-remove="' +
+          "<td>" +
+          powerButtons +
+          ' <button class="danger" data-device-remove="' +
           shortAddr +
           '"' +
           removeDisabledAttr +
@@ -348,6 +430,8 @@
     log("loadDevices");
     try {
       const data = await requestJson("/api/devices", { method: "GET" });
+      lastDevicesPayload = data;
+      reconcilePendingPowerCommands(Array.isArray(data.devices) ? data.devices : []);
       renderDevices(data);
       applyJoinWindowState(data.join_window_open, data.join_window_seconds_left);
     } finally {
@@ -527,6 +611,11 @@
 
   async function submitDevicePower(shortAddr, nextPower) {
     log("submitDevicePower", shortAddr, nextPower);
+    pendingPowerCommands.set(shortAddr, {
+      nextPower: Boolean(nextPower),
+      startedAt: Date.now(),
+    });
+    rerenderDevicesFromCache();
     setStatus("Submitting device command...", "warn");
     try {
       const result = await requestJson("/api/devices/power", {
@@ -541,6 +630,8 @@
       await loadDevices();
       await loadConfig();
     } catch (error) {
+      pendingPowerCommands.delete(shortAddr);
+      rerenderDevicesFromCache();
       setStatus("Device command failed: " + error.message, "error");
     }
   }

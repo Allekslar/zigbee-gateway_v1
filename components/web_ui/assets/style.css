@@ -78,10 +78,27 @@ button {
   border-radius: 8px;
   padding: 0.5rem 0.9rem;
   cursor: pointer;
+  transition:
+    transform 120ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
 }
 
 button:hover {
   filter: brightness(1.05);
+}
+
+button:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+button:focus-visible {
+  outline: 2px solid rgba(0, 87, 184, 0.25);
+  outline-offset: 2px;
 }
 
 button.secondary {
@@ -99,6 +116,53 @@ button.danger {
   margin-top: 0.3rem;
   color: var(--warn);
   font-size: 0.82rem;
+}
+
+.device-power-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.device-power-btn {
+  position: relative;
+  min-width: 6.7rem;
+  overflow: hidden;
+  box-shadow: 0 0 0 rgba(0, 87, 184, 0);
+}
+
+.device-power-btn.is-idle {
+  opacity: 0.82;
+}
+
+.device-power-btn.power-on.is-current {
+  border-color: #117a33;
+  background: linear-gradient(135deg, #1e9c4a 0%, #117a33 100%);
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(17, 122, 51, 0.22);
+  opacity: 1;
+}
+
+.device-power-btn.power-off.is-current {
+  border-color: #8a95a3;
+  background: linear-gradient(135deg, #6f7c8d 0%, #556170 100%);
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(53, 67, 82, 0.18);
+  opacity: 1;
+}
+
+.device-power-btn.is-pending {
+  animation: power-button-pulse 1s ease-in-out infinite alternate;
+}
+
+.device-power-btn.is-pending::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.16) 35%, rgba(255, 255, 255, 0.45) 50%, transparent 70%);
+  transform: translateX(-130%);
+  animation: power-button-sheen 1.15s linear infinite;
 }
 
 .chip-row {
@@ -156,6 +220,10 @@ button.joining {
 button:disabled {
   cursor: default;
   opacity: 0.95;
+}
+
+.device-power-btn:disabled {
+  cursor: wait;
 }
 
 table {
@@ -270,6 +338,24 @@ input {
 
 .status-error {
   color: var(--error);
+}
+
+@keyframes power-button-pulse {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes power-button-sheen {
+  from {
+    transform: translateX(-130%);
+  }
+  to {
+    transform: translateX(130%);
+  }
 }
 
 @media (max-width: 720px) {
