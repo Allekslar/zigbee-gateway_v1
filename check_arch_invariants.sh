@@ -338,6 +338,16 @@ run_checks() {
         'class[[:space:]]+ServiceRuntimeTestAccess' \
         "test-only runtime access header must define ServiceRuntimeTestAccess facade"
 
+    check_present "INV-M021" "medium" "main/app_main.cpp" \
+        'g_mqtt\.attach_runtime[[:space:]]*\(&g_runtime\)' \
+        "app_main must attach ServiceRuntime to MQTT bridge before startup"
+    check_present "INV-M021" "medium" "main/app_main.cpp" \
+        'g_mqtt\.start[[:space:]]*\(' \
+        "app_main must start MQTT bridge"
+    check_present "INV-M021" "medium" "components/mqtt_bridge/include/mqtt_bridge.hpp" \
+        'sync_runtime_snapshot[[:space:]]*\(' \
+        "MQTT bridge must expose runtime snapshot feed API"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

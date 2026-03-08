@@ -15,6 +15,7 @@
 #define LOG_TAG_WEB_SERVER "web_server"
 #define LOG_TAG_WEB_DEVICE "web_device"
 #define LOG_TAG_WEB_NETWORK "web_network"
+#define LOG_TAG_MQTT_BRIDGE "mqtt_bridge"
 #define LOG_TAG_HAL_NVS "hal_nvs"
 #define LOG_TAG_HAL_WIFI "hal_wifi"
 #define LOG_TAG_HAL_ZIGBEE "hal_zigbee"

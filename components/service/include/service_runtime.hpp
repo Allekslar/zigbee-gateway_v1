@@ -112,7 +112,7 @@ public:
 
     RuntimeStats stats() const noexcept;
     ConfigSnapshot config_snapshot() const noexcept;
-    core::CoreState state() const noexcept;
+    core::CoreState state() const noexcept override;
 
     std::size_t pending_events() const noexcept;
     std::size_t pending_commands() const noexcept;

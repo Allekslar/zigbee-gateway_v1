@@ -113,6 +113,7 @@ public:
     virtual bool build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnapshot* out) const noexcept = 0;
     virtual bool build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept = 0;
     virtual bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept = 0;
+    virtual core::CoreState state() const noexcept = 0;
     virtual bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept = 0;
     virtual bool is_scan_request_queued(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_in_progress(uint32_t request_id) const noexcept = 0;

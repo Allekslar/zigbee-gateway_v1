@@ -81,6 +81,12 @@ extern "C" void app_main(void) {
         }
     }
 
-    g_mqtt.start();
+    g_mqtt.attach_runtime(&g_runtime);
+    if (!g_mqtt.start()) {
+        ESP_LOGE(kTag, "MQTT bridge start failed");
+        while (true) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
     g_matter.start();
 }

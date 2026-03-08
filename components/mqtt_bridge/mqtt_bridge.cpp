@@ -10,10 +10,26 @@
 #include <cstring>
 
 #include "core_commands.hpp"
+#include "log_tags.h"
 #include "service_runtime_api.hpp"
+
+#ifdef ESP_PLATFORM
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
 
 namespace mqtt_bridge {
 namespace {
+
+#ifdef ESP_PLATFORM
+constexpr const char* kTag = LOG_TAG_MQTT_BRIDGE;
+constexpr const char* kMqttBridgeTaskName = "mqtt_bridge";
+constexpr uint32_t kMqttBridgeTaskStackSize = 4608U;
+constexpr UBaseType_t kMqttBridgeTaskPriority = 4U;
+constexpr TickType_t kMqttBridgeTaskPeriodTicks = pdMS_TO_TICKS(1000);
+#endif
+constexpr std::size_t kDrainBatchCapacity = 8U;
 
 bool parse_u32_strict(const char* text, uint32_t* out) noexcept {
     if (text == nullptr || out == nullptr || text[0] == '\0') {
@@ -158,21 +174,33 @@ bool parse_reporting_config_payload(
 bool MqttBridge::start() noexcept {
     publish_discovery();
     reset_sync_cache();
-    started_ = true;
-    return started_;
+    started_.store(true, std::memory_order_release);
+#ifdef ESP_PLATFORM
+    return ensure_task_started();
+#else
+    return started();
+#endif
 }
 
 void MqttBridge::stop() noexcept {
     reset_sync_cache();
-    started_ = false;
+    started_.store(false, std::memory_order_release);
+#ifdef ESP_PLATFORM
+    for (uint8_t i = 0; i < 20U && task_handle_ != nullptr; ++i) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+#endif
 }
 
 bool MqttBridge::started() const noexcept {
-    return started_;
+    return started_.load(std::memory_order_acquire);
 }
 
 void MqttBridge::attach_runtime(service::ServiceRuntimeApi* runtime) noexcept {
     runtime_ = runtime;
+#ifdef ESP_PLATFORM
+    (void)ensure_task_started();
+#endif
 }
 
 bool MqttBridge::handle_config_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept {
@@ -197,10 +225,94 @@ bool MqttBridge::handle_config_command(const char* topic, const char* payload, u
     return runtime_->post_command(command) == core::CoreError::kOk;
 }
 
+std::size_t MqttBridge::sync_runtime_snapshot() noexcept {
+    if (!started() || runtime_ == nullptr) {
+        return 0U;
+    }
+
+    return sync_snapshot(runtime_->state());
+}
+
+std::size_t MqttBridge::publish_pending_publications() noexcept {
+    MqttPublishedMessage batch[kDrainBatchCapacity]{};
+    std::size_t published = 0U;
+
+    while (true) {
+        const std::size_t drained = drain_publications(batch, kDrainBatchCapacity);
+        if (drained == 0U) {
+            break;
+        }
+
+        for (std::size_t i = 0; i < drained; ++i) {
+            if (publish_message(batch[i])) {
+                ++published;
+            }
+        }
+    }
+
+    published_message_count_.fetch_add(static_cast<uint32_t>(published), std::memory_order_relaxed);
+    return published;
+}
+
 void MqttBridge::reset_sync_cache() noexcept {
     cached_device_count_ = 0;
     cache_initialized_ = false;
     pending_publication_count_ = 0;
 }
+
+bool MqttBridge::publish_message(const MqttPublishedMessage& message) noexcept {
+#ifdef ESP_PLATFORM
+    ESP_LOGI(kTag, "publish topic=%s retain=%s payload=%s", message.topic, message.retain ? "true" : "false", message.payload);
+#else
+    (void)message;
+#endif
+    return true;
+}
+
+#ifdef ESP_PLATFORM
+void MqttBridge::task_entry(void* arg) noexcept {
+    auto* bridge = static_cast<MqttBridge*>(arg);
+    if (bridge != nullptr) {
+        bridge->run_loop();
+    }
+    vTaskDelete(nullptr);
+}
+
+void MqttBridge::run_loop() noexcept {
+    while (started()) {
+        (void)sync_runtime_snapshot();
+        (void)publish_pending_publications();
+        vTaskDelay(kMqttBridgeTaskPeriodTicks);
+    }
+    task_handle_ = nullptr;
+}
+
+bool MqttBridge::ensure_task_started() noexcept {
+    if (!started()) {
+        return false;
+    }
+    if (task_handle_ != nullptr) {
+        return true;
+    }
+    if (runtime_ == nullptr) {
+        return true;
+    }
+
+    TaskHandle_t handle = nullptr;
+    const BaseType_t created = xTaskCreate(
+        &MqttBridge::task_entry,
+        kMqttBridgeTaskName,
+        kMqttBridgeTaskStackSize,
+        this,
+        kMqttBridgeTaskPriority,
+        &handle);
+    if (created != pdPASS) {
+        return false;
+    }
+
+    task_handle_ = handle;
+    return true;
+}
+#endif
 
 }  // namespace mqtt_bridge
