@@ -89,6 +89,34 @@ struct DevicesApiSnapshot {
     DevicesRuntimeSnapshot runtime{};
 };
 
+struct MqttBridgeDeviceSnapshot {
+    uint16_t short_addr{core::kUnknownDeviceShortAddr};
+    bool online{false};
+    bool power_on{false};
+    bool has_temperature{false};
+    int16_t temperature_centi_c{0};
+    core::CoreOccupancyState occupancy_state{core::CoreOccupancyState::kUnknown};
+    core::CoreContactState contact_state{core::CoreContactState::kUnknown};
+    bool contact_tamper{false};
+    bool contact_battery_low{false};
+    bool has_battery{false};
+    uint8_t battery_percent{0};
+    bool has_battery_voltage{false};
+    uint16_t battery_voltage_mv{0};
+    bool has_lqi{false};
+    uint8_t lqi{0};
+    bool has_rssi{false};
+    int8_t rssi_dbm{0};
+    bool stale{false};
+    uint32_t last_report_at_ms{0};
+};
+
+struct MqttBridgeSnapshot {
+    uint32_t revision{0};
+    uint16_t device_count{0};
+    std::array<MqttBridgeDeviceSnapshot, core::kMaxDevices> devices{};
+};
+
 class ServiceRuntimeApi {
 public:
     virtual ~ServiceRuntimeApi() = default;
@@ -113,7 +141,7 @@ public:
     virtual bool build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnapshot* out) const noexcept = 0;
     virtual bool build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept = 0;
     virtual bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept = 0;
-    virtual core::CoreState state() const noexcept = 0;
+    virtual bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept = 0;
     virtual bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept = 0;
     virtual bool is_scan_request_queued(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_in_progress(uint32_t request_id) const noexcept = 0;

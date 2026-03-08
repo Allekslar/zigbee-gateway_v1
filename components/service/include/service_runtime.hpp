@@ -52,6 +52,8 @@ public:
 
     using DevicesRuntimeSnapshot = service::DevicesRuntimeSnapshot;
     using DevicesApiSnapshot = service::DevicesApiSnapshot;
+    using MqttBridgeDeviceSnapshot = service::MqttBridgeDeviceSnapshot;
+    using MqttBridgeSnapshot = service::MqttBridgeSnapshot;
 
     ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& effect_executor) noexcept;
 
@@ -96,6 +98,7 @@ public:
     bool build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnapshot* out) const noexcept override;
     bool build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept override;
     bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept override;
+    bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept override;
     bool get_force_remove_remaining_ms(uint16_t short_addr, uint32_t now_ms, uint32_t* remaining_ms) const noexcept;
     bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept override;
     bool is_scan_request_queued(uint32_t request_id) const noexcept override;
@@ -112,7 +115,7 @@ public:
 
     RuntimeStats stats() const noexcept;
     ConfigSnapshot config_snapshot() const noexcept;
-    core::CoreState state() const noexcept override;
+    core::CoreState state() const noexcept;
 
     std::size_t pending_events() const noexcept;
     std::size_t pending_commands() const noexcept;

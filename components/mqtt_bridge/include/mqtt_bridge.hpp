@@ -7,16 +7,11 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "core_state.hpp"
+#include "service_runtime_api.hpp"
 #include "mqtt_serializer.hpp"
 #include "mqtt_topics.hpp"
 
-namespace service {
-class ServiceRuntimeApi;
-}
-
 namespace mqtt_bridge {
-
 constexpr std::size_t kMaxMqttPublicationsPerSync = core::kMaxDevices * 3U;
 
 struct MqttPublishedMessage {
@@ -34,7 +29,7 @@ public:
     bool handle_config_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
     std::size_t sync_runtime_snapshot() noexcept;
     std::size_t publish_pending_publications() noexcept;
-    std::size_t sync_snapshot(const core::CoreState& state) noexcept;
+    std::size_t sync_snapshot(const service::MqttBridgeSnapshot& snapshot) noexcept;
     std::size_t drain_publications(MqttPublishedMessage* out, std::size_t capacity) noexcept;
 
 private:
@@ -47,7 +42,9 @@ private:
 #endif
 
     std::atomic<bool> started_{false};
-    core::CoreDeviceRecord cached_devices_[core::kMaxDevices]{};
+    service::MqttBridgeSnapshot runtime_snapshot_cache_{};
+    service::MqttBridgeDeviceSnapshot cached_devices_[core::kMaxDevices]{};
+    service::MqttBridgeDeviceSnapshot sync_devices_scratch_[core::kMaxDevices]{};
     uint16_t cached_device_count_{0};
     bool cache_initialized_{false};
     MqttPublishedMessage pending_publications_[kMaxMqttPublicationsPerSync]{};

@@ -25,7 +25,7 @@ namespace {
 #ifdef ESP_PLATFORM
 constexpr const char* kTag = LOG_TAG_MQTT_BRIDGE;
 constexpr const char* kMqttBridgeTaskName = "mqtt_bridge";
-constexpr uint32_t kMqttBridgeTaskStackSize = 4608U;
+constexpr uint32_t kMqttBridgeTaskStackSize = 6144U;
 constexpr UBaseType_t kMqttBridgeTaskPriority = 4U;
 constexpr TickType_t kMqttBridgeTaskPeriodTicks = pdMS_TO_TICKS(1000);
 #endif
@@ -230,7 +230,11 @@ std::size_t MqttBridge::sync_runtime_snapshot() noexcept {
         return 0U;
     }
 
-    return sync_snapshot(runtime_->state());
+    if (!runtime_->build_mqtt_bridge_snapshot(&runtime_snapshot_cache_)) {
+        return 0U;
+    }
+
+    return sync_snapshot(runtime_snapshot_cache_);
 }
 
 std::size_t MqttBridge::publish_pending_publications() noexcept {

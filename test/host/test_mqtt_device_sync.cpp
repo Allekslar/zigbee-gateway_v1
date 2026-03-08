@@ -9,7 +9,7 @@
 
 namespace {
 
-core::CoreState make_single_device_state(
+service::MqttBridgeSnapshot make_single_device_snapshot(
     const uint16_t short_addr,
     const bool online,
     const bool power_on,
@@ -17,28 +17,28 @@ core::CoreState make_single_device_state(
     const bool stale,
     const uint8_t lqi,
     const int8_t rssi_dbm) {
-    core::CoreState state{};
-    state.device_count = 1;
-    state.devices[0].short_addr = short_addr;
-    state.devices[0].online = online;
-    state.devices[0].power_on = power_on;
-    state.devices[0].has_temperature = true;
-    state.devices[0].temperature_centi_c = 2150;
-    state.devices[0].occupancy_state = core::CoreOccupancyState::kOccupied;
-    state.devices[0].contact_state = core::CoreContactState::kClosed;
-    state.devices[0].contact_tamper = false;
-    state.devices[0].contact_battery_low = false;
-    state.devices[0].has_battery = true;
-    state.devices[0].battery_percent = 74;
-    state.devices[0].has_battery_voltage = true;
-    state.devices[0].battery_voltage_mv = 3000;
-    state.devices[0].has_lqi = true;
-    state.devices[0].lqi = lqi;
-    state.devices[0].has_rssi = true;
-    state.devices[0].rssi_dbm = rssi_dbm;
-    state.devices[0].stale = stale;
-    state.devices[0].last_report_at_ms = last_report_at_ms;
-    return state;
+    service::MqttBridgeSnapshot snapshot{};
+    snapshot.device_count = 1;
+    snapshot.devices[0].short_addr = short_addr;
+    snapshot.devices[0].online = online;
+    snapshot.devices[0].power_on = power_on;
+    snapshot.devices[0].has_temperature = true;
+    snapshot.devices[0].temperature_centi_c = 2150;
+    snapshot.devices[0].occupancy_state = core::CoreOccupancyState::kOccupied;
+    snapshot.devices[0].contact_state = core::CoreContactState::kClosed;
+    snapshot.devices[0].contact_tamper = false;
+    snapshot.devices[0].contact_battery_low = false;
+    snapshot.devices[0].has_battery = true;
+    snapshot.devices[0].battery_percent = 74;
+    snapshot.devices[0].has_battery_voltage = true;
+    snapshot.devices[0].battery_voltage_mv = 3000;
+    snapshot.devices[0].has_lqi = true;
+    snapshot.devices[0].lqi = lqi;
+    snapshot.devices[0].has_rssi = true;
+    snapshot.devices[0].rssi_dbm = rssi_dbm;
+    snapshot.devices[0].stale = stale;
+    snapshot.devices[0].last_report_at_ms = last_report_at_ms;
+    return snapshot;
 }
 
 bool has_topic(const mqtt_bridge::MqttPublishedMessage* messages, std::size_t count, const char* topic) {
@@ -67,7 +67,7 @@ const mqtt_bridge::MqttPublishedMessage* find_topic(
 int main() {
     mqtt_bridge::MqttBridge bridge;
 
-    core::CoreState first = make_single_device_state(0x2201, true, true, 4242, false, 200, -63);
+    service::MqttBridgeSnapshot first = make_single_device_snapshot(0x2201, true, true, 4242, false, 200, -63);
 
     assert(bridge.sync_snapshot(first) == 0U);
 
@@ -92,7 +92,7 @@ int main() {
     assert(bridge.sync_snapshot(first) == 0U);
     assert(bridge.drain_publications(out, mqtt_bridge::kMaxMqttPublicationsPerSync) == 0U);
 
-    core::CoreState telemetry_changed = first;
+    service::MqttBridgeSnapshot telemetry_changed = first;
     telemetry_changed.devices[0].lqi = 180;
     telemetry_changed.devices[0].rssi_dbm = -70;
     telemetry_changed.devices[0].last_report_at_ms = 5000;
@@ -103,7 +103,7 @@ int main() {
     assert(std::strcmp(out[0].topic, "zigbee-gateway/devices/8705/telemetry") == 0);
     assert(std::strstr(out[0].payload, "\"stale\":true") != nullptr);
 
-    core::CoreState power_changed = telemetry_changed;
+    service::MqttBridgeSnapshot power_changed = telemetry_changed;
     power_changed.devices[0].power_on = false;
     assert(bridge.sync_snapshot(power_changed) == 1U);
     drained = bridge.drain_publications(out, mqtt_bridge::kMaxMqttPublicationsPerSync);
@@ -111,7 +111,7 @@ int main() {
     assert(std::strcmp(out[0].topic, "zigbee-gateway/devices/8705/state") == 0);
     assert(std::strcmp(out[0].payload, "{\"power_on\":false}") == 0);
 
-    core::CoreState removed{};
+    service::MqttBridgeSnapshot removed{};
     removed.device_count = 0;
     assert(bridge.sync_snapshot(removed) == 1U);
     drained = bridge.drain_publications(out, mqtt_bridge::kMaxMqttPublicationsPerSync);

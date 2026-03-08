@@ -10,12 +10,12 @@
 namespace mqtt_bridge {
 namespace {
 
-bool is_active_device(const core::CoreDeviceRecord& device) noexcept {
+bool is_active_device(const service::MqttBridgeDeviceSnapshot& device) noexcept {
     return device.short_addr != core::kUnknownDeviceShortAddr && device.online;
 }
 
-const core::CoreDeviceRecord* find_device_by_short(
-    const core::CoreDeviceRecord* devices,
+const service::MqttBridgeDeviceSnapshot* find_device_by_short(
+    const service::MqttBridgeDeviceSnapshot* devices,
     const uint16_t count,
     const uint16_t short_addr) noexcept {
     for (uint16_t i = 0; i < count; ++i) {
@@ -26,7 +26,9 @@ const core::CoreDeviceRecord* find_device_by_short(
     return nullptr;
 }
 
-bool telemetry_fields_equal(const core::CoreDeviceRecord& a, const core::CoreDeviceRecord& b) noexcept {
+bool telemetry_fields_equal(
+    const service::MqttBridgeDeviceSnapshot& a,
+    const service::MqttBridgeDeviceSnapshot& b) noexcept {
     return a.has_temperature == b.has_temperature &&
            a.temperature_centi_c == b.temperature_centi_c &&
            a.occupancy_state == b.occupancy_state &&
@@ -66,7 +68,7 @@ bool build_availability_publication(
     return true;
 }
 
-bool build_state_publication(const core::CoreDeviceRecord& device, MqttPublishedMessage* out) noexcept {
+bool build_state_publication(const service::MqttBridgeDeviceSnapshot& device, MqttPublishedMessage* out) noexcept {
     if (out == nullptr) {
         return false;
     }
@@ -88,7 +90,9 @@ bool build_state_publication(const core::CoreDeviceRecord& device, MqttPublished
     return true;
 }
 
-bool build_telemetry_publication(const core::CoreDeviceRecord& device, MqttPublishedMessage* out) noexcept {
+bool build_telemetry_publication(
+    const service::MqttBridgeDeviceSnapshot& device,
+    MqttPublishedMessage* out) noexcept {
     if (out == nullptr) {
         return false;
     }
@@ -126,7 +130,7 @@ bool build_telemetry_publication(const core::CoreDeviceRecord& device, MqttPubli
 
 }  // namespace
 
-std::size_t MqttBridge::sync_snapshot(const core::CoreState& state) noexcept {
+std::size_t MqttBridge::sync_snapshot(const service::MqttBridgeSnapshot& snapshot) noexcept {
     if (!started_) {
         return 0U;
     }
@@ -140,18 +144,17 @@ std::size_t MqttBridge::sync_snapshot(const core::CoreState& state) noexcept {
         return true;
     };
 
-    core::CoreDeviceRecord next_devices[core::kMaxDevices]{};
     uint16_t next_count = 0;
 
-    for (std::size_t i = 0; i < state.devices.size() && next_count < core::kMaxDevices; ++i) {
-        const core::CoreDeviceRecord& current = state.devices[i];
+    for (std::size_t i = 0; i < snapshot.device_count && next_count < snapshot.devices.size(); ++i) {
+        const service::MqttBridgeDeviceSnapshot& current = snapshot.devices[i];
         if (!is_active_device(current)) {
             continue;
         }
 
-        next_devices[next_count++] = current;
+        sync_devices_scratch_[next_count++] = current;
 
-        const core::CoreDeviceRecord* previous = nullptr;
+        const service::MqttBridgeDeviceSnapshot* previous = nullptr;
         if (cache_initialized_) {
             previous = find_device_by_short(cached_devices_, cached_device_count_, current.short_addr);
         }
@@ -184,7 +187,7 @@ std::size_t MqttBridge::sync_snapshot(const core::CoreState& state) noexcept {
     if (cache_initialized_) {
         for (uint16_t i = 0; i < cached_device_count_; ++i) {
             const uint16_t short_addr = cached_devices_[i].short_addr;
-            if (find_device_by_short(next_devices, next_count, short_addr) != nullptr) {
+            if (find_device_by_short(sync_devices_scratch_, next_count, short_addr) != nullptr) {
                 continue;
             }
 
@@ -195,7 +198,7 @@ std::size_t MqttBridge::sync_snapshot(const core::CoreState& state) noexcept {
         }
     }
 
-    std::memcpy(cached_devices_, next_devices, sizeof(next_devices));
+    std::memcpy(cached_devices_, sync_devices_scratch_, sizeof(sync_devices_scratch_));
     cached_device_count_ = next_count;
     cache_initialized_ = true;
 
