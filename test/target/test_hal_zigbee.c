@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "hal_zigbee.h"
+#include "hal_zigbee_test.h"
 #include "unity.h"
 
 typedef struct {

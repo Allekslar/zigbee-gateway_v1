@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "bridge_snapshot_builder.hpp"
 #include "service_runtime_api.hpp"
 #include "config_manager.hpp"
 #include "command_manager.hpp"
@@ -241,6 +242,7 @@ private:
     std::size_t network_result_count_{0};
 
     mutable RuntimeLock ingress_lock_{};
+    BridgeSnapshotBuilder bridge_snapshot_builder_;
 
     std::atomic<uint32_t> config_timeout_ms_cache_{5000};
     std::atomic<uint32_t> config_max_retries_cache_{1};

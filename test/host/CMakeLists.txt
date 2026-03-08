@@ -26,6 +26,7 @@ target_include_directories(core_host
 zg_apply_component_compile_policy(core_host)
 
 set(SERVICE_SOURCES
+    ../../components/service/bridge_snapshot_builder.cpp
     ../../components/service/command_manager.cpp
     ../../components/service/connectivity_manager.cpp
     ../../components/service/config_manager.cpp

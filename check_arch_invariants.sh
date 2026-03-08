@@ -371,6 +371,23 @@ run_checks() {
         'g_matter\.start[[:space:]]*\(' \
         "app_main must start Matter bridge runtime feed path"
 
+    check_present "INV-M024" "medium" "components/service/include/bridge_snapshot_builder.hpp" \
+        'class[[:space:]]+BridgeSnapshotBuilder' \
+        "service bridge snapshot mapping must live in a dedicated helper"
+    check_present "INV-M024" "medium" "components/service/service_runtime.cpp" \
+        'bridge_snapshot_builder_\.build_mqtt_snapshot[[:space:]]*\(|bridge_snapshot_builder_\.build_matter_snapshot[[:space:]]*\(' \
+        "ServiceRuntime must delegate bridge snapshot building to BridgeSnapshotBuilder"
+    check_absent "INV-M024" "medium" "components/service/service_runtime.cpp" \
+        'mqtt_device\.power_on|matter_device\.primary_class' \
+        "bridge-specific DTO field mapping must not live directly in ServiceRuntime"
+
+    check_absent "INV-M025" "medium" "components/app_hal/include/hal_zigbee.h" \
+        'hal_zigbee_test_apply_permit_join_status|SERVICE_RUNTIME_TEST_HOOKS' \
+        "production HAL Zigbee header must not expose test-only hooks"
+    check_present "INV-M025" "medium" "components/app_hal/include/hal_zigbee_test.h" \
+        'hal_zigbee_test_apply_permit_join_status' \
+        "test-only HAL Zigbee access must live in a dedicated test header"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

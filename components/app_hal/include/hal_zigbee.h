@@ -150,10 +150,6 @@ void hal_zigbee_simulate_reporting_config_result(
 void hal_zigbee_simulate_network_formed(bool formed);
 void hal_zigbee_simulate_start_network_formation_status_once(hal_zigbee_status_t status);
 
-#if defined(SERVICE_RUNTIME_TEST_HOOKS)
-void hal_zigbee_test_apply_permit_join_status(uint8_t duration_seconds);
-#endif
-
 #ifdef __cplusplus
 }
 #endif
