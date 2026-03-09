@@ -14,6 +14,7 @@
 #include "hal_mqtt.h"
 #endif
 #include "log_tags.h"
+#include "mqtt_discovery.hpp"
 #include "service_runtime_api.hpp"
 
 #ifdef ESP_PLATFORM
@@ -88,6 +89,21 @@ bool extract_device_short_addr_from_topic(
 
     *out_short_addr = static_cast<uint16_t>(short_raw);
     return true;
+}
+
+const service::MqttBridgeDeviceSnapshot* find_cached_device_by_short(
+    const service::MqttBridgeDeviceSnapshot* devices,
+    const uint16_t count,
+    const uint16_t short_addr) noexcept {
+    if (devices == nullptr) {
+        return nullptr;
+    }
+    for (uint16_t i = 0; i < count; ++i) {
+        if (devices[i].short_addr == short_addr) {
+            return &devices[i];
+        }
+    }
+    return nullptr;
 }
 
 bool topic_has_suffix(const char* topic, const char* suffix) noexcept {
@@ -232,7 +248,6 @@ bool parse_reporting_config_payload(
 }  // namespace
 
 bool MqttBridge::start() noexcept {
-    publish_discovery();
     reset_sync_cache();
 #ifdef ESP_PLATFORM
     transport_enabled_.store(start_transport(), std::memory_order_release);
@@ -345,6 +360,9 @@ std::size_t MqttBridge::sync_runtime_snapshot() noexcept {
         return 0U;
     }
 
+    (void)publish_homeassistant_discovery(
+        runtime_snapshot_cache_,
+        discovery_republish_requested_);
     return sync_snapshot(runtime_snapshot_cache_);
 }
 
@@ -392,6 +410,7 @@ void MqttBridge::set_runtime_status(
 
 void MqttBridge::handle_transport_connected() noexcept {
     set_runtime_status(true, true, MqttConnectionError::kNone);
+    discovery_republish_requested_ = true;
     publish_runtime_status();
 }
 
@@ -416,6 +435,7 @@ void MqttBridge::reset_sync_cache() noexcept {
     cache_initialized_ = false;
     pending_publication_count_ = 0;
     command_topics_subscribed_.store(false, std::memory_order_release);
+    discovery_republish_requested_ = true;
 }
 
 bool MqttBridge::publish_message(const MqttPublishedMessage& message) noexcept {
@@ -425,6 +445,57 @@ bool MqttBridge::publish_message(const MqttPublishedMessage& message) noexcept {
     (void)message;
     return true;
 #endif
+}
+
+bool MqttBridge::publish_homeassistant_discovery(
+    const service::MqttBridgeSnapshot& snapshot,
+    const bool force_republish) noexcept {
+    if (!transport_enabled_.load(std::memory_order_acquire)) {
+        return false;
+    }
+
+    bool published_any = false;
+    for (std::size_t i = 0; i < snapshot.device_count && i < snapshot.devices.size(); ++i) {
+        const service::MqttBridgeDeviceSnapshot& current = snapshot.devices[i];
+        if (current.short_addr == core::kUnknownDeviceShortAddr || !current.online) {
+            continue;
+        }
+
+        const service::MqttBridgeDeviceSnapshot* previous = nullptr;
+        if (cache_initialized_) {
+            previous = find_cached_device_by_short(cached_devices_, cached_device_count_, current.short_addr);
+        }
+
+        const bool should_publish = force_republish || previous == nullptr ||
+                                    (previous != nullptr && discovery_schema_changed(*previous, current));
+        if (!should_publish) {
+            continue;
+        }
+
+        const std::size_t count = build_homeassistant_discovery_messages(
+            current,
+            discovery_messages_scratch_,
+            kMaxDiscoveryMessagesPerDevice);
+        for (std::size_t msg_idx = 0; msg_idx < count; ++msg_idx) {
+#ifdef ESP_PLATFORM
+            if (hal_mqtt_publish(
+                    discovery_messages_scratch_[msg_idx].topic,
+                    discovery_messages_scratch_[msg_idx].payload,
+                    true,
+                    kMqttQosAtLeastOnce) ==
+                HAL_MQTT_STATUS_OK) {
+                published_any = true;
+            }
+#else
+            published_any = true;
+#endif
+        }
+    }
+
+    if (force_republish) {
+        discovery_republish_requested_ = false;
+    }
+    return published_any;
 }
 
 uint32_t MqttBridge::next_command_correlation_id() noexcept {

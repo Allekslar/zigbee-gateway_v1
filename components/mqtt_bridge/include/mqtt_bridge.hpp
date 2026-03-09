@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "mqtt_discovery.hpp"
 #include "service_runtime_api.hpp"
 #include "mqtt_serializer.hpp"
 #include "mqtt_topics.hpp"
@@ -50,6 +51,7 @@ private:
     void handle_transport_subscribe_failure() noexcept;
     void reset_sync_cache() noexcept;
     bool publish_message(const MqttPublishedMessage& message) noexcept;
+    bool publish_homeassistant_discovery(const service::MqttBridgeSnapshot& snapshot, bool force_republish) noexcept;
     uint32_t next_command_correlation_id() noexcept;
 #ifdef ESP_PLATFORM
     static void task_entry(void* arg) noexcept;
@@ -81,12 +83,12 @@ private:
     std::atomic<uint32_t> published_message_count_{0};
     std::atomic<bool> transport_enabled_{false};
     std::atomic<bool> command_topics_subscribed_{false};
+    bool discovery_republish_requested_{true};
+    HomeAssistantDiscoveryMessage discovery_messages_scratch_[kMaxDiscoveryMessagesPerDevice]{};
 #ifdef ESP_PLATFORM
     void* task_handle_{nullptr};
 #endif
 };
-
-void publish_discovery() noexcept;
 void sync_device_state(uint16_t short_addr, bool on) noexcept;
 
 }  // namespace mqtt_bridge

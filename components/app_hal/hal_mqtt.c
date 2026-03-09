@@ -9,7 +9,10 @@
 #include <string.h>
 
 #include "esp_event.h"
+#include "esp_log.h"
 #include "mqtt_client.h"
+
+#include "log_tags.h"
 #endif
 
 #ifndef CONFIG_ZGW_MQTT_BROKER_URI
@@ -37,6 +40,14 @@ typedef struct {
 } hal_mqtt_state_t;
 
 static hal_mqtt_state_t g_hal_mqtt = {0};
+
+#ifdef ESP_PLATFORM
+static const char* kTag = LOG_TAG_HAL_MQTT;
+
+static const char* hal_mqtt_configured_uri(void) {
+    return CONFIG_ZGW_MQTT_BROKER_URI[0] != '\0' ? CONFIG_ZGW_MQTT_BROKER_URI : "<empty>";
+}
+#endif
 
 static void hal_mqtt_reset_runtime_flags(void) {
     g_hal_mqtt.started = false;
@@ -90,10 +101,12 @@ static void hal_mqtt_event_handler(void* handler_args, esp_event_base_t base, in
     switch ((esp_mqtt_event_id_t)event_id) {
         case MQTT_EVENT_CONNECTED:
             g_hal_mqtt.connected = true;
+            ESP_LOGI(kTag, "MQTT connected uri=%s", hal_mqtt_configured_uri());
             hal_mqtt_dispatch_connected();
             break;
         case MQTT_EVENT_DISCONNECTED:
             g_hal_mqtt.connected = false;
+            ESP_LOGW(kTag, "MQTT disconnected uri=%s", hal_mqtt_configured_uri());
             hal_mqtt_dispatch_disconnected();
             break;
         case MQTT_EVENT_DATA:
@@ -101,6 +114,18 @@ static void hal_mqtt_event_handler(void* handler_args, esp_event_base_t base, in
             break;
         case MQTT_EVENT_ERROR:
             g_hal_mqtt.connected = false;
+            if (event != NULL && event->error_handle != NULL) {
+                ESP_LOGE(
+                    kTag,
+                    "MQTT error uri=%s error_type=%d esp_tls_last_esp_err=0x%x esp_tls_stack_err=0x%x transport_sock_errno=%d",
+                    hal_mqtt_configured_uri(),
+                    (int)event->error_handle->error_type,
+                    (unsigned int)event->error_handle->esp_tls_last_esp_err,
+                    (unsigned int)event->error_handle->esp_tls_stack_err,
+                    event->error_handle->esp_transport_sock_errno);
+            } else {
+                ESP_LOGE(kTag, "MQTT error uri=%s", hal_mqtt_configured_uri());
+            }
             break;
         default:
             break;
@@ -134,6 +159,7 @@ static hal_mqtt_status_t hal_mqtt_copy_broker_endpoint_summary(char* out, size_t
 hal_mqtt_status_t hal_mqtt_init(void) {
 #ifdef ESP_PLATFORM
     if (!hal_mqtt_transport_enabled()) {
+        ESP_LOGI(kTag, "MQTT transport disabled uri=%s", hal_mqtt_configured_uri());
         return HAL_MQTT_STATUS_DISABLED;
     }
 
@@ -155,8 +181,16 @@ hal_mqtt_status_t hal_mqtt_init(void) {
     config.session.keepalive = CONFIG_ZGW_MQTT_KEEPALIVE_SEC;
     config.network.disable_auto_reconnect = false;
 
+    ESP_LOGI(
+        kTag,
+        "Initializing MQTT transport uri=%s client_id=%s keepalive_sec=%d",
+        hal_mqtt_configured_uri(),
+        CONFIG_ZGW_MQTT_CLIENT_ID,
+        CONFIG_ZGW_MQTT_KEEPALIVE_SEC);
+
     g_hal_mqtt.client = esp_mqtt_client_init(&config);
     if (g_hal_mqtt.client == NULL) {
+        ESP_LOGE(kTag, "MQTT client init failed uri=%s", hal_mqtt_configured_uri());
         return HAL_MQTT_STATUS_FAILED;
     }
 
@@ -166,6 +200,7 @@ hal_mqtt_status_t hal_mqtt_init(void) {
         &hal_mqtt_event_handler,
         NULL);
     if (err != ESP_OK) {
+        ESP_LOGE(kTag, "MQTT event registration failed uri=%s err=0x%x", hal_mqtt_configured_uri(), (unsigned int)err);
         esp_mqtt_client_destroy(g_hal_mqtt.client);
         g_hal_mqtt.client = NULL;
         return HAL_MQTT_STATUS_FAILED;
@@ -173,6 +208,7 @@ hal_mqtt_status_t hal_mqtt_init(void) {
 
     g_hal_mqtt.initialized = true;
     hal_mqtt_reset_runtime_flags();
+    ESP_LOGI(kTag, "MQTT transport initialized uri=%s", hal_mqtt_configured_uri());
     return HAL_MQTT_STATUS_OK;
 #else
     g_hal_mqtt.initialized = true;
@@ -193,6 +229,7 @@ hal_mqtt_status_t hal_mqtt_register_callbacks(const hal_mqtt_callbacks_t* callba
 hal_mqtt_status_t hal_mqtt_start(void) {
 #ifdef ESP_PLATFORM
     if (!hal_mqtt_transport_enabled()) {
+        ESP_LOGI(kTag, "MQTT start skipped because transport is disabled uri=%s", hal_mqtt_configured_uri());
         return HAL_MQTT_STATUS_DISABLED;
     }
     if (!g_hal_mqtt.initialized || g_hal_mqtt.client == NULL) {
@@ -202,11 +239,14 @@ hal_mqtt_status_t hal_mqtt_start(void) {
         return HAL_MQTT_STATUS_OK;
     }
 
+    ESP_LOGI(kTag, "Starting MQTT transport uri=%s", hal_mqtt_configured_uri());
     if (esp_mqtt_client_start(g_hal_mqtt.client) != ESP_OK) {
+        ESP_LOGE(kTag, "MQTT start failed uri=%s", hal_mqtt_configured_uri());
         return HAL_MQTT_STATUS_FAILED;
     }
 
     g_hal_mqtt.started = true;
+    ESP_LOGI(kTag, "MQTT start requested uri=%s", hal_mqtt_configured_uri());
     return HAL_MQTT_STATUS_OK;
 #else
     if (!g_hal_mqtt.initialized) {

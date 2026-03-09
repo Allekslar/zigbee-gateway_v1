@@ -104,6 +104,17 @@ Current broker-facing policy:
   - `zigbee-gateway/devices/+/config`
   - `zigbee-gateway/devices/+/power/set`
 
+Home Assistant MQTT Discovery:
+
+- Discovery prefix: `homeassistant`
+- Discovery payloads are published by `components/mqtt_bridge/mqtt_discovery.cpp`
+- Retained discovery entities are generated per online device for:
+  - power switch
+  - temperature sensor (if available)
+  - occupancy binary sensor (if available)
+  - contact binary sensor (if available)
+  - battery sensor (if available)
+
 Telemetry payload serializer contract:
 
 - `temperature_c` (`number` or `null`)

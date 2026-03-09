@@ -415,6 +415,19 @@ run_checks() {
         'class[[:space:]]+MqttBridgeTestAccess' \
         "test-only MQTT bridge access must live in a dedicated test access header"
 
+    check_absent "INV-M029" "medium" "components/core" \
+        'homeassistant/' \
+        "Home Assistant discovery specifics must not leak into core"
+    check_absent "INV-M029" "medium" "components/service" \
+        'homeassistant/' \
+        "Home Assistant discovery specifics must not leak into service"
+    check_absent "INV-M029" "medium" "components/web_ui" \
+        'homeassistant/' \
+        "Home Assistant discovery specifics must not leak into web UI"
+    check_present "INV-M029" "medium" "components/mqtt_bridge/mqtt_discovery.cpp" \
+        'kDiscoveryPrefix|build_discovery_topic' \
+        "Home Assistant discovery topic contract must live in MQTT bridge discovery layer"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"
