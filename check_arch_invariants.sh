@@ -388,6 +388,16 @@ run_checks() {
         'hal_zigbee_test_apply_permit_join_status' \
         "test-only HAL Zigbee access must live in a dedicated test header"
 
+    check_present "INV-M026" "medium" "components/app_hal/hal_mqtt.c" \
+        '#include[[:space:]]+"mqtt_client\.h"|esp_mqtt_client_' \
+        "HAL MQTT adapter must own ESP-IDF MQTT client integration"
+    check_absent "INV-M026" "medium" "components/mqtt_bridge" \
+        '#include[[:space:]]+"mqtt_client\.h"|esp_mqtt_client_' \
+        "MQTT bridge must not use ESP-IDF MQTT client directly"
+    check_absent "INV-M026" "medium" "components/service" \
+        '#include[[:space:]]+"mqtt_client\.h"|esp_mqtt_client_' \
+        "service layer must not use ESP-IDF MQTT client directly"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

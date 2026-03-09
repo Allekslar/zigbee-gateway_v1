@@ -7,4 +7,34 @@ config ZGW_ENABLE_DEBUG_LOGS
     bool "Enable debug logs"
     default y
 
+config ZGW_MQTT_TRANSPORT_ENABLED
+    bool "Enable MQTT transport adapter"
+    default n
+
+config ZGW_MQTT_BROKER_URI
+    string "MQTT broker URI"
+    depends on ZGW_MQTT_TRANSPORT_ENABLED
+    default "mqtt://192.168.178.2"
+
+config ZGW_MQTT_CLIENT_ID
+    string "MQTT client id"
+    depends on ZGW_MQTT_TRANSPORT_ENABLED
+    default "zigbee-gateway"
+
+config ZGW_MQTT_USERNAME
+    string "MQTT username"
+    depends on ZGW_MQTT_TRANSPORT_ENABLED
+    default ""
+
+config ZGW_MQTT_PASSWORD
+    string "MQTT password"
+    depends on ZGW_MQTT_TRANSPORT_ENABLED
+    default ""
+
+config ZGW_MQTT_KEEPALIVE_SEC
+    int "MQTT keepalive seconds"
+    depends on ZGW_MQTT_TRANSPORT_ENABLED
+    range 15 300
+    default 60
+
 endmenu

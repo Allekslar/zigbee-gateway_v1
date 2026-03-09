@@ -10,6 +10,9 @@
 #include <cstring>
 
 #include "core_commands.hpp"
+#ifdef ESP_PLATFORM
+#include "hal_mqtt.h"
+#endif
 #include "log_tags.h"
 #include "service_runtime_api.hpp"
 
@@ -30,6 +33,7 @@ constexpr UBaseType_t kMqttBridgeTaskPriority = 4U;
 constexpr TickType_t kMqttBridgeTaskPeriodTicks = pdMS_TO_TICKS(1000);
 #endif
 constexpr std::size_t kDrainBatchCapacity = 8U;
+constexpr int kMqttQosAtLeastOnce = 1;
 
 bool parse_u32_strict(const char* text, uint32_t* out) noexcept {
     if (text == nullptr || out == nullptr || text[0] == '\0') {
@@ -174,6 +178,11 @@ bool parse_reporting_config_payload(
 bool MqttBridge::start() noexcept {
     publish_discovery();
     reset_sync_cache();
+#ifdef ESP_PLATFORM
+    transport_enabled_.store(start_transport(), std::memory_order_release);
+#else
+    transport_enabled_.store(true, std::memory_order_release);
+#endif
     started_.store(true, std::memory_order_release);
 #ifdef ESP_PLATFORM
     return ensure_task_started();
@@ -184,6 +193,7 @@ bool MqttBridge::start() noexcept {
 
 void MqttBridge::stop() noexcept {
     reset_sync_cache();
+    transport_enabled_.store(false, std::memory_order_release);
     started_.store(false, std::memory_order_release);
 #ifdef ESP_PLATFORM
     for (uint8_t i = 0; i < 20U && task_handle_ != nullptr; ++i) {
@@ -226,7 +236,7 @@ bool MqttBridge::handle_config_command(const char* topic, const char* payload, u
 }
 
 std::size_t MqttBridge::sync_runtime_snapshot() noexcept {
-    if (!started() || runtime_ == nullptr) {
+    if (!started() || runtime_ == nullptr || !transport_enabled_.load(std::memory_order_acquire)) {
         return 0U;
     }
 
@@ -238,6 +248,11 @@ std::size_t MqttBridge::sync_runtime_snapshot() noexcept {
 }
 
 std::size_t MqttBridge::publish_pending_publications() noexcept {
+    if (!transport_enabled_.load(std::memory_order_acquire)) {
+        pending_publication_count_ = 0U;
+        return 0U;
+    }
+
     MqttPublishedMessage batch[kDrainBatchCapacity]{};
     std::size_t published = 0U;
 
@@ -262,18 +277,66 @@ void MqttBridge::reset_sync_cache() noexcept {
     cached_device_count_ = 0;
     cache_initialized_ = false;
     pending_publication_count_ = 0;
+    command_topics_subscribed_.store(false, std::memory_order_release);
 }
 
 bool MqttBridge::publish_message(const MqttPublishedMessage& message) noexcept {
 #ifdef ESP_PLATFORM
-    ESP_LOGI(kTag, "publish topic=%s retain=%s payload=%s", message.topic, message.retain ? "true" : "false", message.payload);
+    return hal_mqtt_publish(message.topic, message.payload, message.retain, kMqttQosAtLeastOnce) == HAL_MQTT_STATUS_OK;
 #else
     (void)message;
-#endif
     return true;
+#endif
+}
+
+uint32_t MqttBridge::next_command_correlation_id() noexcept {
+    const uint32_t next = next_correlation_id_.fetch_add(1U, std::memory_order_relaxed);
+    if (next != core::kNoCorrelationId) {
+        return next;
+    }
+    return next_correlation_id_.fetch_add(1U, std::memory_order_relaxed);
 }
 
 #ifdef ESP_PLATFORM
+void MqttBridge::on_transport_connected(void* context) noexcept {
+    auto* bridge = static_cast<MqttBridge*>(context);
+    if (bridge != nullptr) {
+        (void)bridge->subscribe_command_topics();
+    }
+}
+
+void MqttBridge::on_transport_disconnected(void* context) noexcept {
+    auto* bridge = static_cast<MqttBridge*>(context);
+    if (bridge != nullptr) {
+        bridge->command_topics_subscribed_.store(false, std::memory_order_release);
+    }
+}
+
+void MqttBridge::on_transport_message(
+    void* context,
+    const char* topic,
+    const std::size_t topic_len,
+    const uint8_t* payload,
+    const std::size_t payload_len) noexcept {
+    auto* bridge = static_cast<MqttBridge*>(context);
+    if (bridge == nullptr || topic == nullptr || payload == nullptr || topic_len == 0U || payload_len == 0U) {
+        return;
+    }
+
+    if (topic_len >= kTopicMaxLen || payload_len >= kMqttPayloadMaxLen) {
+        return;
+    }
+
+    char topic_buf[kTopicMaxLen]{};
+    char payload_buf[kMqttPayloadMaxLen]{};
+    std::memcpy(topic_buf, topic, topic_len);
+    topic_buf[topic_len] = '\0';
+    std::memcpy(payload_buf, payload, payload_len);
+    payload_buf[payload_len] = '\0';
+
+    (void)bridge->handle_config_command(topic_buf, payload_buf, bridge->next_command_correlation_id());
+}
+
 void MqttBridge::task_entry(void* arg) noexcept {
     auto* bridge = static_cast<MqttBridge*>(arg);
     if (bridge != nullptr) {
@@ -315,6 +378,50 @@ bool MqttBridge::ensure_task_started() noexcept {
     }
 
     task_handle_ = handle;
+    return true;
+}
+
+bool MqttBridge::start_transport() noexcept {
+    hal_mqtt_callbacks_t callbacks{};
+    callbacks.on_connected = &MqttBridge::on_transport_connected;
+    callbacks.on_disconnected = &MqttBridge::on_transport_disconnected;
+    callbacks.on_message = &MqttBridge::on_transport_message;
+
+    const hal_mqtt_status_t init_status = hal_mqtt_init();
+    if (init_status == HAL_MQTT_STATUS_DISABLED) {
+        ESP_LOGW(kTag, "MQTT transport disabled in Kconfig; bridge will run without broker transport");
+        return false;
+    }
+    if (init_status != HAL_MQTT_STATUS_OK) {
+        ESP_LOGW(kTag, "MQTT transport init failed status=%d", static_cast<int>(init_status));
+        return false;
+    }
+
+    if (hal_mqtt_register_callbacks(&callbacks, this) != HAL_MQTT_STATUS_OK) {
+        ESP_LOGW(kTag, "MQTT transport callback registration failed");
+        return false;
+    }
+
+    const hal_mqtt_status_t start_status = hal_mqtt_start();
+    if (start_status != HAL_MQTT_STATUS_OK) {
+        ESP_LOGW(kTag, "MQTT transport start failed status=%d", static_cast<int>(start_status));
+        return false;
+    }
+
+    return true;
+}
+
+bool MqttBridge::subscribe_command_topics() noexcept {
+    if (command_topics_subscribed_.load(std::memory_order_acquire)) {
+        return true;
+    }
+
+    if (hal_mqtt_subscribe(topic_device_config_wildcard(), kMqttQosAtLeastOnce) != HAL_MQTT_STATUS_OK) {
+        ESP_LOGW(kTag, "MQTT config topic subscription failed");
+        return false;
+    }
+
+    command_topics_subscribed_.store(true, std::memory_order_release);
     return true;
 }
 #endif

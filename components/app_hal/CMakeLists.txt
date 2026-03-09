@@ -5,6 +5,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/ProjectCompileOptions.cmake")
 
 idf_component_register(
     SRCS
+        "hal_mqtt.c"
         "hal_zigbee.c"
         "hal_matter.c"
         "hal_nvs.c"
@@ -20,6 +21,7 @@ idf_component_register(
         esp_event
         esp_netif
         esp_timer
+        mqtt
         nvs_flash
         esp_driver_gpio
         espressif__esp-zigbee-lib

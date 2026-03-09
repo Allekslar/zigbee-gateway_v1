@@ -6,6 +6,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/ProjectCompileOptions.cmake")
 idf_component_register(
     SRCS
         "test_main.c"
+        "../test_hal_mqtt.c"
         "../test_hal_nvs.c"
         "../test_hal_zigbee.c"
         "../test_reporting_flow.c"

@@ -35,13 +35,25 @@ public:
 private:
     void reset_sync_cache() noexcept;
     bool publish_message(const MqttPublishedMessage& message) noexcept;
+    uint32_t next_command_correlation_id() noexcept;
 #ifdef ESP_PLATFORM
     static void task_entry(void* arg) noexcept;
+    static void on_transport_connected(void* context) noexcept;
+    static void on_transport_disconnected(void* context) noexcept;
+    static void on_transport_message(
+        void* context,
+        const char* topic,
+        std::size_t topic_len,
+        const uint8_t* payload,
+        std::size_t payload_len) noexcept;
     void run_loop() noexcept;
     bool ensure_task_started() noexcept;
+    bool start_transport() noexcept;
+    bool subscribe_command_topics() noexcept;
 #endif
 
     std::atomic<bool> started_{false};
+    std::atomic<uint32_t> next_correlation_id_{1U};
     service::MqttBridgeSnapshot runtime_snapshot_cache_{};
     service::MqttBridgeDeviceSnapshot cached_devices_[core::kMaxDevices]{};
     service::MqttBridgeDeviceSnapshot sync_devices_scratch_[core::kMaxDevices]{};
@@ -51,6 +63,8 @@ private:
     std::size_t pending_publication_count_{0};
     service::ServiceRuntimeApi* runtime_{nullptr};
     std::atomic<uint32_t> published_message_count_{0};
+    std::atomic<bool> transport_enabled_{false};
+    std::atomic<bool> command_topics_subscribed_{false};
 #ifdef ESP_PLATFORM
     void* task_handle_{nullptr};
 #endif
