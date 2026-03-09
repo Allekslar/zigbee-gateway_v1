@@ -116,6 +116,21 @@ static bool hal_mqtt_transport_enabled(void) {
 }
 #endif
 
+static hal_mqtt_status_t hal_mqtt_copy_broker_endpoint_summary(char* out, size_t out_size) {
+    if (out == NULL || out_size == 0U) {
+        return HAL_MQTT_STATUS_INVALID_ARG;
+    }
+
+    const size_t uri_len = strnlen(CONFIG_ZGW_MQTT_BROKER_URI, out_size);
+    if (uri_len >= out_size) {
+        return HAL_MQTT_STATUS_INVALID_ARG;
+    }
+
+    memcpy(out, CONFIG_ZGW_MQTT_BROKER_URI, uri_len);
+    out[uri_len] = '\0';
+    return HAL_MQTT_STATUS_OK;
+}
+
 hal_mqtt_status_t hal_mqtt_init(void) {
 #ifdef ESP_PLATFORM
     if (!hal_mqtt_transport_enabled()) {
@@ -231,6 +246,18 @@ hal_mqtt_status_t hal_mqtt_stop(void) {
 
 bool hal_mqtt_is_connected(void) {
     return g_hal_mqtt.connected;
+}
+
+bool hal_mqtt_is_enabled(void) {
+#ifdef ESP_PLATFORM
+    return hal_mqtt_transport_enabled();
+#else
+    return true;
+#endif
+}
+
+hal_mqtt_status_t hal_mqtt_get_broker_endpoint_summary(char* out, size_t out_size) {
+    return hal_mqtt_copy_broker_endpoint_summary(out, out_size);
 }
 
 hal_mqtt_status_t hal_mqtt_publish(const char* topic, const char* payload, bool retain, int qos) {

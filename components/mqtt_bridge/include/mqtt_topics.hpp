@@ -26,5 +26,7 @@ bool topic_device_telemetry(uint16_t short_addr, char* out, std::size_t out_size
 bool topic_device_availability(uint16_t short_addr, char* out, std::size_t out_size) noexcept;
 bool topic_device_config(uint16_t short_addr, char* out, std::size_t out_size) noexcept;
 const char* topic_device_config_wildcard() noexcept;
+bool topic_device_power_set(uint16_t short_addr, char* out, std::size_t out_size) noexcept;
+const char* topic_device_power_set_wildcard() noexcept;
 
 }  // namespace mqtt_bridge

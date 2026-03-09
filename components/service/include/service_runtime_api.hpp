@@ -68,10 +68,28 @@ struct ConfigSnapshot {
 };
 
 struct NetworkApiSnapshot {
+    enum class MqttConnectionError : uint8_t {
+        kNone = 0,
+        kDisabled = 1,
+        kInitFailed = 2,
+        kStartFailed = 3,
+        kSubscribeFailed = 4,
+    };
+
+    struct MqttStatusSnapshot {
+        static constexpr std::size_t kBrokerEndpointSummaryMaxLen = 96U;
+
+        bool enabled{false};
+        bool connected{false};
+        MqttConnectionError last_connect_error{MqttConnectionError::kNone};
+        std::array<char, kBrokerEndpointSummaryMaxLen> broker_endpoint_summary{};
+    };
+
     uint32_t revision{0};
     bool connected{false};
     uint32_t refresh_requests{0};
     uint32_t current_backoff_ms{0};
+    MqttStatusSnapshot mqtt{};
 };
 
 struct ConfigApiSnapshot {
@@ -158,6 +176,7 @@ public:
         const char* password,
         bool save_credentials) noexcept = 0;
     virtual bool post_network_credentials_status(uint32_t request_id) noexcept = 0;
+    virtual bool post_mqtt_status(const NetworkApiSnapshot::MqttStatusSnapshot& snapshot) noexcept = 0;
     virtual bool post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept = 0;
     virtual bool post_remove_device(
         uint32_t request_id,

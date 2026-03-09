@@ -26,13 +26,20 @@ public:
     void stop() noexcept;
     bool started() const noexcept;
     void attach_runtime(service::ServiceRuntimeApi* runtime) noexcept;
-    bool handle_config_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
+    bool handle_command_message(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
     std::size_t sync_runtime_snapshot() noexcept;
     std::size_t publish_pending_publications() noexcept;
     std::size_t sync_snapshot(const service::MqttBridgeSnapshot& snapshot) noexcept;
     std::size_t drain_publications(MqttPublishedMessage* out, std::size_t capacity) noexcept;
 
 private:
+    bool handle_config_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
+    bool handle_power_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
+    void publish_runtime_status() noexcept;
+    void set_runtime_status(
+        bool enabled,
+        bool connected,
+        service::NetworkApiSnapshot::MqttConnectionError last_connect_error) noexcept;
     void reset_sync_cache() noexcept;
     bool publish_message(const MqttPublishedMessage& message) noexcept;
     uint32_t next_command_correlation_id() noexcept;
@@ -55,6 +62,7 @@ private:
     std::atomic<bool> started_{false};
     std::atomic<uint32_t> next_correlation_id_{1U};
     service::MqttBridgeSnapshot runtime_snapshot_cache_{};
+    service::NetworkApiSnapshot::MqttStatusSnapshot runtime_status_cache_{};
     service::MqttBridgeDeviceSnapshot cached_devices_[core::kMaxDevices]{};
     service::MqttBridgeDeviceSnapshot sync_devices_scratch_[core::kMaxDevices]{};
     uint16_t cached_device_count_{0};

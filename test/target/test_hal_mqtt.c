@@ -57,12 +57,18 @@ void test_hal_mqtt_contract(void) {
     TEST_ASSERT_EQUAL_INT(HAL_MQTT_STATUS_INVALID_ARG, hal_mqtt_publish(NULL, "{}", false, 1));
     TEST_ASSERT_EQUAL_INT(HAL_MQTT_STATUS_INVALID_ARG, hal_mqtt_publish("zigbee-gateway/state", NULL, false, 1));
     TEST_ASSERT_EQUAL_INT(HAL_MQTT_STATUS_INVALID_ARG, hal_mqtt_subscribe(NULL, 1));
+    TEST_ASSERT_EQUAL_INT(HAL_MQTT_STATUS_INVALID_ARG, hal_mqtt_get_broker_endpoint_summary(NULL, 0));
 
     if (init_status == HAL_MQTT_STATUS_DISABLED) {
         TEST_ASSERT_EQUAL_INT(HAL_MQTT_STATUS_DISABLED, hal_mqtt_start());
         TEST_ASSERT_FALSE(hal_mqtt_is_connected());
+        TEST_ASSERT_FALSE(hal_mqtt_is_enabled());
         return;
     }
+
+    char broker_summary[96] = {0};
+    TEST_ASSERT_EQUAL_INT(HAL_MQTT_STATUS_OK, hal_mqtt_get_broker_endpoint_summary(broker_summary, sizeof(broker_summary)));
+    TEST_ASSERT_TRUE(hal_mqtt_is_enabled());
 
     const hal_mqtt_status_t start_status = hal_mqtt_start();
     TEST_ASSERT_TRUE(start_status == HAL_MQTT_STATUS_OK || start_status == HAL_MQTT_STATUS_FAILED);

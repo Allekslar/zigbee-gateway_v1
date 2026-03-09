@@ -10,6 +10,7 @@ namespace {
 
 constexpr const char* kTopicRoot = "zigbee-gateway";
 constexpr const char* kTopicDeviceConfigWildcard = "zigbee-gateway/devices/+/config";
+constexpr const char* kTopicDevicePowerSetWildcard = "zigbee-gateway/devices/+/power/set";
 
 bool build_device_topic(const uint16_t short_addr,
                         const char* suffix,
@@ -55,6 +56,14 @@ bool topic_device_config(const uint16_t short_addr, char* out, const std::size_t
 
 const char* topic_device_config_wildcard() noexcept {
     return kTopicDeviceConfigWildcard;
+}
+
+bool topic_device_power_set(const uint16_t short_addr, char* out, const std::size_t out_size) noexcept {
+    return build_device_topic(short_addr, "power/set", out, out_size);
+}
+
+const char* topic_device_power_set_wildcard() noexcept {
+    return kTopicDevicePowerSetWildcard;
 }
 
 }  // namespace mqtt_bridge

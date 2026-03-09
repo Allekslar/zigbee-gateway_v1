@@ -398,6 +398,16 @@ run_checks() {
         '#include[[:space:]]+"mqtt_client\.h"|esp_mqtt_client_' \
         "service layer must not use ESP-IDF MQTT client directly"
 
+    check_present "INV-M027" "medium" "components/service/include/service_runtime_api.hpp" \
+        'struct[[:space:]]+MqttStatusSnapshot' \
+        "service runtime facade must define MQTT status snapshot DTO"
+    check_present "INV-M027" "medium" "components/service/include/service_runtime_api.hpp" \
+        'MqttStatusSnapshot[[:space:]]+mqtt' \
+        "network API snapshot must embed service-owned MQTT status read model"
+    check_absent "INV-M027" "medium" "components/web_ui" \
+        '#include[[:space:]]+"hal_mqtt\.h"|#include[[:space:]]+"mqtt_bridge\.hpp"' \
+        "web UI must consume MQTT status via service-owned network snapshot, not transport or bridge headers"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

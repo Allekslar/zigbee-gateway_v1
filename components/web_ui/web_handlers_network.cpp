@@ -80,6 +80,23 @@ const char* operation_error_token(
     }
 }
 
+const char* mqtt_connect_error_token(service::NetworkApiSnapshot::MqttConnectionError error) {
+    using Error = service::NetworkApiSnapshot::MqttConnectionError;
+    switch (error) {
+        case Error::kDisabled:
+            return "disabled";
+        case Error::kInitFailed:
+            return "init_failed";
+        case Error::kStartFailed:
+            return "start_failed";
+        case Error::kSubscribeFailed:
+            return "subscribe_failed";
+        case Error::kNone:
+        default:
+            return "none";
+    }
+}
+
 bool escape_json_string(const char* input, char* output, std::size_t output_capacity);
 
 bool parse_query_request_id(httpd_req_t* req, uint32_t* request_id_out) {
@@ -353,15 +370,28 @@ esp_err_t network_get_handler(httpd_req_t* req) {
         return send_json_error(req, "500 Internal Server Error", "snapshot_unavailable");
     }
 
-    char response[192]{};
+    char escaped_broker_endpoint[service::NetworkApiSnapshot::MqttStatusSnapshot::kBrokerEndpointSummaryMaxLen * 2U]{};
+    if (!escape_json_string(
+            snapshot.mqtt.broker_endpoint_summary.data(),
+            escaped_broker_endpoint,
+            sizeof(escaped_broker_endpoint))) {
+        return ESP_FAIL;
+    }
+
+    char response[448]{};
     const int written = std::snprintf(
         response,
         sizeof(response),
-        "{\"revision\":%" PRIu32 ",\"connected\":%s,\"refresh_requests\":%" PRIu32 ",\"current_backoff_ms\":%" PRIu32 "}",
+        "{\"revision\":%" PRIu32 ",\"connected\":%s,\"refresh_requests\":%" PRIu32 ",\"current_backoff_ms\":%" PRIu32
+        ",\"mqtt\":{\"enabled\":%s,\"connected\":%s,\"last_connect_error\":\"%s\",\"broker_endpoint\":\"%s\"}}",
         snapshot.revision,
         snapshot.connected ? "true" : "false",
         snapshot.refresh_requests,
-        snapshot.current_backoff_ms);
+        snapshot.current_backoff_ms,
+        snapshot.mqtt.enabled ? "true" : "false",
+        snapshot.mqtt.connected ? "true" : "false",
+        mqtt_connect_error_token(snapshot.mqtt.last_connect_error),
+        escaped_broker_endpoint);
     if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
         return ESP_FAIL;
     }

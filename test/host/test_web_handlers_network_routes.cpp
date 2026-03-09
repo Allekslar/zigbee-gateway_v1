@@ -113,12 +113,28 @@ int main() {
     assert(runtime.post_event(network_up));
     assert(runtime.process_pending() == 1U);
 
+    service::NetworkApiSnapshot::MqttStatusSnapshot mqtt_status{};
+    mqtt_status.enabled = true;
+    mqtt_status.connected = false;
+    mqtt_status.last_connect_error = service::NetworkApiSnapshot::MqttConnectionError::kStartFailed;
+    std::snprintf(
+        mqtt_status.broker_endpoint_summary.data(),
+        mqtt_status.broker_endpoint_summary.size(),
+        "%s",
+        "mqtt://broker.local:1883");
+    assert(runtime.post_mqtt_status(mqtt_status));
+    assert(runtime.process_pending() == 0U);
+
     clear_http_capture();
     assert(web_ui::network_get_handler(&req) == ESP_OK);
     assert(g_last_response.find("\"revision\":1") != std::string::npos);
     assert(g_last_response.find("\"connected\":true") != std::string::npos);
     assert(g_last_response.find("\"refresh_requests\":0") != std::string::npos);
     assert(g_last_response.find("\"current_backoff_ms\":0") != std::string::npos);
+    assert(g_last_response.find("\"mqtt\":{\"enabled\":true") != std::string::npos);
+    assert(g_last_response.find("\"connected\":false") != std::string::npos);
+    assert(g_last_response.find("\"last_connect_error\":\"start_failed\"") != std::string::npos);
+    assert(g_last_response.find("\"broker_endpoint\":\"mqtt://broker.local:1883\"") != std::string::npos);
 
     clear_http_capture();
     assert(runtime.stats().network_refresh_requests == 0U);

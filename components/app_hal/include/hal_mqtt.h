@@ -39,6 +39,8 @@ hal_mqtt_status_t hal_mqtt_register_callbacks(const hal_mqtt_callbacks_t* callba
 hal_mqtt_status_t hal_mqtt_start(void);
 hal_mqtt_status_t hal_mqtt_stop(void);
 bool hal_mqtt_is_connected(void);
+bool hal_mqtt_is_enabled(void);
+hal_mqtt_status_t hal_mqtt_get_broker_endpoint_summary(char* out, size_t out_size);
 hal_mqtt_status_t hal_mqtt_publish(const char* topic, const char* payload, bool retain, int qos);
 hal_mqtt_status_t hal_mqtt_subscribe(const char* topic_filter, int qos);
 

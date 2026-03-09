@@ -42,6 +42,7 @@ public:
     using ConfigWriteRequest = service::ConfigWriteRequest;
     using ConfigSnapshot = service::ConfigSnapshot;
     using NetworkApiSnapshot = service::NetworkApiSnapshot;
+    using MqttStatusSnapshot = service::NetworkApiSnapshot::MqttStatusSnapshot;
     using ConfigApiSnapshot = service::ConfigApiSnapshot;
     using BootAutoconnectResult = service::BootAutoconnectResult;
 
@@ -74,6 +75,7 @@ public:
         const char* password,
         bool save_credentials) noexcept override;
     bool post_network_credentials_status(uint32_t request_id) noexcept override;
+    bool post_mqtt_status(const MqttStatusSnapshot& snapshot) noexcept override;
     bool post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept override;
     bool post_zigbee_join_candidate(uint16_t short_addr) noexcept;
     bool post_zigbee_interview_result(
@@ -192,6 +194,10 @@ private:
         std::atomic<bool> connected{false};
         std::atomic<uint32_t> refresh_requests{0};
         std::atomic<uint32_t> current_backoff_ms{0};
+        std::atomic<bool> mqtt_enabled{false};
+        std::atomic<bool> mqtt_connected{false};
+        std::atomic<uint32_t> mqtt_last_connect_error{0};
+        std::array<char, MqttStatusSnapshot::kBrokerEndpointSummaryMaxLen> mqtt_broker_endpoint_summary{};
     };
 
     struct ConfigApiSnapshotStorage {
@@ -213,10 +219,16 @@ private:
         alignas(core::CoreState) std::array<uint8_t, sizeof(core::CoreState) + sizeof(uint32_t) * 2U> bytes{};
     };
 
+    struct PendingMqttStatusUpdate {
+        bool present{false};
+        MqttStatusSnapshot snapshot{};
+    };
+
     bool capture_core_read_model(CoreReadModel* out) const noexcept;
     void publish_network_api_snapshot(const CoreReadModel& core_snapshot) noexcept;
     void publish_config_api_snapshot(const CoreReadModel& core_snapshot) noexcept;
     void sync_api_snapshots() noexcept;
+    bool drain_mqtt_status_update() noexcept;
 
     // CoreRegistry is owned by ServiceRuntime; managers must consume prepared
     // runtime state fragments instead of reading snapshots directly.
@@ -254,6 +266,8 @@ private:
     RuntimeStatsStorage stats_{};
     NetworkApiSnapshotStorage network_api_snapshot_{};
     ConfigApiSnapshotStorage config_api_snapshot_{};
+    PendingMqttStatusUpdate pending_mqtt_status_update_{};
+    MqttStatusSnapshot mqtt_status_cache_{};
     mutable PersistedCoreStateStorage persisted_core_state_storage_{};
     std::atomic<bool> restore_core_state_pending_{false};
     std::atomic<uint32_t> last_tick_ms_{0};

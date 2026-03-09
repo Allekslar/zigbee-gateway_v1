@@ -25,6 +25,11 @@ int main() {
 
     assert(topic_device_config(65535U, topic, sizeof(topic)));
     assert(std::strcmp(topic, "zigbee-gateway/devices/65535/config") == 0);
+    assert(std::strcmp(topic_device_config_wildcard(), "zigbee-gateway/devices/+/config") == 0);
+
+    assert(topic_device_power_set(4660U, topic, sizeof(topic)));
+    assert(std::strcmp(topic, "zigbee-gateway/devices/4660/power/set") == 0);
+    assert(std::strcmp(topic_device_power_set_wildcard(), "zigbee-gateway/devices/+/power/set") == 0);
 
     char tiny[8] = {0};
     assert(!topic_device_telemetry(0x1234U, tiny, sizeof(tiny)));

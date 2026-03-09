@@ -35,6 +35,8 @@ constexpr TickType_t kMqttBridgeTaskPeriodTicks = pdMS_TO_TICKS(1000);
 constexpr std::size_t kDrainBatchCapacity = 8U;
 constexpr int kMqttQosAtLeastOnce = 1;
 
+using MqttConnectionError = service::NetworkApiSnapshot::MqttConnectionError;
+
 bool parse_u32_strict(const char* text, uint32_t* out) noexcept {
     if (text == nullptr || out == nullptr || text[0] == '\0') {
         return false;
@@ -49,15 +51,17 @@ bool parse_u32_strict(const char* text, uint32_t* out) noexcept {
     return true;
 }
 
-bool extract_device_short_addr_from_topic(const char* topic, uint16_t* out_short_addr) noexcept {
-    if (topic == nullptr || out_short_addr == nullptr) {
+bool extract_device_short_addr_from_topic(
+    const char* topic,
+    const char* suffix,
+    uint16_t* out_short_addr) noexcept {
+    if (topic == nullptr || suffix == nullptr || out_short_addr == nullptr) {
         return false;
     }
 
     constexpr const char* kPrefix = "zigbee-gateway/devices/";
-    constexpr const char* kSuffix = "/config";
     const std::size_t prefix_len = std::strlen(kPrefix);
-    const std::size_t suffix_len = std::strlen(kSuffix);
+    const std::size_t suffix_len = std::strlen(suffix);
     const std::size_t topic_len = std::strlen(topic);
     if (topic_len <= prefix_len + suffix_len) {
         return false;
@@ -65,7 +69,7 @@ bool extract_device_short_addr_from_topic(const char* topic, uint16_t* out_short
     if (std::strncmp(topic, kPrefix, prefix_len) != 0) {
         return false;
     }
-    if (std::strcmp(topic + topic_len - suffix_len, kSuffix) != 0) {
+    if (std::strcmp(topic + topic_len - suffix_len, suffix) != 0) {
         return false;
     }
 
@@ -84,6 +88,20 @@ bool extract_device_short_addr_from_topic(const char* topic, uint16_t* out_short
 
     *out_short_addr = static_cast<uint16_t>(short_raw);
     return true;
+}
+
+bool topic_has_suffix(const char* topic, const char* suffix) noexcept {
+    if (topic == nullptr || suffix == nullptr) {
+        return false;
+    }
+
+    const std::size_t topic_len = std::strlen(topic);
+    const std::size_t suffix_len = std::strlen(suffix);
+    if (topic_len < suffix_len) {
+        return false;
+    }
+
+    return std::strcmp(topic + topic_len - suffix_len, suffix) == 0;
 }
 
 bool find_json_u32_field(const char* body, const char* key, uint32_t* out_value) noexcept {
@@ -125,6 +143,44 @@ bool find_json_u32_field(const char* body, const char* key, uint32_t* out_value)
     }
 
     return parse_u32_strict(number_buf, out_value);
+}
+
+bool find_json_bool_field(const char* body, const char* key, bool* out_value) noexcept {
+    if (body == nullptr || key == nullptr || out_value == nullptr) {
+        return false;
+    }
+
+    char pattern[64]{};
+    const int pattern_written = std::snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    if (pattern_written <= 0 || static_cast<std::size_t>(pattern_written) >= sizeof(pattern)) {
+        return false;
+    }
+
+    const char* key_pos = std::strstr(body, pattern);
+    if (key_pos == nullptr) {
+        return false;
+    }
+
+    const char* colon = std::strchr(key_pos + pattern_written, ':');
+    if (colon == nullptr) {
+        return false;
+    }
+
+    const char* value = colon + 1;
+    while (*value == ' ' || *value == '\t' || *value == '\n' || *value == '\r') {
+        ++value;
+    }
+
+    if (std::strncmp(value, "true", 4) == 0) {
+        *out_value = true;
+        return true;
+    }
+    if (std::strncmp(value, "false", 5) == 0) {
+        *out_value = false;
+        return true;
+    }
+
+    return false;
 }
 
 bool parse_reporting_config_payload(
@@ -182,8 +238,10 @@ bool MqttBridge::start() noexcept {
     transport_enabled_.store(start_transport(), std::memory_order_release);
 #else
     transport_enabled_.store(true, std::memory_order_release);
+    set_runtime_status(true, true, MqttConnectionError::kNone);
 #endif
     started_.store(true, std::memory_order_release);
+    publish_runtime_status();
 #ifdef ESP_PLATFORM
     return ensure_task_started();
 #else
@@ -195,6 +253,8 @@ void MqttBridge::stop() noexcept {
     reset_sync_cache();
     transport_enabled_.store(false, std::memory_order_release);
     started_.store(false, std::memory_order_release);
+    set_runtime_status(runtime_status_cache_.enabled, false, runtime_status_cache_.last_connect_error);
+    publish_runtime_status();
 #ifdef ESP_PLATFORM
     for (uint8_t i = 0; i < 20U && task_handle_ != nullptr; ++i) {
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -208,9 +268,25 @@ bool MqttBridge::started() const noexcept {
 
 void MqttBridge::attach_runtime(service::ServiceRuntimeApi* runtime) noexcept {
     runtime_ = runtime;
+    publish_runtime_status();
 #ifdef ESP_PLATFORM
     (void)ensure_task_started();
 #endif
+}
+
+bool MqttBridge::handle_command_message(const char* topic, const char* payload, uint32_t correlation_id) noexcept {
+    if (topic == nullptr || payload == nullptr) {
+        return false;
+    }
+
+    if (topic_has_suffix(topic, "/config")) {
+        return handle_config_command(topic, payload, correlation_id);
+    }
+    if (topic_has_suffix(topic, "/power/set")) {
+        return handle_power_command(topic, payload, correlation_id);
+    }
+
+    return false;
 }
 
 bool MqttBridge::handle_config_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept {
@@ -219,7 +295,7 @@ bool MqttBridge::handle_config_command(const char* topic, const char* payload, u
     }
 
     uint16_t short_addr = core::kUnknownDeviceShortAddr;
-    if (!extract_device_short_addr_from_topic(topic, &short_addr)) {
+    if (!extract_device_short_addr_from_topic(topic, "/config", &short_addr)) {
         return false;
     }
 
@@ -232,6 +308,31 @@ bool MqttBridge::handle_config_command(const char* topic, const char* payload, u
         return false;
     }
 
+    return runtime_->post_command(command) == core::CoreError::kOk;
+}
+
+bool MqttBridge::handle_power_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept {
+    if (runtime_ == nullptr || correlation_id == core::kNoCorrelationId) {
+        return false;
+    }
+
+    uint16_t short_addr = core::kUnknownDeviceShortAddr;
+    if (!extract_device_short_addr_from_topic(topic, "/power/set", &short_addr) ||
+        short_addr == 0U ||
+        short_addr == core::kUnknownDeviceShortAddr) {
+        return false;
+    }
+
+    bool desired_power = false;
+    if (!find_json_bool_field(payload, "power_on", &desired_power)) {
+        return false;
+    }
+
+    core::CoreCommand command{};
+    command.type = core::CoreCommandType::kSetDevicePower;
+    command.correlation_id = correlation_id;
+    command.device_short_addr = short_addr;
+    command.desired_power_on = desired_power;
     return runtime_->post_command(command) == core::CoreError::kOk;
 }
 
@@ -273,6 +374,22 @@ std::size_t MqttBridge::publish_pending_publications() noexcept {
     return published;
 }
 
+void MqttBridge::publish_runtime_status() noexcept {
+    if (runtime_ == nullptr) {
+        return;
+    }
+    (void)runtime_->post_mqtt_status(runtime_status_cache_);
+}
+
+void MqttBridge::set_runtime_status(
+    const bool enabled,
+    const bool connected,
+    const MqttConnectionError last_connect_error) noexcept {
+    runtime_status_cache_.enabled = enabled;
+    runtime_status_cache_.connected = connected;
+    runtime_status_cache_.last_connect_error = last_connect_error;
+}
+
 void MqttBridge::reset_sync_cache() noexcept {
     cached_device_count_ = 0;
     cache_initialized_ = false;
@@ -301,6 +418,8 @@ uint32_t MqttBridge::next_command_correlation_id() noexcept {
 void MqttBridge::on_transport_connected(void* context) noexcept {
     auto* bridge = static_cast<MqttBridge*>(context);
     if (bridge != nullptr) {
+        bridge->set_runtime_status(true, true, MqttConnectionError::kNone);
+        bridge->publish_runtime_status();
         (void)bridge->subscribe_command_topics();
     }
 }
@@ -309,6 +428,8 @@ void MqttBridge::on_transport_disconnected(void* context) noexcept {
     auto* bridge = static_cast<MqttBridge*>(context);
     if (bridge != nullptr) {
         bridge->command_topics_subscribed_.store(false, std::memory_order_release);
+        bridge->set_runtime_status(true, false, bridge->runtime_status_cache_.last_connect_error);
+        bridge->publish_runtime_status();
     }
 }
 
@@ -334,7 +455,7 @@ void MqttBridge::on_transport_message(
     std::memcpy(payload_buf, payload, payload_len);
     payload_buf[payload_len] = '\0';
 
-    (void)bridge->handle_config_command(topic_buf, payload_buf, bridge->next_command_correlation_id());
+    (void)bridge->handle_command_message(topic_buf, payload_buf, bridge->next_command_correlation_id());
 }
 
 void MqttBridge::task_entry(void* arg) noexcept {
@@ -382,6 +503,16 @@ bool MqttBridge::ensure_task_started() noexcept {
 }
 
 bool MqttBridge::start_transport() noexcept {
+    char broker_summary[service::NetworkApiSnapshot::MqttStatusSnapshot::kBrokerEndpointSummaryMaxLen]{};
+    if (hal_mqtt_get_broker_endpoint_summary(broker_summary, sizeof(broker_summary)) == HAL_MQTT_STATUS_OK) {
+        std::memcpy(
+            runtime_status_cache_.broker_endpoint_summary.data(),
+            broker_summary,
+            sizeof(broker_summary));
+    } else {
+        runtime_status_cache_.broker_endpoint_summary[0] = '\0';
+    }
+
     hal_mqtt_callbacks_t callbacks{};
     callbacks.on_connected = &MqttBridge::on_transport_connected;
     callbacks.on_disconnected = &MqttBridge::on_transport_disconnected;
@@ -390,24 +521,34 @@ bool MqttBridge::start_transport() noexcept {
     const hal_mqtt_status_t init_status = hal_mqtt_init();
     if (init_status == HAL_MQTT_STATUS_DISABLED) {
         ESP_LOGW(kTag, "MQTT transport disabled in Kconfig; bridge will run without broker transport");
+        set_runtime_status(false, false, MqttConnectionError::kDisabled);
+        publish_runtime_status();
         return false;
     }
     if (init_status != HAL_MQTT_STATUS_OK) {
         ESP_LOGW(kTag, "MQTT transport init failed status=%d", static_cast<int>(init_status));
+        set_runtime_status(true, false, MqttConnectionError::kInitFailed);
+        publish_runtime_status();
         return false;
     }
 
     if (hal_mqtt_register_callbacks(&callbacks, this) != HAL_MQTT_STATUS_OK) {
         ESP_LOGW(kTag, "MQTT transport callback registration failed");
+        set_runtime_status(true, false, MqttConnectionError::kInitFailed);
+        publish_runtime_status();
         return false;
     }
 
     const hal_mqtt_status_t start_status = hal_mqtt_start();
     if (start_status != HAL_MQTT_STATUS_OK) {
         ESP_LOGW(kTag, "MQTT transport start failed status=%d", static_cast<int>(start_status));
+        set_runtime_status(true, false, MqttConnectionError::kStartFailed);
+        publish_runtime_status();
         return false;
     }
 
+    set_runtime_status(true, false, MqttConnectionError::kNone);
+    publish_runtime_status();
     return true;
 }
 
@@ -418,10 +559,22 @@ bool MqttBridge::subscribe_command_topics() noexcept {
 
     if (hal_mqtt_subscribe(topic_device_config_wildcard(), kMqttQosAtLeastOnce) != HAL_MQTT_STATUS_OK) {
         ESP_LOGW(kTag, "MQTT config topic subscription failed");
+        set_runtime_status(true, false, MqttConnectionError::kSubscribeFailed);
+        publish_runtime_status();
+        return false;
+    }
+    if (hal_mqtt_subscribe(topic_device_power_set_wildcard(), kMqttQosAtLeastOnce) != HAL_MQTT_STATUS_OK) {
+        ESP_LOGW(kTag, "MQTT power topic subscription failed");
+        set_runtime_status(true, false, MqttConnectionError::kSubscribeFailed);
+        publish_runtime_status();
         return false;
     }
 
     command_topics_subscribed_.store(true, std::memory_order_release);
+    if (hal_mqtt_is_connected()) {
+        set_runtime_status(true, true, MqttConnectionError::kNone);
+        publish_runtime_status();
+    }
     return true;
 }
 #endif

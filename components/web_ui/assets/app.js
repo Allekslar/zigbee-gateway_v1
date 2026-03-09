@@ -24,6 +24,10 @@
     refreshAllBtn: byId("refresh-all-btn"),
     networkConnected: byId("network-connected"),
     networkRevision: byId("network-revision"),
+    mqttEnabled: byId("mqtt-enabled"),
+    mqttConnected: byId("mqtt-connected"),
+    mqttLastError: byId("mqtt-last-error"),
+    mqttBrokerEndpoint: byId("mqtt-broker-endpoint"),
     networkRefreshBtn: byId("network-refresh-btn"),
     networkScanBtn: byId("network-scan-btn"),
     wifiCredentialsStatus: byId("wifi-credentials-status"),
@@ -448,8 +452,13 @@
   async function loadNetwork() {
     log("loadNetwork");
     const data = await requestJson("/api/network", { method: "GET" });
+    const mqtt = data && data.mqtt ? data.mqtt : {};
     ui.networkConnected.textContent = data.connected ? "yes" : "no";
     ui.networkRevision.textContent = String(withDefault(data.revision, "-"));
+    ui.mqttEnabled.textContent = mqtt.enabled ? "yes" : "no";
+    ui.mqttConnected.textContent = mqtt.connected ? "yes" : "no";
+    ui.mqttLastError.textContent = String(withDefault(mqtt.last_connect_error, "none"));
+    ui.mqttBrokerEndpoint.textContent = String(withDefault(mqtt.broker_endpoint, "")) || "-";
   }
 
   async function loadCredentialsStatus() {

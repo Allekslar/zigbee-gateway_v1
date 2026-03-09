@@ -265,6 +265,7 @@ ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& eff
     (void)config_manager_.load();
     config_timeout_ms_cache_.store(config_manager_.command_timeout_ms(), std::memory_order_relaxed);
     config_max_retries_cache_.store(config_manager_.max_command_retries(), std::memory_order_relaxed);
+    mqtt_status_cache_.last_connect_error = NetworkApiSnapshot::MqttConnectionError::kNone;
     set_join_window_cache(false, 0U);
     sync_api_snapshots();
 }
@@ -514,6 +515,14 @@ bool ServiceRuntime::post_network_credentials_status(uint32_t request_id) noexce
     request.request_id = request_id;
     request.operation = NetworkOperationType::kCredentialsStatus;
     return network_manager_.enqueue_request(*this, request);
+}
+
+bool ServiceRuntime::post_mqtt_status(const MqttStatusSnapshot& snapshot) noexcept {
+    RuntimeLockGuard guard(ingress_lock_);
+    pending_mqtt_status_update_.snapshot = snapshot;
+    pending_mqtt_status_update_.snapshot.broker_endpoint_summary.back() = '\0';
+    pending_mqtt_status_update_.present = true;
+    return true;
 }
 
 bool ServiceRuntime::post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept {
@@ -820,6 +829,15 @@ void ServiceRuntime::publish_network_api_snapshot(const CoreReadModel& core_snap
     network_api_snapshot_.current_backoff_ms.store(
         stats_.current_backoff_ms.load(std::memory_order_relaxed),
         std::memory_order_relaxed);
+    network_api_snapshot_.mqtt_enabled.store(mqtt_status_cache_.enabled, std::memory_order_relaxed);
+    network_api_snapshot_.mqtt_connected.store(mqtt_status_cache_.connected, std::memory_order_relaxed);
+    network_api_snapshot_.mqtt_last_connect_error.store(
+        static_cast<uint32_t>(mqtt_status_cache_.last_connect_error),
+        std::memory_order_relaxed);
+    std::memcpy(
+        network_api_snapshot_.mqtt_broker_endpoint_summary.data(),
+        mqtt_status_cache_.broker_endpoint_summary.data(),
+        network_api_snapshot_.mqtt_broker_endpoint_summary.size());
     network_api_snapshot_.seq.store(start_seq + 2U, std::memory_order_release);
 }
 
@@ -866,6 +884,14 @@ bool ServiceRuntime::build_network_api_snapshot(NetworkApiSnapshot* out) const n
         snapshot.connected = network_api_snapshot_.connected.load(std::memory_order_relaxed);
         snapshot.refresh_requests = network_api_snapshot_.refresh_requests.load(std::memory_order_relaxed);
         snapshot.current_backoff_ms = network_api_snapshot_.current_backoff_ms.load(std::memory_order_relaxed);
+        snapshot.mqtt.enabled = network_api_snapshot_.mqtt_enabled.load(std::memory_order_relaxed);
+        snapshot.mqtt.connected = network_api_snapshot_.mqtt_connected.load(std::memory_order_relaxed);
+        snapshot.mqtt.last_connect_error = static_cast<NetworkApiSnapshot::MqttConnectionError>(
+            network_api_snapshot_.mqtt_last_connect_error.load(std::memory_order_relaxed));
+        std::memcpy(
+            snapshot.mqtt.broker_endpoint_summary.data(),
+            network_api_snapshot_.mqtt_broker_endpoint_summary.data(),
+            snapshot.mqtt.broker_endpoint_summary.size());
 
         const uint32_t end_seq = network_api_snapshot_.seq.load(std::memory_order_acquire);
         if (start_seq == end_seq) {
@@ -1084,6 +1110,9 @@ void ServiceRuntime::execute_effects(const core::CoreEffectList& effects) noexce
 std::size_t ServiceRuntime::process_pending() noexcept {
     std::size_t processed = 0;
     bool overall_progress = false;
+    if (drain_mqtt_status_update()) {
+        overall_progress = true;
+    }
     for (;;) {
         if (processed >= kMaxProcessedEventsPerCycle) {
             break;
@@ -1178,6 +1207,7 @@ std::size_t ServiceRuntime::process_pending() noexcept {
 std::size_t ServiceRuntime::tick(uint32_t now_ms) noexcept {
     stats_.stale_devices.store(reporting_manager_.degraded_count(), std::memory_order_relaxed);
     last_tick_ms_.store(now_ms, std::memory_order_release);
+    (void)drain_mqtt_status_update();
     process_zigbee_network_policy(now_ms);
     std::size_t queued = command_manager_.process_timeouts(*this, now_ms);
 
@@ -1349,6 +1379,21 @@ std::size_t ServiceRuntime::process_pending_sta_connect(uint32_t now_ms) noexcep
 
 void ServiceRuntime::note_dropped_event() noexcept {
     (void)stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
+}
+
+bool ServiceRuntime::drain_mqtt_status_update() noexcept {
+    MqttStatusSnapshot snapshot{};
+    {
+        RuntimeLockGuard guard(ingress_lock_);
+        if (!pending_mqtt_status_update_.present) {
+            return false;
+        }
+        snapshot = pending_mqtt_status_update_.snapshot;
+        pending_mqtt_status_update_.present = false;
+    }
+
+    mqtt_status_cache_ = snapshot;
+    return true;
 }
 
 std::size_t ServiceRuntime::process_force_remove_timeouts(uint32_t now_ms) noexcept {
