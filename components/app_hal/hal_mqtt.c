@@ -47,6 +47,14 @@ static const char* kTag = LOG_TAG_HAL_MQTT;
 static const char* hal_mqtt_configured_uri(void) {
     return CONFIG_ZGW_MQTT_BROKER_URI[0] != '\0' ? CONFIG_ZGW_MQTT_BROKER_URI : "<empty>";
 }
+
+static const char* hal_mqtt_username_present(void) {
+#if defined(CONFIG_ZGW_MQTT_USERNAME)
+    return CONFIG_ZGW_MQTT_USERNAME[0] != '\0' ? "yes" : "no";
+#else
+    return "no";
+#endif
+}
 #endif
 
 static void hal_mqtt_reset_runtime_flags(void) {
@@ -183,10 +191,11 @@ hal_mqtt_status_t hal_mqtt_init(void) {
 
     ESP_LOGI(
         kTag,
-        "Initializing MQTT transport uri=%s client_id=%s keepalive_sec=%d",
+        "Initializing MQTT transport uri=%s client_id=%s keepalive_sec=%d username_present=%s",
         hal_mqtt_configured_uri(),
         CONFIG_ZGW_MQTT_CLIENT_ID,
-        CONFIG_ZGW_MQTT_KEEPALIVE_SEC);
+        CONFIG_ZGW_MQTT_KEEPALIVE_SEC,
+        hal_mqtt_username_present());
 
     g_hal_mqtt.client = esp_mqtt_client_init(&config);
     if (g_hal_mqtt.client == NULL) {
