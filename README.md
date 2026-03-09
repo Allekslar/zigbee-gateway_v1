@@ -15,14 +15,15 @@ Focus: stable layered architecture, business-logic isolation from HAL, host-side
 - starts a Zigbee gateway on ESP32-C6;
 - provides a Web UI and HTTP API for control;
 - uses separated layers `core -> service -> app_hal`;
-- prepares the base for MQTT (Phase 2) and Matter bridge (Phase 3).
+- includes an active MQTT bridge transport/command path (Phase 2 in progress);
+- includes a Matter bridge scaffold (Phase 3 in progress).
 
 ## Current Scope And Roadmap
 
 | Phase | Repository Status | Main Protocols |
 |------|-------------------|----------------|
 | Phase 1 | Completed | Zigbee, HTTP, mDNS |
-| Phase 2 | Module structure prepared | MQTT |
+| Phase 2 | MQTT transport, topics, commands, and status path implemented; broker HIL/docs close-out still pending | MQTT |
 | Phase 3 | Module structure prepared | Matter-over-Thread/Wi-Fi |
 
 ## Key Documents
@@ -91,8 +92,17 @@ Stable topic naming under root `zigbee-gateway`:
 - `zigbee-gateway/devices/<short_addr>/telemetry`
 - `zigbee-gateway/devices/<short_addr>/availability`
 - `zigbee-gateway/devices/<short_addr>/config`
+- `zigbee-gateway/devices/<short_addr>/power/set`
 
 Implementation API: `components/mqtt_bridge/include/mqtt_topics.hpp`.
+
+Current broker-facing policy:
+
+- device publish QoS: `1` (`at least once`)
+- retained publish: `true` for `availability`, `state`, and `telemetry`
+- subscribed command topics:
+  - `zigbee-gateway/devices/+/config`
+  - `zigbee-gateway/devices/+/power/set`
 
 Telemetry payload serializer contract:
 
@@ -124,6 +134,36 @@ MQTT config command ingress:
   - optional: `reportable_change`, `capability_flags`
 - Bridge maps payload to `CoreCommandType::kUpdateReportingProfile` and submits via `ServiceRuntime`.
 - Input bounds are validated; repeated identical command is idempotent (no extra queued write).
+
+MQTT power command ingress:
+
+- Topic: `zigbee-gateway/devices/<short_addr>/power/set`
+- Payload:
+  - `{"power_on":true}`
+  - `{"power_on":false}`
+- Bridge maps payload to `CoreCommandType::kSetDevicePower` and submits through the normal async ServiceRuntime command path.
+- Invalid payloads are rejected before entering runtime ingress.
+
+MQTT transport/config contract:
+
+- Kconfig gate: `CONFIG_ZGW_MQTT_TRANSPORT_ENABLED`
+- Broker URI: `CONFIG_ZGW_MQTT_BROKER_URI`
+- Client id: `CONFIG_ZGW_MQTT_CLIENT_ID`
+- Optional auth:
+  - `CONFIG_ZGW_MQTT_USERNAME`
+  - `CONFIG_ZGW_MQTT_PASSWORD`
+- Keepalive:
+  - `CONFIG_ZGW_MQTT_KEEPALIVE_SEC`
+
+MQTT runtime/read-model observability:
+
+- Web/API exposes MQTT transport status through `GET /api/network`
+- `mqtt` object fields:
+  - `enabled`
+  - `connected`
+  - `last_connect_error` (`none|disabled|init_failed|start_failed|subscribe_failed`)
+  - `broker_endpoint`
+- This status is service-owned read model data, not a direct HAL/web coupling.
 
 Matter endpoint mapping contract:
 
@@ -214,6 +254,7 @@ idf.py -C test/target -B build-target-tests build
 - Target HAL tests (`test/target`): HAL verification on ESP32-C6.
 - HIL smoke/full: run in CI on a self-hosted runner.
 - Gateway Zigbee HIL smoke (`test/hil`): real gateway reboot/join/on-off/remove scenario.
+- Gateway MQTT HIL smoke (`test/hil`): real broker publish/subscribe + join/power/remove scenario.
 
 Host integration:
 
