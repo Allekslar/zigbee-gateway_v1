@@ -390,6 +390,27 @@ void MqttBridge::set_runtime_status(
     runtime_status_cache_.last_connect_error = last_connect_error;
 }
 
+void MqttBridge::handle_transport_connected() noexcept {
+    set_runtime_status(true, true, MqttConnectionError::kNone);
+    publish_runtime_status();
+}
+
+void MqttBridge::handle_transport_disconnected() noexcept {
+    command_topics_subscribed_.store(false, std::memory_order_release);
+    set_runtime_status(true, false, runtime_status_cache_.last_connect_error);
+    publish_runtime_status();
+}
+
+void MqttBridge::handle_transport_error(const MqttConnectionError error) noexcept {
+    set_runtime_status(true, false, error);
+    publish_runtime_status();
+}
+
+void MqttBridge::handle_transport_subscribe_failure() noexcept {
+    set_runtime_status(true, false, MqttConnectionError::kSubscribeFailed);
+    publish_runtime_status();
+}
+
 void MqttBridge::reset_sync_cache() noexcept {
     cached_device_count_ = 0;
     cache_initialized_ = false;
@@ -418,8 +439,7 @@ uint32_t MqttBridge::next_command_correlation_id() noexcept {
 void MqttBridge::on_transport_connected(void* context) noexcept {
     auto* bridge = static_cast<MqttBridge*>(context);
     if (bridge != nullptr) {
-        bridge->set_runtime_status(true, true, MqttConnectionError::kNone);
-        bridge->publish_runtime_status();
+        bridge->handle_transport_connected();
         (void)bridge->subscribe_command_topics();
     }
 }
@@ -427,9 +447,7 @@ void MqttBridge::on_transport_connected(void* context) noexcept {
 void MqttBridge::on_transport_disconnected(void* context) noexcept {
     auto* bridge = static_cast<MqttBridge*>(context);
     if (bridge != nullptr) {
-        bridge->command_topics_subscribed_.store(false, std::memory_order_release);
-        bridge->set_runtime_status(true, false, bridge->runtime_status_cache_.last_connect_error);
-        bridge->publish_runtime_status();
+        bridge->handle_transport_disconnected();
     }
 }
 
@@ -527,23 +545,20 @@ bool MqttBridge::start_transport() noexcept {
     }
     if (init_status != HAL_MQTT_STATUS_OK) {
         ESP_LOGW(kTag, "MQTT transport init failed status=%d", static_cast<int>(init_status));
-        set_runtime_status(true, false, MqttConnectionError::kInitFailed);
-        publish_runtime_status();
+        handle_transport_error(MqttConnectionError::kInitFailed);
         return false;
     }
 
     if (hal_mqtt_register_callbacks(&callbacks, this) != HAL_MQTT_STATUS_OK) {
         ESP_LOGW(kTag, "MQTT transport callback registration failed");
-        set_runtime_status(true, false, MqttConnectionError::kInitFailed);
-        publish_runtime_status();
+        handle_transport_error(MqttConnectionError::kInitFailed);
         return false;
     }
 
     const hal_mqtt_status_t start_status = hal_mqtt_start();
     if (start_status != HAL_MQTT_STATUS_OK) {
         ESP_LOGW(kTag, "MQTT transport start failed status=%d", static_cast<int>(start_status));
-        set_runtime_status(true, false, MqttConnectionError::kStartFailed);
-        publish_runtime_status();
+        handle_transport_error(MqttConnectionError::kStartFailed);
         return false;
     }
 
@@ -559,14 +574,12 @@ bool MqttBridge::subscribe_command_topics() noexcept {
 
     if (hal_mqtt_subscribe(topic_device_config_wildcard(), kMqttQosAtLeastOnce) != HAL_MQTT_STATUS_OK) {
         ESP_LOGW(kTag, "MQTT config topic subscription failed");
-        set_runtime_status(true, false, MqttConnectionError::kSubscribeFailed);
-        publish_runtime_status();
+        handle_transport_subscribe_failure();
         return false;
     }
     if (hal_mqtt_subscribe(topic_device_power_set_wildcard(), kMqttQosAtLeastOnce) != HAL_MQTT_STATUS_OK) {
         ESP_LOGW(kTag, "MQTT power topic subscription failed");
-        set_runtime_status(true, false, MqttConnectionError::kSubscribeFailed);
-        publish_runtime_status();
+        handle_transport_subscribe_failure();
         return false;
     }
 

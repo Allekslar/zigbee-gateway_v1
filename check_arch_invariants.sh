@@ -408,6 +408,13 @@ run_checks() {
         '#include[[:space:]]+"hal_mqtt\.h"|#include[[:space:]]+"mqtt_bridge\.hpp"' \
         "web UI must consume MQTT status via service-owned network snapshot, not transport or bridge headers"
 
+    check_absent "INV-M028" "medium" "components/mqtt_bridge/include/mqtt_bridge.hpp" \
+        'MQTT_BRIDGE_TEST_HOOKS' \
+        "production MQTT bridge header must not expose macro-gated test hooks"
+    check_present "INV-M028" "medium" "components/mqtt_bridge/include/mqtt_bridge_test_access.hpp" \
+        'class[[:space:]]+MqttBridgeTestAccess' \
+        "test-only MQTT bridge access must live in a dedicated test access header"
+
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \
         "CI workflow must define reporting-regression blocking job"

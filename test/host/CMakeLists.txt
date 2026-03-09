@@ -317,6 +317,26 @@ target_link_libraries(test_mqtt_runtime_feed PRIVATE service_host)
 zg_apply_component_compile_policy(test_mqtt_runtime_feed)
 add_test(NAME test_mqtt_runtime_feed COMMAND test_mqtt_runtime_feed)
 
+add_executable(test_mqtt_status_runtime_feed
+    test_mqtt_status_runtime_feed.cpp
+    ../../components/mqtt_bridge/mqtt_bridge.cpp
+    ../../components/mqtt_bridge/mqtt_device_sync.cpp
+    ../../components/mqtt_bridge/mqtt_topics.cpp
+    ../../components/mqtt_bridge/mqtt_serializer.cpp
+    ../../components/mqtt_bridge/mqtt_discovery.cpp
+)
+target_include_directories(test_mqtt_status_runtime_feed PRIVATE
+    ../../components/mqtt_bridge/include
+    ../../components/service/include
+    ../../components/core/include
+    ../../components/app_hal/include
+    ../../components/common/include
+)
+target_compile_definitions(test_mqtt_status_runtime_feed PRIVATE MQTT_BRIDGE_TEST_HOOKS=1)
+target_link_libraries(test_mqtt_status_runtime_feed PRIVATE service_host)
+zg_apply_component_compile_policy(test_mqtt_status_runtime_feed)
+add_test(NAME test_mqtt_status_runtime_feed COMMAND test_mqtt_status_runtime_feed)
+
 add_executable(test_matter_device_map
     test_matter_device_map.cpp
     ../../components/matter_bridge/matter_device_map.cpp

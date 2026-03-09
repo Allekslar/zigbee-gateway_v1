@@ -14,6 +14,8 @@
 namespace mqtt_bridge {
 constexpr std::size_t kMaxMqttPublicationsPerSync = core::kMaxDevices * 3U;
 
+class MqttBridgeTestAccess;
+
 struct MqttPublishedMessage {
     char topic[kTopicMaxLen]{};
     char payload[kMqttPayloadMaxLen]{};
@@ -33,6 +35,8 @@ public:
     std::size_t drain_publications(MqttPublishedMessage* out, std::size_t capacity) noexcept;
 
 private:
+    friend class MqttBridgeTestAccess;
+
     bool handle_config_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
     bool handle_power_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
     void publish_runtime_status() noexcept;
@@ -40,6 +44,10 @@ private:
         bool enabled,
         bool connected,
         service::NetworkApiSnapshot::MqttConnectionError last_connect_error) noexcept;
+    void handle_transport_connected() noexcept;
+    void handle_transport_disconnected() noexcept;
+    void handle_transport_error(service::NetworkApiSnapshot::MqttConnectionError error) noexcept;
+    void handle_transport_subscribe_failure() noexcept;
     void reset_sync_cache() noexcept;
     bool publish_message(const MqttPublishedMessage& message) noexcept;
     uint32_t next_command_correlation_id() noexcept;
