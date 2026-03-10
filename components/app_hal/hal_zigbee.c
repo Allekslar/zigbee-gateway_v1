@@ -88,6 +88,26 @@ typedef struct {
 static known_device_identity_t s_known_device_identities[kKnownDeviceIdentityCapacity];
 static portMUX_TYPE s_known_device_identities_lock = portMUX_INITIALIZER_UNLOCKED;
 
+void hal_zigbee_notify_device_joined(uint16_t short_addr);
+void hal_zigbee_notify_device_left(uint16_t short_addr);
+void hal_zigbee_notify_attribute_report(
+    uint16_t short_addr,
+    uint16_t cluster_id,
+    uint16_t attribute_id,
+    bool value_bool,
+    uint32_t value_u32);
+void hal_zigbee_notify_command_result(uint32_t correlation_id, hal_zigbee_result_t result);
+void hal_zigbee_notify_interview_result(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result);
+void hal_zigbee_notify_bind_result(uint32_t correlation_id, uint16_t short_addr, hal_zigbee_result_t result);
+void hal_zigbee_notify_configure_reporting_result(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    hal_zigbee_result_t result);
+void hal_zigbee_notify_attribute_report_raw(const hal_zigbee_raw_attribute_report_t* report);
+
 static bool is_valid_short_addr(uint16_t short_addr) {
     return short_addr != 0xFFFFU && short_addr != 0x0000U;
 }

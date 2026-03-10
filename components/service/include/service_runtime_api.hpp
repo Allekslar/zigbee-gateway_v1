@@ -103,9 +103,58 @@ struct ConfigApiSnapshot {
 using BootAutoconnectResult = ConnectivityAutoconnectResult;
 using DevicesRuntimeSnapshot = DeviceRuntimeSnapshot;
 
+enum class DeviceReportingState : uint8_t {
+    kUnknown = 0,
+    kInterviewCompleted = 1,
+    kBindingReady = 2,
+    kReportingConfigured = 3,
+    kReportingActive = 4,
+    kStale = 5,
+};
+
+enum class DeviceOccupancyState : uint8_t {
+    kUnknown = 0,
+    kNotOccupied = 1,
+    kOccupied = 2,
+};
+
+enum class DeviceContactState : uint8_t {
+    kUnknown = 0,
+    kClosed = 1,
+    kOpen = 2,
+};
+
+struct DevicesApiDeviceSnapshot {
+    uint16_t short_addr{core::kUnknownDeviceShortAddr};
+    bool online{false};
+    bool power_on{false};
+    DeviceReportingState reporting_state{DeviceReportingState::kUnknown};
+    uint32_t last_report_at_ms{0};
+    bool stale{false};
+    bool has_temperature{false};
+    int16_t temperature_centi_c{0};
+    DeviceOccupancyState occupancy_state{DeviceOccupancyState::kUnknown};
+    DeviceContactState contact_state{DeviceContactState::kUnknown};
+    bool contact_tamper{false};
+    bool contact_battery_low{false};
+    bool has_battery{false};
+    uint8_t battery_percent{0};
+    bool has_battery_voltage{false};
+    uint16_t battery_voltage_mv{0};
+    bool has_lqi{false};
+    uint8_t lqi{0};
+    bool has_rssi{false};
+    int8_t rssi_dbm{0};
+    bool force_remove_armed{false};
+    uint32_t force_remove_ms_left{0};
+};
+
 struct DevicesApiSnapshot {
-    core::CoreState state{};
-    DevicesRuntimeSnapshot runtime{};
+    uint32_t revision{0};
+    uint16_t device_count{0};
+    bool join_window_open{false};
+    uint16_t join_window_seconds_left{0};
+    std::array<DevicesApiDeviceSnapshot, core::kMaxDevices> devices{};
 };
 
 struct MqttBridgeDeviceSnapshot {

@@ -9,6 +9,7 @@ idf_component_register(
         "command_manager.cpp"
         "connectivity_manager.cpp"
         "config_manager.cpp"
+        "devices_api_snapshot_builder.cpp"
         "device_manager.cpp"
         "effect_executor.cpp"
         "network_manager.cpp"

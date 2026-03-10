@@ -41,9 +41,10 @@ int main() {
 
     service::ServiceRuntime::DevicesApiSnapshot devices_snapshot{};
     assert(restored_runtime.build_devices_api_snapshot(1000U, &devices_snapshot));
-    assert(devices_snapshot.state.device_count == 1);
+    assert(devices_snapshot.device_count == 1);
     bool restored_found = false;
-    for (const auto& device : devices_snapshot.state.devices) {
+    for (std::size_t i = 0; i < devices_snapshot.device_count; ++i) {
+        const auto& device = devices_snapshot.devices[i];
         if (device.short_addr == 0x4411 && device.online) {
             restored_found = true;
             break;

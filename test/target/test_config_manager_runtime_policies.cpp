@@ -8,6 +8,7 @@
 #include "effect_executor.hpp"
 #include "hal_nvs.h"
 #include "hal_zigbee.h"
+#include "hal_zigbee_test.h"
 #include "service_runtime.hpp"
 #include "unity.h"
 

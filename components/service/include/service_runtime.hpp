@@ -9,13 +9,13 @@
 #include <cstdint>
 
 #include "bridge_snapshot_builder.hpp"
-#include "service_runtime_api.hpp"
 #include "config_manager.hpp"
 #include "command_manager.hpp"
 #include "core_commands.hpp"
 #include "core_event_bus.hpp"
 #include "core_registry.hpp"
 #include "device_manager.hpp"
+#include "devices_api_snapshot_builder.hpp"
 #include "effect_executor.hpp"
 #include "connectivity_manager.hpp"
 #include "network_manager.hpp"
@@ -24,6 +24,7 @@
 #include "reporting_manager.hpp"
 #include "scan_manager.hpp"
 #include "runtime_lock.hpp"
+#include "service_runtime_api.hpp"
 
 namespace service {
 
@@ -255,6 +256,7 @@ private:
 
     mutable RuntimeLock ingress_lock_{};
     BridgeSnapshotBuilder bridge_snapshot_builder_;
+    DevicesApiSnapshotBuilder devices_api_snapshot_builder_{};
 
     std::atomic<uint32_t> config_timeout_ms_cache_{5000};
     std::atomic<uint32_t> config_max_retries_cache_{1};

@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "hal_wifi.h"
 #include "hal_zigbee.h"
+#include "hal_zigbee_test.h"
 #include "service_runtime.hpp"
 #include "service_runtime_test_access.hpp"
 #include "unity.h"

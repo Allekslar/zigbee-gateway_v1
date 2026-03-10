@@ -4,8 +4,9 @@
 #include <cassert>
 #include "core_registry.hpp"
 #include "effect_executor.hpp"
-#include "service_runtime.hpp"
 #include "hal_zigbee.h"
+#include "hal_zigbee_test.h"
+#include "service_runtime.hpp"
 
 /**
  * 

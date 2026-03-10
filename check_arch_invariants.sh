@@ -382,10 +382,10 @@ run_checks() {
         "bridge-specific DTO field mapping must not live directly in ServiceRuntime"
 
     check_absent "INV-M025" "medium" "components/app_hal/include/hal_zigbee.h" \
-        'hal_zigbee_test_apply_permit_join_status|SERVICE_RUNTIME_TEST_HOOKS' \
-        "production HAL Zigbee header must not expose test-only hooks"
+        'hal_zigbee_test_apply_permit_join_status|hal_zigbee_notify_|hal_zigbee_simulate_|SERVICE_RUNTIME_TEST_HOOKS' \
+        "production HAL Zigbee header must not expose test-only hooks or simulation APIs"
     check_present "INV-M025" "medium" "components/app_hal/include/hal_zigbee_test.h" \
-        'hal_zigbee_test_apply_permit_join_status' \
+        'hal_zigbee_test_apply_permit_join_status|hal_zigbee_notify_|hal_zigbee_simulate_' \
         "test-only HAL Zigbee access must live in a dedicated test header"
 
     check_present "INV-M026" "medium" "components/app_hal/hal_mqtt.c" \
@@ -427,6 +427,26 @@ run_checks() {
     check_present "INV-M029" "medium" "components/mqtt_bridge/mqtt_discovery.cpp" \
         'kDiscoveryPrefix|build_discovery_topic' \
         "Home Assistant discovery topic contract must live in MQTT bridge discovery layer"
+
+    check_absent "INV-M030" "medium" "components/service/include/service_runtime_api.hpp" \
+        'core::CoreState[[:space:]]+state[[:space:]]*\{' \
+        "devices API snapshot must not expose raw CoreState in the service facade"
+    check_absent "INV-M030" "medium" "components/web_ui/web_handlers_device.cpp" \
+        '#include[[:space:]]+"core_state\.hpp"|devices_snapshot\.state|state\.devices|core::CoreReportingState|core::CoreOccupancyState|core::CoreContactState' \
+        "web devices handler must consume service-owned device DTOs, not raw core state layout"
+    check_present "INV-M030" "medium" "components/service/include/service_runtime_api.hpp" \
+        'struct[[:space:]]+DevicesApiDeviceSnapshot' \
+        "service facade must define a service-owned device DTO for /api/devices"
+
+    check_present "INV-M031" "medium" "components/service/include/devices_api_snapshot_builder.hpp" \
+        'class[[:space:]]+DevicesApiSnapshotBuilder' \
+        "devices API DTO mapping must live in a dedicated service helper"
+    check_present "INV-M031" "medium" "components/service/service_runtime.cpp" \
+        'devices_api_snapshot_builder_\.build[[:space:]]*\(' \
+        "ServiceRuntime must delegate /api/devices DTO mapping to DevicesApiSnapshotBuilder"
+    check_absent "INV-M031" "medium" "components/service/service_runtime.cpp" \
+        'api_device\.reporting_state|api_device\.occupancy_state|api_device\.contact_state|api_device\.battery_percent|api_device\.lqi|api_device\.rssi_dbm' \
+        "device API DTO field mapping must not live directly in ServiceRuntime"
 
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         '^  reporting-regression:' \

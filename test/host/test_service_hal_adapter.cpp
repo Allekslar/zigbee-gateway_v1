@@ -8,6 +8,7 @@
 #include "effect_executor.hpp"
 #include "hal_wifi.h"
 #include "hal_zigbee.h"
+#include "hal_zigbee_test.h"
 #include "service_runtime.hpp"
 
 int main() {

@@ -27,20 +27,20 @@ int main() {
 
     service::ServiceRuntime::DevicesApiSnapshot devices_snapshot{};
     assert(runtime.build_devices_api_snapshot(1000U, &devices_snapshot));
-    assert(devices_snapshot.state.device_count == runtime.state().device_count);
-    assert(!devices_snapshot.runtime.join_window_open);
+    assert(devices_snapshot.device_count == runtime.state().device_count);
+    assert(!devices_snapshot.join_window_open);
     bool found_joined_device = false;
-    for (std::size_t i = 0; i < devices_snapshot.state.devices.size(); ++i) {
-        if (devices_snapshot.state.devices[i].short_addr == 0x3301) {
+    for (std::size_t i = 0; i < devices_snapshot.device_count; ++i) {
+        if (devices_snapshot.devices[i].short_addr == 0x3301) {
             found_joined_device = true;
-            assert(devices_snapshot.runtime.force_remove_ms_left[i] == 0U);
-            assert(devices_snapshot.runtime.reporting_state[i] == core::CoreReportingState::kUnknown);
-            assert(devices_snapshot.runtime.last_report_at_ms[i] == 0U);
-            assert(!devices_snapshot.runtime.stale[i]);
-            assert(!devices_snapshot.runtime.has_battery[i]);
-            assert(!devices_snapshot.runtime.has_battery_voltage[i]);
-            assert(!devices_snapshot.runtime.has_lqi[i]);
-            assert(!devices_snapshot.runtime.has_rssi[i]);
+            assert(devices_snapshot.devices[i].force_remove_ms_left == 0U);
+            assert(devices_snapshot.devices[i].reporting_state == service::DeviceReportingState::kUnknown);
+            assert(devices_snapshot.devices[i].last_report_at_ms == 0U);
+            assert(!devices_snapshot.devices[i].stale);
+            assert(!devices_snapshot.devices[i].has_battery);
+            assert(!devices_snapshot.devices[i].has_battery_voltage);
+            assert(!devices_snapshot.devices[i].has_lqi);
+            assert(!devices_snapshot.devices[i].has_rssi);
             break;
         }
     }
@@ -129,22 +129,22 @@ int main() {
     service::ServiceRuntime::DevicesApiSnapshot telemetry_snapshot{};
     assert(runtime.build_devices_api_snapshot(8000U, &telemetry_snapshot));
     bool telemetry_verified = false;
-    for (std::size_t i = 0; i < telemetry_snapshot.state.devices.size(); ++i) {
-        const auto& device = telemetry_snapshot.state.devices[i];
+    for (std::size_t i = 0; i < telemetry_snapshot.device_count; ++i) {
+        const auto& device = telemetry_snapshot.devices[i];
         if (device.short_addr != 0x3301 || !device.online) {
             continue;
         }
-        assert(telemetry_snapshot.runtime.reporting_state[i] == device.reporting_state);
-        assert(telemetry_snapshot.runtime.last_report_at_ms[i] == device.last_report_at_ms);
-        assert(telemetry_snapshot.runtime.stale[i] == device.stale);
-        assert(telemetry_snapshot.runtime.has_battery[i]);
-        assert(telemetry_snapshot.runtime.battery_percent[i] == 77U);
-        assert(telemetry_snapshot.runtime.has_battery_voltage[i]);
-        assert(telemetry_snapshot.runtime.battery_voltage_mv[i] == 3000U);
-        assert(telemetry_snapshot.runtime.has_lqi[i]);
-        assert(telemetry_snapshot.runtime.lqi[i] == 190U);
-        assert(telemetry_snapshot.runtime.has_rssi[i]);
-        assert(telemetry_snapshot.runtime.rssi_dbm[i] == -66);
+        assert(device.reporting_state == service::DeviceReportingState::kReportingActive);
+        assert(device.last_report_at_ms == 7000U);
+        assert(!device.stale);
+        assert(device.has_battery);
+        assert(device.battery_percent == 77U);
+        assert(device.has_battery_voltage);
+        assert(device.battery_voltage_mv == 3000U);
+        assert(device.has_lqi);
+        assert(device.lqi == 190U);
+        assert(device.has_rssi);
+        assert(device.rssi_dbm == -66);
         telemetry_verified = true;
         break;
     }

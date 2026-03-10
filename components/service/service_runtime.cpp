@@ -787,10 +787,9 @@ bool ServiceRuntime::build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnaps
         return false;
     }
 
-    out->state = *snapshot.state;
-    out->runtime = runtime_snapshot;
+    const bool built = devices_api_snapshot_builder_.build(*snapshot.state, runtime_snapshot, out);
     registry_->release_snapshot(&snapshot);
-    return true;
+    return built;
 }
 
 bool ServiceRuntime::build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept {

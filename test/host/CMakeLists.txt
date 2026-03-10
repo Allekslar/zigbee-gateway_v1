@@ -30,6 +30,7 @@ set(SERVICE_SOURCES
     ../../components/service/command_manager.cpp
     ../../components/service/connectivity_manager.cpp
     ../../components/service/config_manager.cpp
+    ../../components/service/devices_api_snapshot_builder.cpp
     ../../components/service/device_manager.cpp
     ../../components/service/effect_executor.cpp
     ../../components/service/network_manager.cpp
