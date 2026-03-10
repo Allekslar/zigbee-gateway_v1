@@ -80,6 +80,8 @@ enum { kCommandBridgeCapacity = 16 };
 static command_bridge_entry_t s_command_bridge[kCommandBridgeCapacity];
 static portMUX_TYPE s_command_bridge_lock = portMUX_INITIALIZER_UNLOCKED;
 enum { kKnownDeviceIdentityCapacity = 64 };
+enum { kRecentDepartureCapacity = 16 };
+static const int64_t kRecentDepartureTtlUs = 15LL * 1000LL * 1000LL;
 typedef struct {
     bool in_use;
     esp_zb_ieee_addr_t ieee_addr;
@@ -87,6 +89,13 @@ typedef struct {
 } known_device_identity_t;
 static known_device_identity_t s_known_device_identities[kKnownDeviceIdentityCapacity];
 static portMUX_TYPE s_known_device_identities_lock = portMUX_INITIALIZER_UNLOCKED;
+typedef struct {
+    bool in_use;
+    uint16_t short_addr;
+    int64_t expires_at_us;
+} recent_departure_entry_t;
+static recent_departure_entry_t s_recent_departures[kRecentDepartureCapacity];
+static portMUX_TYPE s_recent_departures_lock = portMUX_INITIALIZER_UNLOCKED;
 
 void hal_zigbee_notify_device_joined(uint16_t short_addr);
 void hal_zigbee_notify_device_left(uint16_t short_addr);
@@ -207,6 +216,94 @@ static void clear_known_device_identities(void) {
     portENTER_CRITICAL(&s_known_device_identities_lock);
     memset(s_known_device_identities, 0, sizeof(s_known_device_identities));
     portEXIT_CRITICAL(&s_known_device_identities_lock);
+}
+
+static void prune_recent_departures_locked(int64_t now_us) {
+    for (size_t i = 0; i < kRecentDepartureCapacity; ++i) {
+        if (!s_recent_departures[i].in_use || now_us < s_recent_departures[i].expires_at_us) {
+            continue;
+        }
+        memset(&s_recent_departures[i], 0, sizeof(s_recent_departures[i]));
+    }
+}
+
+static void note_recent_departure(uint16_t short_addr) {
+    if (!is_valid_short_addr(short_addr)) {
+        return;
+    }
+
+    const int64_t now_us = esp_timer_get_time();
+    recent_departure_entry_t* slot = NULL;
+
+    portENTER_CRITICAL(&s_recent_departures_lock);
+    prune_recent_departures_locked(now_us);
+
+    for (size_t i = 0; i < kRecentDepartureCapacity; ++i) {
+        if (!s_recent_departures[i].in_use || s_recent_departures[i].short_addr != short_addr) {
+            continue;
+        }
+        slot = &s_recent_departures[i];
+        break;
+    }
+
+    if (slot == NULL) {
+        for (size_t i = 0; i < kRecentDepartureCapacity; ++i) {
+            if (s_recent_departures[i].in_use) {
+                continue;
+            }
+            slot = &s_recent_departures[i];
+            break;
+        }
+    }
+
+    if (slot == NULL) {
+        slot = &s_recent_departures[0];
+        for (size_t i = 1; i < kRecentDepartureCapacity; ++i) {
+            if (s_recent_departures[i].expires_at_us < slot->expires_at_us) {
+                slot = &s_recent_departures[i];
+            }
+        }
+    }
+
+    slot->in_use = true;
+    slot->short_addr = short_addr;
+    slot->expires_at_us = now_us + kRecentDepartureTtlUs;
+    portEXIT_CRITICAL(&s_recent_departures_lock);
+}
+
+static bool was_recently_departed(uint16_t short_addr) {
+    if (!is_valid_short_addr(short_addr)) {
+        return false;
+    }
+
+    const int64_t now_us = esp_timer_get_time();
+    bool found = false;
+    portENTER_CRITICAL(&s_recent_departures_lock);
+    prune_recent_departures_locked(now_us);
+    for (size_t i = 0; i < kRecentDepartureCapacity; ++i) {
+        if (!s_recent_departures[i].in_use || s_recent_departures[i].short_addr != short_addr) {
+            continue;
+        }
+        found = true;
+        break;
+    }
+    portEXIT_CRITICAL(&s_recent_departures_lock);
+    return found;
+}
+
+static void clear_recent_departure(uint16_t short_addr) {
+    if (!is_valid_short_addr(short_addr)) {
+        return;
+    }
+
+    portENTER_CRITICAL(&s_recent_departures_lock);
+    for (size_t i = 0; i < kRecentDepartureCapacity; ++i) {
+        if (!s_recent_departures[i].in_use || s_recent_departures[i].short_addr != short_addr) {
+            continue;
+        }
+        memset(&s_recent_departures[i], 0, sizeof(s_recent_departures[i]));
+    }
+    portEXIT_CRITICAL(&s_recent_departures_lock);
 }
 
 static bool find_known_device_by_ieee(
@@ -422,7 +519,7 @@ static void zigbee_command_send_status_handler(esp_zb_zcl_command_send_status_me
 
     command_bridge_entry_t bridge_entry = {0};
     if (!consume_command_bridge_entry(message.tsn, &bridge_entry)) {
-        ESP_LOGW(
+        ESP_LOGD(
             kTag,
             "send_status without tracked TSN tsn=%u status=%s",
             (unsigned)message.tsn,
@@ -431,13 +528,23 @@ static void zigbee_command_send_status_handler(esp_zb_zcl_command_send_status_me
     }
 
     const hal_zigbee_result_t result = map_send_status_to_hal_result(message.status);
-    ESP_LOGW(
-        kTag,
-        "On/Off send failed short_addr=0x%04x tsn=%u correlation_id=%lu status=%s",
-        (unsigned)bridge_entry.short_addr,
-        (unsigned)message.tsn,
-        (unsigned long)bridge_entry.correlation_id,
-        esp_err_to_name(message.status));
+    if (was_recently_departed(bridge_entry.short_addr)) {
+        ESP_LOGI(
+            kTag,
+            "Ignoring late On/Off send failure for departed short_addr=0x%04x tsn=%u correlation_id=%lu status=%s",
+            (unsigned)bridge_entry.short_addr,
+            (unsigned)message.tsn,
+            (unsigned long)bridge_entry.correlation_id,
+            esp_err_to_name(message.status));
+    } else {
+        ESP_LOGW(
+            kTag,
+            "On/Off send failed short_addr=0x%04x tsn=%u correlation_id=%lu status=%s",
+            (unsigned)bridge_entry.short_addr,
+            (unsigned)message.tsn,
+            (unsigned long)bridge_entry.correlation_id,
+            esp_err_to_name(message.status));
+    }
     hal_zigbee_notify_command_result(bridge_entry.correlation_id, result);
 }
 
@@ -456,7 +563,7 @@ static esp_err_t zigbee_core_action_handler(esp_zb_core_action_callback_id_t cal
 
     command_bridge_entry_t bridge_entry = {0};
     if (!consume_command_bridge_entry(tsn, &bridge_entry)) {
-        ESP_LOGW(
+        ESP_LOGD(
             kTag,
             "default_resp without tracked TSN tsn=%u cmd=0x%02x status=0x%02x",
             (unsigned)tsn,
@@ -578,6 +685,7 @@ static void notify_join_with_source(uint16_t short_addr, const char* source_tag)
         return;
     }
 
+    clear_recent_departure(short_addr);
     ESP_LOGI(kTag, "Join candidate from %s short_addr=0x%04x", source_tag, (unsigned)short_addr);
     hal_zigbee_notify_device_joined(short_addr);
 }
@@ -588,6 +696,7 @@ static void notify_left_with_source(uint16_t short_addr, const char* source_tag)
         return;
     }
 
+    note_recent_departure(short_addr);
     ESP_LOGI(kTag, "Leave candidate from %s short_addr=0x%04x", source_tag, (unsigned)short_addr);
     hal_zigbee_notify_device_left(short_addr);
 }
@@ -648,6 +757,9 @@ static uint16_t resolve_short_from_ieee(esp_zb_ieee_addr_t ieee_addr) {
 static void leave_request_result_cb(esp_zb_zdp_status_t zdo_status, void* user_ctx) {
     const uint32_t raw = (uint32_t)(uintptr_t)user_ctx;
     const uint16_t short_addr = (uint16_t)(raw & 0xFFFFU);
+    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
+        note_recent_departure(short_addr);
+    }
     ESP_LOGI(
         kTag,
         "Mgmt_Leave response short_addr=0x%04x zdo_status=0x%02x",
@@ -1623,11 +1735,18 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
                 esp_zb_zdo_device_unavailable_params_t* params =
                     (esp_zb_zdo_device_unavailable_params_t*)esp_zb_app_signal_get_params(signal_s->p_app_signal);
                 if (params != 0) {
-                    ESP_LOGW(
-                        kTag,
-                        "Device unavailable short_addr=0x%04x",
-                        (unsigned)params->short_addr);
-                    log_ieee_addr("Device unavailable ieee=", params->long_addr);
+                    if (was_recently_departed(params->short_addr)) {
+                        ESP_LOGI(
+                            kTag,
+                            "Ignoring transient device unavailable for departed short_addr=0x%04x",
+                            (unsigned)params->short_addr);
+                    } else {
+                        ESP_LOGW(
+                            kTag,
+                            "Device unavailable short_addr=0x%04x",
+                            (unsigned)params->short_addr);
+                        log_ieee_addr("Device unavailable ieee=", params->long_addr);
+                    }
                     // Keep device in snapshot. "Unavailable" can be transient and
                     // should not be treated as a definitive leave/removal.
                 }
