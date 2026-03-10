@@ -43,6 +43,12 @@ bool WebServer::start() noexcept {
     config.stack_size = 12288;
 
 #ifdef ESP_PLATFORM
+    // Under repeated HIL polling, stale keep-alive sockets can exhaust the
+    // small lwIP fd budget on ESP32-C6. Let HTTPD reap the oldest sessions
+    // and fail idle clients faster instead of wedging accept().
+    config.lru_purge_enable = true;
+    config.recv_wait_timeout = 5;
+    config.send_wait_timeout = 5;
     ESP_LOGI(kTag, "Starting HTTP server stack_size=%u max_uri_handlers=%u", config.stack_size, config.max_uri_handlers);
 #endif
 

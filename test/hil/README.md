@@ -20,7 +20,7 @@ Additional MQTT broker smoke covers:
 1. gateway reports MQTT `enabled=true` and `connected=true` in `/api/network`;
 2. a newly joined device appears as retained MQTT `availability/state/telemetry`;
 3. `power/set` sent through the broker changes retained device state;
-4. removing the device publishes retained `availability=offline`.
+4. force-removing the device publishes retained `availability=offline`.
 
 ## Runner
 
@@ -33,8 +33,10 @@ scripts/run_gateway_zigbee_smoke.sh
 MQTT broker HIL smoke:
 
 ```bash
-MQTT_HOST=192.168.178.2 \
+MQTT_HOST=192.168.178.65 \
 GW_BASE_URL=http://192.168.178.171 \
+MQTT_USER=... \
+MQTT_PASS=... \
 scripts/run_gateway_mqtt_hil_smoke.sh
 ```
 
@@ -52,13 +54,16 @@ Useful environment variables for MQTT broker smoke:
 
 ```bash
 GW_BASE_URL=http://192.168.178.171 \
-MQTT_HOST=192.168.178.2 \
+MQTT_HOST=192.168.178.65 \
 MQTT_PORT=1883 \
 MQTT_USER=... \
 MQTT_PASS=... \
 JOIN_SECONDS=30 \
 POWER_READY_SEC=30 \
 POWER_RETRY_SEC=3 \
+GATEWAY_READY_SEC=30 \
+MQTT_READY_SEC=30 \
+FORCE_REMOVE_TIMEOUT_MS=15000 \
 scripts/run_gateway_mqtt_hil_smoke.sh
 ```
 

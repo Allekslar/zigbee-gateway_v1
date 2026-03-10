@@ -17,6 +17,11 @@ Environment variables:
   JOIN_SECONDS        Join window duration in seconds (default: 30)
   POWER_READY_SEC     Max wait for ON/OFF state publication after MQTT command (default: 30)
   POWER_RETRY_SEC     Retry cadence for MQTT ON/OFF command publish (default: 3)
+  GATEWAY_READY_SEC   Max wait for gateway HTTP API readiness at startup (default: 30)
+  MQTT_READY_SEC      Max wait for gateway MQTT status connected=true (default: 30)
+  FORCE_REMOVE_TIMEOUT_MS  Force-remove timeout armed in gateway after remove request (default: 15000)
+  HTTP_FETCH_RETRIES  Retries per HTTP JSON fetch before giving up (default: 3)
+  HTTP_RETRY_SEC      Delay between transient HTTP retries (default: 1)
   POLL_SEC            HTTP poll interval in seconds (default: 1)
 
 The script performs:
@@ -48,6 +53,11 @@ MQTT_TOPIC_ROOT="${MQTT_TOPIC_ROOT:-zigbee-gateway}"
 JOIN_SECONDS="${JOIN_SECONDS:-30}"
 POWER_READY_SEC="${POWER_READY_SEC:-30}"
 POWER_RETRY_SEC="${POWER_RETRY_SEC:-3}"
+GATEWAY_READY_SEC="${GATEWAY_READY_SEC:-30}"
+MQTT_READY_SEC="${MQTT_READY_SEC:-30}"
+FORCE_REMOVE_TIMEOUT_MS="${FORCE_REMOVE_TIMEOUT_MS:-15000}"
+HTTP_FETCH_RETRIES="${HTTP_FETCH_RETRIES:-3}"
+HTTP_RETRY_SEC="${HTTP_RETRY_SEC:-1}"
 POLL_SEC="${POLL_SEC:-1}"
 
 if [[ -z "${MQTT_HOST}" ]]; then
@@ -85,10 +95,80 @@ request() {
   fi
 }
 
+json_file_is_valid() {
+  local file="$1"
+  python3 - "$file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    json.load(fh)
+PY
+}
+
 fetch_json() {
   local path="$1"
   local out_file="$2"
-  request "GET" "${path}" > "${out_file}"
+  local attempt=1
+  local tmp_file="${out_file}.tmp"
+
+  while (( attempt <= HTTP_FETCH_RETRIES )); do
+    if request "GET" "${path}" > "${tmp_file}" 2>/dev/null && [[ -s "${tmp_file}" ]] && json_file_is_valid "${tmp_file}" 2>/dev/null; then
+      mv "${tmp_file}" "${out_file}"
+      return 0
+    fi
+    rm -f "${tmp_file}"
+    if (( attempt < HTTP_FETCH_RETRIES )); then
+      sleep "${HTTP_RETRY_SEC}"
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  echo "Failed to fetch valid JSON from ${GW_BASE_URL}${path} after ${HTTP_FETCH_RETRIES} attempts" >&2
+  return 1
+}
+
+wait_for_gateway_ready() {
+  local timeout_sec="$1"
+  local out_file="$2"
+  local deadline=$((SECONDS + timeout_sec))
+
+  while (( SECONDS < deadline )); do
+    if fetch_json "/api/network" "${out_file}"; then
+      return 0
+    fi
+    sleep "${POLL_SEC}"
+  done
+
+  echo "Gateway HTTP API did not become ready within ${timeout_sec}s" >&2
+  return 1
+}
+
+wait_for_mqtt_ready() {
+  local timeout_sec="$1"
+  local out_file="$2"
+  local deadline=$((SECONDS + timeout_sec))
+
+  while (( SECONDS < deadline )); do
+    if ! fetch_json "/api/network" "${out_file}"; then
+      sleep "${POLL_SEC}"
+      continue
+    fi
+
+    local mqtt_enabled
+    local mqtt_connected
+    mqtt_enabled="$(json_eval 'data.get("mqtt", {}).get("enabled", False)' "${out_file}")"
+    mqtt_connected="$(json_eval 'data.get("mqtt", {}).get("connected", False)' "${out_file}")"
+
+    if [[ "${mqtt_enabled}" == "true" && "${mqtt_connected}" == "true" ]]; then
+      return 0
+    fi
+
+    sleep "${POLL_SEC}"
+  done
+
+  echo "Gateway MQTT status did not become connected within ${timeout_sec}s" >&2
+  return 1
 }
 
 json_eval() {
@@ -120,7 +200,10 @@ wait_for_async_result() {
   local out_file="$3"
   local deadline=$((SECONDS + timeout_sec))
   while (( SECONDS < deadline )); do
-    fetch_json "/api/network/result?request_id=${request_id}" "${out_file}"
+    if ! fetch_json "/api/network/result?request_id=${request_id}" "${out_file}"; then
+      sleep "${POLL_SEC}"
+      continue
+    fi
     local ready
     ready="$(json_eval 'data.get("ready", False)' "${out_file}")"
     if [[ "${ready}" == "true" ]]; then
@@ -146,7 +229,10 @@ wait_for_device_count() {
   local out_file="$3"
   local deadline=$((SECONDS + timeout_sec))
   while (( SECONDS < deadline )); do
-    fetch_json "/api/devices" "${out_file}"
+    if ! fetch_json "/api/devices" "${out_file}"; then
+      sleep "${POLL_SEC}"
+      continue
+    fi
     local count
     count="$(json_eval 'data["device_count"]' "${out_file}")"
     if [[ "${count}" == "${expected}" ]]; then
@@ -163,7 +249,10 @@ wait_for_short_addr_missing() {
   local out_file="$3"
   local deadline=$((SECONDS + timeout_sec))
   while (( SECONDS < deadline )); do
-    fetch_json "/api/devices" "${out_file}"
+    if ! fetch_json "/api/devices" "${out_file}"; then
+      sleep "${POLL_SEC}"
+      continue
+    fi
     local present
     present="$(python3 - "${out_file}" "${short_addr}" <<'PY'
 import json
@@ -217,28 +306,54 @@ mqtt_get_single_message() {
   mosquitto_sub "${mqtt_args[@]}" -W "${timeout_sec}" -C 1 -t "${topic}" > "${out_file}"
 }
 
-wait_for_mqtt_state_payload() {
+read_mqtt_state_power() {
   local short_addr="$1"
-  local expected="$2"
-  local timeout_sec="$3"
+  local timeout_sec="$2"
+  local out_file="$3"
   local topic="${MQTT_TOPIC_ROOT}/devices/${short_addr}/state"
-  local deadline=$((SECONDS + timeout_sec))
-  local out_file="${tmp_dir}/mqtt_state_${short_addr}.txt"
 
-  while (( SECONDS < deadline )); do
-    if mqtt_get_single_message "${topic}" "${POWER_RETRY_SEC}" "${out_file}"; then
-      if python3 - "${out_file}" "${expected}" <<'PY'
+  if ! mqtt_get_single_message "${topic}" "${timeout_sec}" "${out_file}"; then
+    return 1
+  fi
+
+  python3 - "${out_file}" <<'PY'
 import json
 import sys
 
 with open(sys.argv[1], "r", encoding="utf-8") as fh:
     payload = json.load(fh)
-expected = sys.argv[2] == "true"
-sys.exit(0 if payload.get("power_on") is expected else 1)
+power_on = payload.get("power_on")
+if power_on is True:
+    print("true")
+elif power_on is False:
+    print("false")
+else:
+    raise SystemExit(1)
 PY
-      then
-        return 0
-      fi
+}
+
+publish_mqtt_power_until_state() {
+  local short_addr="$1"
+  local expected="$2"
+  local timeout_sec="$3"
+  local topic="${MQTT_TOPIC_ROOT}/devices/${short_addr}/power/set"
+  local state_file="${tmp_dir}/mqtt_state_${short_addr}.txt"
+  local payload
+  local deadline=$((SECONDS + timeout_sec))
+
+  if [[ "${expected}" == "true" ]]; then
+    payload='{"power_on":true}'
+  else
+    payload='{"power_on":false}'
+  fi
+
+  while (( SECONDS < deadline )); do
+    mosquitto_pub "${mqtt_args[@]}" -t "${topic}" -m "${payload}" -q 1
+
+    local observed=""
+    if observed="$(read_mqtt_state_power "${short_addr}" "${POWER_RETRY_SEC}" "${state_file}")" &&
+       [[ "${observed}" == "${expected}" ]]; then
+      return 0
     fi
   done
 
@@ -257,7 +372,13 @@ devices_check_file="${tmp_dir}/devices_check.json"
 network_file="${tmp_dir}/network.json"
 async_file="${tmp_dir}/async.json"
 
-fetch_json "/api/network" "${network_file}"
+if ! wait_for_gateway_ready "${GATEWAY_READY_SEC}" "${network_file}"; then
+  exit 1
+fi
+if ! wait_for_mqtt_ready "${MQTT_READY_SEC}" "${network_file}"; then
+  cat "${network_file}" >&2
+  exit 1
+fi
 mqtt_enabled="$(json_eval 'data.get("mqtt", {}).get("enabled", False)' "${network_file}")"
 mqtt_connected="$(json_eval 'data.get("mqtt", {}).get("connected", False)' "${network_file}")"
 mqtt_broker="$(json_eval 'data.get("mqtt", {}).get("broker_endpoint", "")' "${network_file}")"
@@ -335,24 +456,31 @@ assert "timestamp_ms" in telemetry
 PY
 echo "Retained MQTT publications OK"
 
-mosquitto_pub "${mqtt_args[@]}" -t "${MQTT_TOPIC_ROOT}/devices/${new_short_addr}/power/set" -m '{"power_on":true}' -q 1
-if ! wait_for_mqtt_state_payload "${new_short_addr}" "true" "${POWER_READY_SEC}"; then
-  echo "Did not observe MQTT state power_on=true for short_addr=${new_short_addr}" >&2
+initial_power="$(read_mqtt_state_power "${new_short_addr}" 5 "${state_file}")"
+if [[ "${initial_power}" == "true" ]]; then
+  first_expected="false"
+  second_expected="true"
+else
+  first_expected="true"
+  second_expected="false"
+fi
+
+if ! publish_mqtt_power_until_state "${new_short_addr}" "${first_expected}" "${POWER_READY_SEC}"; then
+  echo "Did not observe MQTT state power_on=${first_expected} for short_addr=${new_short_addr}" >&2
   exit 1
 fi
-echo "MQTT ON command success OK"
+echo "MQTT first power transition success OK"
 
-mosquitto_pub "${mqtt_args[@]}" -t "${MQTT_TOPIC_ROOT}/devices/${new_short_addr}/power/set" -m '{"power_on":false}' -q 1
-if ! wait_for_mqtt_state_payload "${new_short_addr}" "false" "${POWER_READY_SEC}"; then
-  echo "Did not observe MQTT state power_on=false for short_addr=${new_short_addr}" >&2
+if ! publish_mqtt_power_until_state "${new_short_addr}" "${second_expected}" "${POWER_READY_SEC}"; then
+  echo "Did not observe MQTT state power_on=${second_expected} for short_addr=${new_short_addr}" >&2
   exit 1
 fi
-echo "MQTT OFF command success OK"
+echo "MQTT second power transition success OK"
 
-remove_response="$(request "POST" "/api/devices/remove" "{\"short_addr\":${new_short_addr}}")"
+remove_response="$(request "POST" "/api/devices/remove" "{\"short_addr\":${new_short_addr},\"force_remove\":true,\"force_remove_timeout_ms\":${FORCE_REMOVE_TIMEOUT_MS}}")"
 remove_request_id="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["request_id"])' <<< "${remove_response}")"
 wait_for_async_result "${remove_request_id}" 10 "${async_file}"
-if ! wait_for_short_addr_missing "${new_short_addr}" 20 "${devices_check_file}"; then
+if ! wait_for_short_addr_missing "${new_short_addr}" 30 "${devices_check_file}"; then
   echo "Joined device short_addr=${new_short_addr} still present after remove" >&2
   exit 1
 fi

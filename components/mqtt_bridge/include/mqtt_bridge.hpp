@@ -8,12 +8,14 @@
 #include <cstdint>
 
 #include "mqtt_discovery.hpp"
-#include "service_runtime_api.hpp"
 #include "mqtt_serializer.hpp"
 #include "mqtt_topics.hpp"
+#include "runtime_lock.hpp"
+#include "service_runtime_api.hpp"
 
 namespace mqtt_bridge {
 constexpr std::size_t kMaxMqttPublicationsPerSync = core::kMaxDevices * 3U;
+constexpr uint32_t kMqttPowerOverrideWindowMs = 15000U;
 
 class MqttBridgeTestAccess;
 
@@ -21,6 +23,13 @@ struct MqttPublishedMessage {
     char topic[kTopicMaxLen]{};
     char payload[kMqttPayloadMaxLen]{};
     bool retain{false};
+};
+
+struct PendingPowerOverride {
+    uint16_t short_addr{core::kUnknownDeviceShortAddr};
+    bool power_on{false};
+    bool active{false};
+    uint32_t expires_at_ms{0};
 };
 
 class MqttBridge {
@@ -50,8 +59,11 @@ private:
     void handle_transport_error(service::NetworkApiSnapshot::MqttConnectionError error) noexcept;
     void handle_transport_subscribe_failure() noexcept;
     void reset_sync_cache() noexcept;
+    void set_power_override(uint16_t short_addr, bool on) noexcept;
+    void apply_power_overrides(service::MqttBridgeSnapshot* snapshot) noexcept;
     bool publish_message(const MqttPublishedMessage& message) noexcept;
     bool publish_homeassistant_discovery(const service::MqttBridgeSnapshot& snapshot, bool force_republish) noexcept;
+    void sync_device_state(uint16_t short_addr, bool on) noexcept;
     uint32_t next_command_correlation_id() noexcept;
 #ifdef ESP_PLATFORM
     static void task_entry(void* arg) noexcept;
@@ -85,10 +97,11 @@ private:
     std::atomic<bool> command_topics_subscribed_{false};
     bool discovery_republish_requested_{true};
     HomeAssistantDiscoveryMessage discovery_messages_scratch_[kMaxDiscoveryMessagesPerDevice]{};
+    PendingPowerOverride power_overrides_[core::kMaxDevices]{};
+    mutable service::RuntimeLock state_lock_{};
 #ifdef ESP_PLATFORM
     void* task_handle_{nullptr};
 #endif
 };
-void sync_device_state(uint16_t short_addr, bool on) noexcept;
 
 }  // namespace mqtt_bridge

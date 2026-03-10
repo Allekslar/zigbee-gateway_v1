@@ -15,7 +15,7 @@ Focus: stable layered architecture, business-logic isolation from HAL, host-side
 - starts a Zigbee gateway on ESP32-C6;
 - provides a Web UI and HTTP API for control;
 - uses separated layers `core -> service -> app_hal`;
-- includes an active MQTT bridge transport/command path (Phase 2 in progress);
+- includes an active MQTT bridge transport/command/discovery path (Phase 2 completed);
 - includes a Matter bridge scaffold (Phase 3 in progress).
 
 ## Current Scope And Roadmap
@@ -23,7 +23,7 @@ Focus: stable layered architecture, business-logic isolation from HAL, host-side
 | Phase | Repository Status | Main Protocols |
 |------|-------------------|----------------|
 | Phase 1 | Completed | Zigbee, HTTP, mDNS |
-| Phase 2 | MQTT transport, topics, commands, and status path implemented; broker HIL/docs close-out still pending | MQTT |
+| Phase 2 | Completed: MQTT transport, topics, commands, status path, Home Assistant discovery, and broker HIL smoke | MQTT |
 | Phase 3 | Module structure prepared | Matter-over-Thread/Wi-Fi |
 
 ## Key Documents

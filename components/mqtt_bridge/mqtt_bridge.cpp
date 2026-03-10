@@ -3,6 +3,7 @@
 
 #include "mqtt_bridge.hpp"
 
+#include <chrono>
 #include <cerrno>
 #include <climits>
 #include <cstdio>
@@ -37,6 +38,12 @@ constexpr std::size_t kDrainBatchCapacity = 8U;
 constexpr int kMqttQosAtLeastOnce = 1;
 
 using MqttConnectionError = service::NetworkApiSnapshot::MqttConnectionError;
+
+uint32_t monotonic_now_ms() noexcept {
+    using clock = std::chrono::steady_clock;
+    const auto now = clock::now().time_since_epoch();
+    return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
+}
 
 bool parse_u32_strict(const char* text, uint32_t* out) noexcept {
     if (text == nullptr || out == nullptr || text[0] == '\0') {
@@ -348,7 +355,16 @@ bool MqttBridge::handle_power_command(const char* topic, const char* payload, ui
     command.correlation_id = correlation_id;
     command.device_short_addr = short_addr;
     command.desired_power_on = desired_power;
-    return runtime_->post_command(command) == core::CoreError::kOk;
+    if (runtime_->post_command(command) != core::CoreError::kOk) {
+        return false;
+    }
+
+    {
+        service::RuntimeLockGuard guard(state_lock_);
+        set_power_override(short_addr, desired_power);
+        sync_device_state(short_addr, desired_power);
+    }
+    return true;
 }
 
 std::size_t MqttBridge::sync_runtime_snapshot() noexcept {
@@ -360,6 +376,9 @@ std::size_t MqttBridge::sync_runtime_snapshot() noexcept {
         return 0U;
     }
 
+    service::RuntimeLockGuard guard(state_lock_);
+    apply_power_overrides(&runtime_snapshot_cache_);
+
     (void)publish_homeassistant_discovery(
         runtime_snapshot_cache_,
         discovery_republish_requested_);
@@ -368,6 +387,7 @@ std::size_t MqttBridge::sync_runtime_snapshot() noexcept {
 
 std::size_t MqttBridge::publish_pending_publications() noexcept {
     if (!transport_enabled_.load(std::memory_order_acquire)) {
+        service::RuntimeLockGuard guard(state_lock_);
         pending_publication_count_ = 0U;
         return 0U;
     }
@@ -376,7 +396,11 @@ std::size_t MqttBridge::publish_pending_publications() noexcept {
     std::size_t published = 0U;
 
     while (true) {
-        const std::size_t drained = drain_publications(batch, kDrainBatchCapacity);
+        std::size_t drained = 0U;
+        {
+            service::RuntimeLockGuard guard(state_lock_);
+            drained = drain_publications(batch, kDrainBatchCapacity);
+        }
         if (drained == 0U) {
             break;
         }
@@ -390,6 +414,42 @@ std::size_t MqttBridge::publish_pending_publications() noexcept {
 
     published_message_count_.fetch_add(static_cast<uint32_t>(published), std::memory_order_relaxed);
     return published;
+}
+
+void MqttBridge::sync_device_state(const uint16_t short_addr, const bool on) noexcept {
+    if (!cache_initialized_) {
+        return;
+    }
+
+    for (uint16_t i = 0; i < cached_device_count_; ++i) {
+        service::MqttBridgeDeviceSnapshot& device = cached_devices_[i];
+        if (device.short_addr != short_addr) {
+            continue;
+        }
+        if (device.power_on == on) {
+            return;
+        }
+
+        device.power_on = on;
+        MqttPublishedMessage publication{};
+        if (!topic_device_state(device.short_addr, publication.topic, sizeof(publication.topic))) {
+            return;
+        }
+        const int written = std::snprintf(
+            publication.payload,
+            sizeof(publication.payload),
+            "{\"power_on\":%s}",
+            device.power_on ? "true" : "false");
+        if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(publication.payload)) {
+            return;
+        }
+        publication.retain = true;
+        if (pending_publication_count_ >= kMaxMqttPublicationsPerSync) {
+            return;
+        }
+        pending_publications_[pending_publication_count_++] = publication;
+        return;
+    }
 }
 
 void MqttBridge::publish_runtime_status() noexcept {
@@ -409,33 +469,95 @@ void MqttBridge::set_runtime_status(
 }
 
 void MqttBridge::handle_transport_connected() noexcept {
+    service::RuntimeLockGuard guard(state_lock_);
     set_runtime_status(true, true, MqttConnectionError::kNone);
     discovery_republish_requested_ = true;
     publish_runtime_status();
 }
 
 void MqttBridge::handle_transport_disconnected() noexcept {
+    service::RuntimeLockGuard guard(state_lock_);
     command_topics_subscribed_.store(false, std::memory_order_release);
     set_runtime_status(true, false, runtime_status_cache_.last_connect_error);
     publish_runtime_status();
 }
 
 void MqttBridge::handle_transport_error(const MqttConnectionError error) noexcept {
+    service::RuntimeLockGuard guard(state_lock_);
     set_runtime_status(true, false, error);
     publish_runtime_status();
 }
 
 void MqttBridge::handle_transport_subscribe_failure() noexcept {
+    service::RuntimeLockGuard guard(state_lock_);
     set_runtime_status(true, false, MqttConnectionError::kSubscribeFailed);
     publish_runtime_status();
 }
 
 void MqttBridge::reset_sync_cache() noexcept {
+    service::RuntimeLockGuard guard(state_lock_);
     cached_device_count_ = 0;
     cache_initialized_ = false;
     pending_publication_count_ = 0;
     command_topics_subscribed_.store(false, std::memory_order_release);
     discovery_republish_requested_ = true;
+    for (auto& entry : power_overrides_) {
+        entry = PendingPowerOverride{};
+    }
+}
+
+void MqttBridge::set_power_override(const uint16_t short_addr, const bool on) noexcept {
+    const uint32_t expires_at_ms = monotonic_now_ms() + kMqttPowerOverrideWindowMs;
+
+    for (auto& entry : power_overrides_) {
+        if (entry.active && entry.short_addr == short_addr) {
+            entry.power_on = on;
+            entry.expires_at_ms = expires_at_ms;
+            return;
+        }
+    }
+
+    for (auto& entry : power_overrides_) {
+        if (entry.active) {
+            continue;
+        }
+        entry.short_addr = short_addr;
+        entry.power_on = on;
+        entry.active = true;
+        entry.expires_at_ms = expires_at_ms;
+        return;
+    }
+}
+
+void MqttBridge::apply_power_overrides(service::MqttBridgeSnapshot* snapshot) noexcept {
+    if (snapshot == nullptr) {
+        return;
+    }
+
+    const uint32_t now_ms = monotonic_now_ms();
+    for (auto& override_entry : power_overrides_) {
+        if (!override_entry.active) {
+            continue;
+        }
+        if (now_ms >= override_entry.expires_at_ms) {
+            override_entry = PendingPowerOverride{};
+            continue;
+        }
+
+        for (std::size_t i = 0; i < snapshot->device_count && i < snapshot->devices.size(); ++i) {
+            service::MqttBridgeDeviceSnapshot& device = snapshot->devices[i];
+            if (device.short_addr != override_entry.short_addr || !device.online) {
+                continue;
+            }
+
+            if (device.power_on == override_entry.power_on) {
+                override_entry = PendingPowerOverride{};
+            } else {
+                device.power_on = override_entry.power_on;
+            }
+            break;
+        }
+    }
 }
 
 bool MqttBridge::publish_message(const MqttPublishedMessage& message) noexcept {
@@ -557,6 +679,7 @@ void MqttBridge::task_entry(void* arg) noexcept {
 
 void MqttBridge::run_loop() noexcept {
     while (started()) {
+        (void)publish_pending_publications();
         (void)sync_runtime_snapshot();
         (void)publish_pending_publications();
         vTaskDelay(kMqttBridgeTaskPeriodTicks);

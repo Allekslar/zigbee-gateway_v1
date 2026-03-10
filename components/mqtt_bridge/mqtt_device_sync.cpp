@@ -224,9 +224,4 @@ std::size_t MqttBridge::drain_publications(MqttPublishedMessage* out, const std:
     return to_copy;
 }
 
-void sync_device_state(uint16_t short_addr, bool on) noexcept {
-    (void)short_addr;
-    (void)on;
-}
-
 }  // namespace mqtt_bridge
