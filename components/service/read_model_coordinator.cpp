@@ -18,11 +18,29 @@ bool ReadModelCoordinator::build_devices_api_snapshot(
 }
 
 bool ReadModelCoordinator::build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept {
-    return bridge_snapshot_builder_.build_mqtt_snapshot(out);
+    if (out == nullptr) {
+        return false;
+    }
+
+    RuntimeLockGuard guard(bridge_snapshot_lock_);
+    if (!mqtt_bridge_snapshot_ready_) {
+        return false;
+    }
+    *out = mqtt_bridge_snapshot_;
+    return true;
 }
 
 bool ReadModelCoordinator::build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept {
-    return bridge_snapshot_builder_.build_matter_snapshot(out);
+    if (out == nullptr) {
+        return false;
+    }
+
+    RuntimeLockGuard guard(bridge_snapshot_lock_);
+    if (!matter_bridge_snapshot_ready_) {
+        return false;
+    }
+    *out = matter_bridge_snapshot_;
+    return true;
 }
 
 void ReadModelCoordinator::publish_network_snapshot(const NetworkPublishInput& input) noexcept {
@@ -53,6 +71,24 @@ void ReadModelCoordinator::publish_config_snapshot(const ConfigPublishInput& inp
     config_api_snapshot_.max_command_retries.store(input.max_command_retries, std::memory_order_relaxed);
     config_api_snapshot_.autoconnect_failures.store(input.autoconnect_failures, std::memory_order_relaxed);
     config_api_snapshot_.seq.store(start_seq + 2U, std::memory_order_release);
+}
+
+void ReadModelCoordinator::refresh_bridge_snapshots() noexcept {
+    MqttBridgeSnapshot mqtt_snapshot{};
+    const bool mqtt_ok = bridge_snapshot_builder_.build_mqtt_snapshot(&mqtt_snapshot);
+
+    MatterBridgeSnapshot matter_snapshot{};
+    const bool matter_ok = bridge_snapshot_builder_.build_matter_snapshot(&matter_snapshot);
+
+    RuntimeLockGuard guard(bridge_snapshot_lock_);
+    if (mqtt_ok) {
+        mqtt_bridge_snapshot_ = mqtt_snapshot;
+        mqtt_bridge_snapshot_ready_ = true;
+    }
+    if (matter_ok) {
+        matter_bridge_snapshot_ = matter_snapshot;
+        matter_bridge_snapshot_ready_ = true;
+    }
 }
 
 bool ReadModelCoordinator::build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept {

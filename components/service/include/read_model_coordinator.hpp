@@ -9,6 +9,7 @@
 
 #include "bridge_snapshot_builder.hpp"
 #include "devices_api_snapshot_builder.hpp"
+#include "runtime_lock.hpp"
 #include "service_runtime_api.hpp"
 
 namespace core {
@@ -47,6 +48,7 @@ public:
 
     void publish_network_snapshot(const NetworkPublishInput& input) noexcept;
     void publish_config_snapshot(const ConfigPublishInput& input) noexcept;
+    void refresh_bridge_snapshots() noexcept;
     bool build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept;
     bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept;
 
@@ -77,6 +79,11 @@ private:
     DevicesApiSnapshotBuilder devices_api_snapshot_builder_{};
     NetworkApiSnapshotStorage network_api_snapshot_{};
     ConfigApiSnapshotStorage config_api_snapshot_{};
+    mutable RuntimeLock bridge_snapshot_lock_{};
+    MqttBridgeSnapshot mqtt_bridge_snapshot_{};
+    MatterBridgeSnapshot matter_bridge_snapshot_{};
+    bool mqtt_bridge_snapshot_ready_{false};
+    bool matter_bridge_snapshot_ready_{false};
 };
 
 }  // namespace service

@@ -845,6 +845,7 @@ void ServiceRuntime::sync_api_snapshots() noexcept {
 
     publish_network_api_snapshot(core_snapshot);
     publish_config_api_snapshot(core_snapshot);
+    read_model_coordinator_.refresh_bridge_snapshots();
 }
 
 bool ServiceRuntime::build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept {
