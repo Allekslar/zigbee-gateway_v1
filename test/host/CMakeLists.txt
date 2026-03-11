@@ -33,6 +33,7 @@ set(SERVICE_SOURCES
     ../../components/service/devices_api_snapshot_builder.cpp
     ../../components/service/device_manager.cpp
     ../../components/service/effect_executor.cpp
+    ../../components/service/read_model_coordinator.cpp
     ../../components/service/network_manager.cpp
     ../../components/service/network_policy_manager.cpp
     ../../components/service/persistence_manager.cpp

@@ -374,12 +374,19 @@ run_checks() {
     check_present "INV-M024" "medium" "components/service/include/bridge_snapshot_builder.hpp" \
         'class[[:space:]]+BridgeSnapshotBuilder' \
         "service bridge snapshot mapping must live in a dedicated helper"
-    check_present "INV-M024" "medium" "components/service/service_runtime.cpp" \
-        'bridge_snapshot_builder_\.build_mqtt_snapshot[[:space:]]*\(|bridge_snapshot_builder_\.build_matter_snapshot[[:space:]]*\(' \
-        "ServiceRuntime must delegate bridge snapshot building to BridgeSnapshotBuilder"
     check_absent "INV-M024" "medium" "components/service/service_runtime.cpp" \
         'mqtt_device\.power_on|matter_device\.primary_class' \
         "bridge-specific DTO field mapping must not live directly in ServiceRuntime"
+
+    check_present "INV-M032" "medium" "components/service/include/read_model_coordinator.hpp" \
+        'class[[:space:]]+ReadModelCoordinator' \
+        "read-model cache/build orchestration must live in ReadModelCoordinator"
+    check_present "INV-M032" "medium" "components/service/include/service_runtime.hpp" \
+        'ReadModelCoordinator[[:space:]]+read_model_coordinator_' \
+        "ServiceRuntime must own ReadModelCoordinator as an internal seam"
+    check_present "INV-M032" "medium" "components/service/service_runtime.cpp" \
+        'read_model_coordinator_\.build_network_api_snapshot[[:space:]]*\(|read_model_coordinator_\.publish_network_snapshot[[:space:]]*\(' \
+        "ServiceRuntime must delegate read-model cache/build operations to ReadModelCoordinator"
 
     check_absent "INV-M025" "medium" "components/app_hal/include/hal_zigbee.h" \
         'hal_zigbee_test_apply_permit_join_status|hal_zigbee_notify_|hal_zigbee_simulate_|SERVICE_RUNTIME_TEST_HOOKS' \
@@ -442,8 +449,8 @@ run_checks() {
         'class[[:space:]]+DevicesApiSnapshotBuilder' \
         "devices API DTO mapping must live in a dedicated service helper"
     check_present "INV-M031" "medium" "components/service/service_runtime.cpp" \
-        'devices_api_snapshot_builder_\.build[[:space:]]*\(' \
-        "ServiceRuntime must delegate /api/devices DTO mapping to DevicesApiSnapshotBuilder"
+        'read_model_coordinator_\.build_devices_api_snapshot[[:space:]]*\(' \
+        "ServiceRuntime must delegate /api/devices DTO mapping through the read-model seam"
     check_absent "INV-M031" "medium" "components/service/service_runtime.cpp" \
         'api_device\.reporting_state|api_device\.occupancy_state|api_device\.contact_state|api_device\.battery_percent|api_device\.lqi|api_device\.rssi_dbm' \
         "device API DTO field mapping must not live directly in ServiceRuntime"

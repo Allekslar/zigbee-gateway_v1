@@ -261,7 +261,7 @@ bool reporting_profile_equal(
 }  // namespace
 
 ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& effect_executor) noexcept
-    : registry_(&registry), effect_executor_(&effect_executor), bridge_snapshot_builder_(registry) {
+    : registry_(&registry), effect_executor_(&effect_executor), read_model_coordinator_(registry) {
     (void)config_manager_.load();
     config_timeout_ms_cache_.store(config_manager_.command_timeout_ms(), std::memory_order_relaxed);
     config_max_retries_cache_.store(config_manager_.max_command_retries(), std::memory_order_relaxed);
@@ -787,17 +787,17 @@ bool ServiceRuntime::build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnaps
         return false;
     }
 
-    const bool built = devices_api_snapshot_builder_.build(*snapshot.state, runtime_snapshot, out);
+    const bool built = read_model_coordinator_.build_devices_api_snapshot(*snapshot.state, runtime_snapshot, out);
     registry_->release_snapshot(&snapshot);
     return built;
 }
 
 bool ServiceRuntime::build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept {
-    return bridge_snapshot_builder_.build_mqtt_snapshot(out);
+    return read_model_coordinator_.build_mqtt_bridge_snapshot(out);
 }
 
 bool ServiceRuntime::build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept {
-    return bridge_snapshot_builder_.build_matter_snapshot(out);
+    return read_model_coordinator_.build_matter_bridge_snapshot(out);
 }
 
 bool ServiceRuntime::capture_core_read_model(CoreReadModel* out) const noexcept {
@@ -818,43 +818,23 @@ bool ServiceRuntime::capture_core_read_model(CoreReadModel* out) const noexcept 
 }
 
 void ServiceRuntime::publish_network_api_snapshot(const CoreReadModel& core_snapshot) noexcept {
-    const uint32_t start_seq = network_api_snapshot_.seq.load(std::memory_order_relaxed);
-    network_api_snapshot_.seq.store(start_seq + 1U, std::memory_order_release);
-    network_api_snapshot_.revision.store(core_snapshot.revision, std::memory_order_relaxed);
-    network_api_snapshot_.connected.store(core_snapshot.network_connected, std::memory_order_relaxed);
-    network_api_snapshot_.refresh_requests.store(
-        stats_.network_refresh_requests.load(std::memory_order_relaxed),
-        std::memory_order_relaxed);
-    network_api_snapshot_.current_backoff_ms.store(
-        stats_.current_backoff_ms.load(std::memory_order_relaxed),
-        std::memory_order_relaxed);
-    network_api_snapshot_.mqtt_enabled.store(mqtt_status_cache_.enabled, std::memory_order_relaxed);
-    network_api_snapshot_.mqtt_connected.store(mqtt_status_cache_.connected, std::memory_order_relaxed);
-    network_api_snapshot_.mqtt_last_connect_error.store(
-        static_cast<uint32_t>(mqtt_status_cache_.last_connect_error),
-        std::memory_order_relaxed);
-    std::memcpy(
-        network_api_snapshot_.mqtt_broker_endpoint_summary.data(),
-        mqtt_status_cache_.broker_endpoint_summary.data(),
-        network_api_snapshot_.mqtt_broker_endpoint_summary.size());
-    network_api_snapshot_.seq.store(start_seq + 2U, std::memory_order_release);
+    ReadModelCoordinator::NetworkPublishInput input{};
+    input.revision = core_snapshot.revision;
+    input.connected = core_snapshot.network_connected;
+    input.refresh_requests = stats_.network_refresh_requests.load(std::memory_order_relaxed);
+    input.current_backoff_ms = stats_.current_backoff_ms.load(std::memory_order_relaxed);
+    input.mqtt = mqtt_status_cache_;
+    read_model_coordinator_.publish_network_snapshot(input);
 }
 
 void ServiceRuntime::publish_config_api_snapshot(const CoreReadModel& core_snapshot) noexcept {
-    const uint32_t start_seq = config_api_snapshot_.seq.load(std::memory_order_relaxed);
-    config_api_snapshot_.seq.store(start_seq + 1U, std::memory_order_release);
-    config_api_snapshot_.revision.store(core_snapshot.revision, std::memory_order_relaxed);
-    config_api_snapshot_.last_command_status.store(core_snapshot.last_command_status, std::memory_order_relaxed);
-    config_api_snapshot_.command_timeout_ms.store(
-        config_timeout_ms_cache_.load(std::memory_order_relaxed),
-        std::memory_order_relaxed);
-    config_api_snapshot_.max_command_retries.store(
-        config_max_retries_cache_.load(std::memory_order_relaxed),
-        std::memory_order_relaxed);
-    config_api_snapshot_.autoconnect_failures.store(
-        stats_.autoconnect_failures.load(std::memory_order_relaxed),
-        std::memory_order_relaxed);
-    config_api_snapshot_.seq.store(start_seq + 2U, std::memory_order_release);
+    ReadModelCoordinator::ConfigPublishInput input{};
+    input.revision = core_snapshot.revision;
+    input.last_command_status = core_snapshot.last_command_status;
+    input.command_timeout_ms = config_timeout_ms_cache_.load(std::memory_order_relaxed);
+    input.max_command_retries = static_cast<uint8_t>(config_max_retries_cache_.load(std::memory_order_relaxed));
+    input.autoconnect_failures = stats_.autoconnect_failures.load(std::memory_order_relaxed);
+    read_model_coordinator_.publish_config_snapshot(input);
 }
 
 void ServiceRuntime::sync_api_snapshots() noexcept {
@@ -868,64 +848,11 @@ void ServiceRuntime::sync_api_snapshots() noexcept {
 }
 
 bool ServiceRuntime::build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept {
-    if (out == nullptr) {
-        return false;
-    }
-
-    for (;;) {
-        const uint32_t start_seq = network_api_snapshot_.seq.load(std::memory_order_acquire);
-        if ((start_seq & 1U) != 0U) {
-            continue;
-        }
-
-        NetworkApiSnapshot snapshot{};
-        snapshot.revision = network_api_snapshot_.revision.load(std::memory_order_relaxed);
-        snapshot.connected = network_api_snapshot_.connected.load(std::memory_order_relaxed);
-        snapshot.refresh_requests = network_api_snapshot_.refresh_requests.load(std::memory_order_relaxed);
-        snapshot.current_backoff_ms = network_api_snapshot_.current_backoff_ms.load(std::memory_order_relaxed);
-        snapshot.mqtt.enabled = network_api_snapshot_.mqtt_enabled.load(std::memory_order_relaxed);
-        snapshot.mqtt.connected = network_api_snapshot_.mqtt_connected.load(std::memory_order_relaxed);
-        snapshot.mqtt.last_connect_error = static_cast<NetworkApiSnapshot::MqttConnectionError>(
-            network_api_snapshot_.mqtt_last_connect_error.load(std::memory_order_relaxed));
-        std::memcpy(
-            snapshot.mqtt.broker_endpoint_summary.data(),
-            network_api_snapshot_.mqtt_broker_endpoint_summary.data(),
-            snapshot.mqtt.broker_endpoint_summary.size());
-
-        const uint32_t end_seq = network_api_snapshot_.seq.load(std::memory_order_acquire);
-        if (start_seq == end_seq) {
-            *out = snapshot;
-            return true;
-        }
-    }
+    return read_model_coordinator_.build_network_api_snapshot(out);
 }
 
 bool ServiceRuntime::build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept {
-    if (out == nullptr) {
-        return false;
-    }
-
-    for (;;) {
-        const uint32_t start_seq = config_api_snapshot_.seq.load(std::memory_order_acquire);
-        if ((start_seq & 1U) != 0U) {
-            continue;
-        }
-
-        ConfigApiSnapshot snapshot{};
-        snapshot.revision = config_api_snapshot_.revision.load(std::memory_order_relaxed);
-        snapshot.last_command_status = static_cast<uint8_t>(
-            config_api_snapshot_.last_command_status.load(std::memory_order_relaxed));
-        snapshot.command_timeout_ms = config_api_snapshot_.command_timeout_ms.load(std::memory_order_relaxed);
-        snapshot.max_command_retries = static_cast<uint8_t>(
-            config_api_snapshot_.max_command_retries.load(std::memory_order_relaxed));
-        snapshot.autoconnect_failures = config_api_snapshot_.autoconnect_failures.load(std::memory_order_relaxed);
-
-        const uint32_t end_seq = config_api_snapshot_.seq.load(std::memory_order_acquire);
-        if (start_seq == end_seq) {
-            *out = snapshot;
-            return true;
-        }
-    }
+    return read_model_coordinator_.build_config_api_snapshot(out);
 }
 
 bool ServiceRuntime::get_force_remove_remaining_ms(

@@ -12,6 +12,7 @@ idf_component_register(
         "devices_api_snapshot_builder.cpp"
         "device_manager.cpp"
         "effect_executor.cpp"
+        "read_model_coordinator.cpp"
         "network_manager.cpp"
         "network_policy_manager.cpp"
         "persistence_manager.cpp"

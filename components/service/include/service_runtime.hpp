@@ -8,19 +8,18 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "bridge_snapshot_builder.hpp"
 #include "config_manager.hpp"
 #include "command_manager.hpp"
 #include "core_commands.hpp"
 #include "core_event_bus.hpp"
 #include "core_registry.hpp"
 #include "device_manager.hpp"
-#include "devices_api_snapshot_builder.hpp"
 #include "effect_executor.hpp"
 #include "connectivity_manager.hpp"
 #include "network_manager.hpp"
 #include "network_policy_manager.hpp"
 #include "persistence_manager.hpp"
+#include "read_model_coordinator.hpp"
 #include "reporting_manager.hpp"
 #include "scan_manager.hpp"
 #include "runtime_lock.hpp"
@@ -189,27 +188,6 @@ private:
         std::atomic<uint32_t> network_refresh_requests{0};
     };
 
-    struct NetworkApiSnapshotStorage {
-        std::atomic<uint32_t> seq{0};
-        std::atomic<uint32_t> revision{0};
-        std::atomic<bool> connected{false};
-        std::atomic<uint32_t> refresh_requests{0};
-        std::atomic<uint32_t> current_backoff_ms{0};
-        std::atomic<bool> mqtt_enabled{false};
-        std::atomic<bool> mqtt_connected{false};
-        std::atomic<uint32_t> mqtt_last_connect_error{0};
-        std::array<char, MqttStatusSnapshot::kBrokerEndpointSummaryMaxLen> mqtt_broker_endpoint_summary{};
-    };
-
-    struct ConfigApiSnapshotStorage {
-        std::atomic<uint32_t> seq{0};
-        std::atomic<uint32_t> revision{0};
-        std::atomic<uint32_t> last_command_status{0};
-        std::atomic<uint32_t> command_timeout_ms{5000};
-        std::atomic<uint32_t> max_command_retries{1};
-        std::atomic<uint32_t> autoconnect_failures{0};
-    };
-
     struct CoreReadModel {
         uint32_t revision{0};
         bool network_connected{false};
@@ -255,8 +233,7 @@ private:
     std::size_t network_result_count_{0};
 
     mutable RuntimeLock ingress_lock_{};
-    BridgeSnapshotBuilder bridge_snapshot_builder_;
-    DevicesApiSnapshotBuilder devices_api_snapshot_builder_{};
+    ReadModelCoordinator read_model_coordinator_;
 
     std::atomic<uint32_t> config_timeout_ms_cache_{5000};
     std::atomic<uint32_t> config_max_retries_cache_{1};
@@ -266,8 +243,6 @@ private:
     std::atomic<uint32_t> dropped_ingress_events_{0};
 
     RuntimeStatsStorage stats_{};
-    NetworkApiSnapshotStorage network_api_snapshot_{};
-    ConfigApiSnapshotStorage config_api_snapshot_{};
     PendingMqttStatusUpdate pending_mqtt_status_update_{};
     MqttStatusSnapshot mqtt_status_cache_{};
     mutable PersistedCoreStateStorage persisted_core_state_storage_{};
