@@ -6,10 +6,8 @@
 #include <algorithm>
 #include <cstring>
 #include <chrono>
-#include <type_traits>
 
 #include "hal_event_adapter_internal.hpp"
-#include "hal_nvs.h"
 #include "log_tags.h"
 
 #ifdef ESP_PLATFORM
@@ -38,9 +36,6 @@ constexpr uint32_t kForceRemoveDefaultTimeoutMs = 5000U;
 constexpr uint32_t kForceRemoveMinTimeoutMs = 500U;
 constexpr uint32_t kForceRemoveMaxTimeoutMs = 30000U;
 constexpr std::size_t kMaxProcessedEventsPerCycle = 64U;
-constexpr const char* kPersistedCoreStateKey = "core_state_v1";
-constexpr uint32_t kPersistedCoreStateMagic = 0x43535445U;  // "CSTE"
-constexpr uint32_t kPersistedCoreStateVersion = 1U;
 #ifdef ESP_PLATFORM
 constexpr const char* kRuntimeTaskName = "service_runtime";
 // NVS + network request processing can exceed 6KB on ESP32-C6 in AP provisioning flow.
@@ -60,66 +55,6 @@ uint32_t clamp_force_remove_timeout(uint32_t timeout_ms) noexcept {
         return kForceRemoveMaxTimeoutMs;
     }
     return timeout_ms;
-}
-
-struct PersistedCoreStateV1 {
-    uint32_t magic{kPersistedCoreStateMagic};
-    uint32_t version{kPersistedCoreStateVersion};
-    core::CoreState state{};
-};
-
-static_assert(std::is_trivially_copyable<PersistedCoreStateV1>::value, "PersistedCoreStateV1 must be POD-like");
-static_assert(
-    sizeof(PersistedCoreStateV1) == sizeof(core::CoreState) + sizeof(uint32_t) * 2U,
-    "Persisted core-state storage size must match serialized payload");
-
-bool sanitize_restored_core_state(core::CoreState* state) noexcept {
-    if (state == nullptr) {
-        return false;
-    }
-
-    uint16_t active_devices = 0U;
-    for (std::size_t i = 0; i < state->devices.size(); ++i) {
-        core::CoreDeviceRecord& device = state->devices[i];
-        if (!device.online || device.short_addr == core::kUnknownDeviceShortAddr || device.short_addr == 0x0000U) {
-            device = core::CoreDeviceRecord{};
-            continue;
-        }
-
-        bool duplicate = false;
-        for (std::size_t j = 0; j < i; ++j) {
-            const core::CoreDeviceRecord& previous = state->devices[j];
-            if (previous.online && previous.short_addr == device.short_addr) {
-                duplicate = true;
-                break;
-            }
-        }
-
-        if (duplicate) {
-            device = core::CoreDeviceRecord{};
-            continue;
-        }
-
-        ++active_devices;
-    }
-
-    state->device_count = active_devices;
-    state->network_connected = false;
-    state->last_command_status = 0U;
-    return true;
-}
-
-bool has_restorable_devices(const core::CoreState& state) noexcept {
-    if (state.device_count != 0U) {
-        return true;
-    }
-
-    return std::any_of(
-        state.devices.begin(),
-        state.devices.end(),
-        [](const core::CoreDeviceRecord& device) noexcept {
-            return device.short_addr != core::kUnknownDeviceShortAddr;
-        });
 }
 
 bool decode_raw_u32_le(const ZigbeeRawAttributeReport& report, uint32_t* out_value) noexcept {
@@ -261,58 +196,33 @@ bool reporting_profile_equal(
 }  // namespace
 
 ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& effect_executor) noexcept
-    : registry_(&registry), effect_executor_(&effect_executor), read_model_coordinator_(registry) {
+    : registry_(&registry),
+      effect_executor_(&effect_executor),
+      read_model_coordinator_(registry),
+      state_persistence_coordinator_(registry),
+      zigbee_lifecycle_coordinator_(network_policy_manager_) {
     (void)config_manager_.load();
     config_timeout_ms_cache_.store(config_manager_.command_timeout_ms(), std::memory_order_relaxed);
     config_max_retries_cache_.store(config_manager_.max_command_retries(), std::memory_order_relaxed);
     mqtt_status_cache_.last_connect_error = NetworkApiSnapshot::MqttConnectionError::kNone;
-    set_join_window_cache(false, 0U);
+    zigbee_lifecycle_coordinator_.set_join_window_cache(false, 0U);
     sync_api_snapshots();
 }
 
 void ServiceRuntime::set_join_window_cache(bool open, uint16_t seconds_left) noexcept {
-    join_window_open_cache_.store(open, std::memory_order_release);
-    join_window_seconds_left_cache_.store(open ? static_cast<uint32_t>(seconds_left) : 0U, std::memory_order_release);
+    zigbee_lifecycle_coordinator_.set_join_window_cache(open, seconds_left);
 }
 
 bool ServiceRuntime::persist_current_core_state() noexcept {
-    auto* persisted = reinterpret_cast<PersistedCoreStateV1*>(persisted_core_state_storage_.bytes.data());
-    *persisted = PersistedCoreStateV1{};
-    persisted->state = registry_->snapshot_copy();
-    return hal_nvs_set_blob(kPersistedCoreStateKey, persisted, sizeof(*persisted)) == HAL_NVS_STATUS_OK;
+    return state_persistence_coordinator_.persist_current_core_state();
 }
 
 bool ServiceRuntime::restore_persisted_core_state() noexcept {
-    auto* persisted = reinterpret_cast<PersistedCoreStateV1*>(persisted_core_state_storage_.bytes.data());
-    *persisted = PersistedCoreStateV1{};
-    uint32_t persisted_len = 0U;
-    const hal_nvs_status_t status =
-        hal_nvs_get_blob(kPersistedCoreStateKey, persisted, sizeof(*persisted), &persisted_len);
-    if (status == HAL_NVS_STATUS_NOT_FOUND) {
-        return false;
+    const bool restored = state_persistence_coordinator_.restore_persisted_core_state();
+    if (restored) {
+        sync_api_snapshots();
     }
-    if (status != HAL_NVS_STATUS_OK || persisted_len != sizeof(*persisted) ||
-        persisted->magic != kPersistedCoreStateMagic || persisted->version != kPersistedCoreStateVersion) {
-        SR_LOGW("Persisted CoreState restore skipped: status=%d len=%u", static_cast<int>(status), persisted_len);
-        return false;
-    }
-
-    core::CoreState restored = persisted->state;
-    if (!sanitize_restored_core_state(&restored) || !has_restorable_devices(restored)) {
-        return false;
-    }
-
-    if (!registry_->publish(restored)) {
-        SR_LOGW("Persisted CoreState restore failed: registry publish rejected");
-        return false;
-    }
-
-    SR_LOGI(
-        "Restored persisted CoreState devices=%u revision=%lu",
-        static_cast<unsigned>(restored.device_count),
-        static_cast<unsigned long>(restored.revision));
-    sync_api_snapshots();
-    return true;
+    return restored;
 }
 
 #ifdef ESP_PLATFORM
@@ -323,7 +233,7 @@ void ServiceRuntime::runtime_task_entry(void* arg) {
         return;
     }
 
-    if (runtime->restore_core_state_pending_.exchange(false, std::memory_order_acq_rel)) {
+    if (runtime->state_persistence_coordinator_.consume_restore_pending()) {
         (void)runtime->restore_persisted_core_state();
     }
 
@@ -368,46 +278,7 @@ bool ServiceRuntime::post_event(const core::CoreEvent& event) noexcept {
 }
 
 bool ServiceRuntime::queue_network_result(const NetworkResult& result) noexcept {
-    RuntimeLockGuard guard(ingress_lock_);
-
-    for (std::size_t i = 0; i < network_result_count_; ++i) {
-        if (network_result_queue_[i].request_id == result.request_id && result.request_id != 0U) {
-            network_result_queue_[i] = result;
-            return true;
-        }
-    }
-
-    if (network_result_count_ >= kNetworkResultQueueCapacity) {
-        for (std::size_t i = 1; i < network_result_count_; ++i) {
-            network_result_queue_[i - 1U] = network_result_queue_[i];
-        }
-        --network_result_count_;
-    }
-
-    network_result_queue_[network_result_count_] = result;
-    ++network_result_count_;
-    return true;
-}
-
-bool ServiceRuntime::take_network_result_locked(uint32_t request_id, NetworkResult* out) noexcept {
-    if (out == nullptr || request_id == 0) {
-        return false;
-    }
-
-    for (std::size_t i = 0; i < network_result_count_; ++i) {
-        if (network_result_queue_[i].request_id != request_id) {
-            continue;
-        }
-
-        *out = network_result_queue_[i];
-        for (std::size_t j = i + 1U; j < network_result_count_; ++j) {
-            network_result_queue_[j - 1U] = network_result_queue_[j];
-        }
-        --network_result_count_;
-        return true;
-    }
-
-    return false;
+    return operation_result_store_.publish_network_result(result);
 }
 
 core::CoreError ServiceRuntime::post_command(const core::CoreCommand& command) noexcept {
@@ -558,7 +429,7 @@ bool ServiceRuntime::post_zigbee_join_candidate(uint16_t short_addr) noexcept {
         return false;
     }
 
-    maybe_auto_close_join_window_after_first_join(short_addr);
+    zigbee_lifecycle_coordinator_.maybe_auto_close_join_window_after_first_join(*this, short_addr);
     return true;
 }
 
@@ -740,15 +611,7 @@ bool ServiceRuntime::post_remove_device(
 }
 
 bool ServiceRuntime::get_join_window_status(uint16_t* seconds_left) const noexcept {
-    if (seconds_left == nullptr) {
-        return false;
-    }
-
-    const bool open = join_window_open_cache_.load(std::memory_order_acquire);
-    const uint32_t cached_seconds = join_window_seconds_left_cache_.load(std::memory_order_acquire);
-    const uint16_t local_seconds_left = cached_seconds > 0xFFFFU ? 0xFFFFU : static_cast<uint16_t>(cached_seconds);
-    *seconds_left = open ? local_seconds_left : 0U;
-    return open;
+    return zigbee_lifecycle_coordinator_.get_join_window_status(seconds_left);
 }
 
 bool ServiceRuntime::build_devices_runtime_snapshot(
@@ -759,9 +622,8 @@ bool ServiceRuntime::build_devices_runtime_snapshot(
         return false;
     }
 
-    const bool join_window_open = join_window_open_cache_.load(std::memory_order_acquire);
-    const uint32_t cached_seconds = join_window_seconds_left_cache_.load(std::memory_order_acquire);
-    const uint16_t join_window_seconds_left = cached_seconds > 0xFFFFU ? 0xFFFFU : static_cast<uint16_t>(cached_seconds);
+    uint16_t join_window_seconds_left = 0U;
+    const bool join_window_open = zigbee_lifecycle_coordinator_.get_join_window_status(&join_window_seconds_left);
     return device_manager_.build_runtime_snapshot(
         state,
         now_ms,
@@ -864,8 +726,7 @@ bool ServiceRuntime::get_force_remove_remaining_ms(
 }
 
 bool ServiceRuntime::take_network_result(uint32_t request_id, NetworkResult* out) noexcept {
-    RuntimeLockGuard guard(ingress_lock_);
-    return take_network_result_locked(request_id, out);
+    return operation_result_store_.take_network_result(request_id, out);
 }
 
 bool ServiceRuntime::is_scan_request_queued(uint32_t request_id) const noexcept {
@@ -884,7 +745,7 @@ bool ServiceRuntime::initialize_hal_adapter() noexcept {
         return false;
     }
 
-    restore_core_state_pending_.store(true, std::memory_order_release);
+    state_persistence_coordinator_.mark_restore_pending();
     sync_api_snapshots();
     return true;
 }
@@ -964,7 +825,7 @@ bool ServiceRuntime::start() noexcept {
     SR_LOGI("Service runtime task started");
     return true;
 #else
-    if (restore_core_state_pending_.exchange(false, std::memory_order_acq_rel)) {
+    if (state_persistence_coordinator_.consume_restore_pending()) {
         (void)restore_persisted_core_state();
     }
     return true;
@@ -1204,15 +1065,14 @@ core::CoreState ServiceRuntime::state() const noexcept {
 
 std::size_t ServiceRuntime::pending_events() const noexcept {
     std::size_t local_queue_count = 0;
-    std::size_t local_network_result_count = 0;
     {
         RuntimeLockGuard guard(ingress_lock_);
         local_queue_count = queue_count_;
-        local_network_result_count = network_result_count_;
     }
 
     return local_queue_count + command_manager_.pending_ingress_count() + persistence_manager_.pending_ingress_count() +
-           network_manager_.pending_ingress_count() + local_network_result_count + scan_manager_.pending_ingress_count();
+           network_manager_.pending_ingress_count() + operation_result_store_.pending_network_results() +
+           scan_manager_.pending_ingress_count();
 }
 
 std::size_t ServiceRuntime::pending_commands() const noexcept {
@@ -1260,35 +1120,12 @@ bool ServiceRuntime::is_duplicate_join_candidate(uint16_t short_addr, uint32_t n
     return device_manager_.is_duplicate_join_candidate(short_addr, now_ms);
 }
 
-void ServiceRuntime::maybe_auto_close_join_window_after_first_join(uint16_t short_addr) noexcept {
-#ifndef ESP_PLATFORM
-    (void)short_addr;
-#endif
-
-    uint16_t join_window_seconds_left = 0U;
-    if (!get_join_window_status(&join_window_seconds_left)) {
-        return;
-    }
-
-    if (hal_zigbee_close_network() != HAL_ZIGBEE_STATUS_OK) {
-        SR_LOGI("Failed to auto-close join window after join short_addr=0x%04x", static_cast<unsigned>(short_addr));
-        return;
-    }
-
-    network_policy_manager_.on_join_window_force_closed(*this);
-
-    SR_LOGI(
-        "Auto-closed join window after first join short_addr=0x%04x seconds_left=%u",
-        static_cast<unsigned>(short_addr),
-        static_cast<unsigned>(join_window_seconds_left));
-}
-
 bool ServiceRuntime::request_join_window_open(uint16_t duration_seconds) noexcept {
-    return network_policy_manager_.request_join_window_open(*this, duration_seconds, monotonic_now_ms());
+    return zigbee_lifecycle_coordinator_.request_join_window_open(*this, duration_seconds, monotonic_now_ms());
 }
 
 void ServiceRuntime::process_zigbee_network_policy(uint32_t now_ms) noexcept {
-    network_policy_manager_.process_zigbee_join_window_policy(*this, now_ms);
+    zigbee_lifecycle_coordinator_.process_join_window_policy(*this, now_ms);
 }
 
 bool ServiceRuntime::schedule_force_remove(uint16_t short_addr, uint32_t deadline_ms) noexcept {

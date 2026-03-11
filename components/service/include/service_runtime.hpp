@@ -18,12 +18,15 @@
 #include "connectivity_manager.hpp"
 #include "network_manager.hpp"
 #include "network_policy_manager.hpp"
+#include "operation_result_store.hpp"
 #include "persistence_manager.hpp"
 #include "read_model_coordinator.hpp"
 #include "reporting_manager.hpp"
 #include "scan_manager.hpp"
+#include "state_persistence_coordinator.hpp"
 #include "runtime_lock.hpp"
 #include "service_runtime_api.hpp"
+#include "zigbee_lifecycle_coordinator.hpp"
 
 namespace service {
 
@@ -34,7 +37,7 @@ class ServiceRuntimeTestAccess;
 class ServiceRuntime : public ServiceRuntimeApi {
 public:
     static constexpr std::size_t kEventQueueCapacity = 32;
-    static constexpr std::size_t kNetworkResultQueueCapacity = 16;
+    static constexpr std::size_t kNetworkResultQueueCapacity = OperationResultStore::kNetworkResultQueueCapacity;
     static constexpr std::size_t kNetworkScanMaxRecords = service::kNetworkScanMaxRecords;
     static constexpr uint8_t kMaxAutoconnectRetries = 5U;
 
@@ -148,7 +151,6 @@ private:
     bool push_event(const core::CoreEvent& event) noexcept;
     bool pop_event(core::CoreEvent* out) noexcept;
     bool queue_network_result(const NetworkResult& result) noexcept;
-    bool take_network_result_locked(uint32_t request_id, NetworkResult* out) noexcept;
     void apply_managers(const core::CoreEvent& event) noexcept;
     void execute_effects(const core::CoreEffectList& effects) noexcept;
     bool drain_command_requests() noexcept;
@@ -158,7 +160,6 @@ private:
     bool drain_network_requests() noexcept;
     uint32_t monotonic_now_ms() const noexcept;
     bool is_duplicate_join_candidate(uint16_t short_addr, uint32_t now_ms) noexcept;
-    void maybe_auto_close_join_window_after_first_join(uint16_t short_addr) noexcept;
     bool ensure_wifi_mode_for_scan() noexcept;
     bool ensure_wifi_mode_for_sta_connect() noexcept;
     bool request_join_window_open(uint16_t duration_seconds) noexcept;
@@ -194,10 +195,6 @@ private:
         uint8_t last_command_status{0};
     };
 
-    struct PersistedCoreStateStorage {
-        alignas(core::CoreState) std::array<uint8_t, sizeof(core::CoreState) + sizeof(uint32_t) * 2U> bytes{};
-    };
-
     struct PendingMqttStatusUpdate {
         bool present{false};
         MqttStatusSnapshot snapshot{};
@@ -229,24 +226,19 @@ private:
     std::size_t queue_tail_{0};
     std::size_t queue_count_{0};
 
-    std::array<NetworkResult, kNetworkResultQueueCapacity> network_result_queue_{};
-    std::size_t network_result_count_{0};
-
     mutable RuntimeLock ingress_lock_{};
+    OperationResultStore operation_result_store_{};
     ReadModelCoordinator read_model_coordinator_;
+    StatePersistenceCoordinator state_persistence_coordinator_;
+    ZigbeeLifecycleCoordinator zigbee_lifecycle_coordinator_;
 
     std::atomic<uint32_t> config_timeout_ms_cache_{5000};
     std::atomic<uint32_t> config_max_retries_cache_{1};
-    std::atomic<bool> join_window_open_cache_{false};
-    std::atomic<uint32_t> join_window_seconds_left_cache_{0};
-
     std::atomic<uint32_t> dropped_ingress_events_{0};
 
     RuntimeStatsStorage stats_{};
     PendingMqttStatusUpdate pending_mqtt_status_update_{};
     MqttStatusSnapshot mqtt_status_cache_{};
-    mutable PersistedCoreStateStorage persisted_core_state_storage_{};
-    std::atomic<bool> restore_core_state_pending_{false};
     std::atomic<uint32_t> last_tick_ms_{0};
 #ifdef ESP_PLATFORM
     void* runtime_task_handle_{nullptr};

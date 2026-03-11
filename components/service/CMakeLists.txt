@@ -15,10 +15,13 @@ idf_component_register(
         "read_model_coordinator.cpp"
         "network_manager.cpp"
         "network_policy_manager.cpp"
+        "operation_result_store.cpp"
         "persistence_manager.cpp"
         "reporting_manager.cpp"
         "scan_manager.cpp"
         "service_runtime.cpp"
+        "state_persistence_coordinator.cpp"
+        "zigbee_lifecycle_coordinator.cpp"
         "hal_event_adapter.cpp"
     INCLUDE_DIRS "include"
     REQUIRES core app_hal common

@@ -388,6 +388,45 @@ run_checks() {
         'read_model_coordinator_\.build_network_api_snapshot[[:space:]]*\(|read_model_coordinator_\.publish_network_snapshot[[:space:]]*\(' \
         "ServiceRuntime must delegate read-model cache/build operations to ReadModelCoordinator"
 
+    check_present "INV-M033" "medium" "components/service/include/operation_result_store.hpp" \
+        'class[[:space:]]+OperationResultStore' \
+        "network operation result queueing must live in a dedicated OperationResultStore seam"
+    check_present "INV-M033" "medium" "components/service/include/service_runtime.hpp" \
+        'OperationResultStore[[:space:]]+operation_result_store_' \
+        "ServiceRuntime must own OperationResultStore as an internal seam"
+    check_present "INV-M033" "medium" "components/service/service_runtime.cpp" \
+        'operation_result_store_\.publish_network_result[[:space:]]*\(|operation_result_store_\.take_network_result[[:space:]]*\(' \
+        "ServiceRuntime must delegate network result queue operations to OperationResultStore"
+    check_absent "INV-M033" "medium" "components/service/include/service_runtime.hpp" \
+        'network_result_queue_|network_result_count_' \
+        "network result queue storage must not remain inline inside ServiceRuntime"
+
+    check_present "INV-M034" "medium" "components/service/include/zigbee_lifecycle_coordinator.hpp" \
+        'class[[:space:]]+ZigbeeLifecycleCoordinator' \
+        "Zigbee join-window lifecycle concerns must live in a dedicated ZigbeeLifecycleCoordinator seam"
+    check_present "INV-M034" "medium" "components/service/include/service_runtime.hpp" \
+        'ZigbeeLifecycleCoordinator[[:space:]]+zigbee_lifecycle_coordinator_' \
+        "ServiceRuntime must own ZigbeeLifecycleCoordinator as an internal seam"
+    check_present "INV-M034" "medium" "components/service/service_runtime.cpp" \
+        'zigbee_lifecycle_coordinator_\.request_join_window_open[[:space:]]*\(|zigbee_lifecycle_coordinator_\.process_join_window_policy[[:space:]]*\(' \
+        "ServiceRuntime must delegate join-window lifecycle operations to ZigbeeLifecycleCoordinator"
+    check_absent "INV-M034" "medium" "components/service/include/service_runtime.hpp" \
+        'join_window_open_cache_|join_window_seconds_left_cache_' \
+        "join-window cache storage must not remain inline inside ServiceRuntime"
+
+    check_present "INV-M035" "medium" "components/service/include/state_persistence_coordinator.hpp" \
+        'class[[:space:]]+StatePersistenceCoordinator' \
+        "persist/restore core-state lifecycle must live in a dedicated StatePersistenceCoordinator seam"
+    check_present "INV-M035" "medium" "components/service/include/service_runtime.hpp" \
+        'StatePersistenceCoordinator[[:space:]]+state_persistence_coordinator_' \
+        "ServiceRuntime must own StatePersistenceCoordinator as an internal seam"
+    check_present "INV-M035" "medium" "components/service/service_runtime.cpp" \
+        'state_persistence_coordinator_\.persist_current_core_state[[:space:]]*\(|state_persistence_coordinator_\.restore_persisted_core_state[[:space:]]*\(' \
+        "ServiceRuntime must delegate core-state persist/restore operations to StatePersistenceCoordinator"
+    check_absent "INV-M035" "medium" "components/service/include/service_runtime.hpp" \
+        'persisted_core_state_storage_|restore_core_state_pending_' \
+        "persisted core-state storage and restore-pending flag must not remain inline inside ServiceRuntime"
+
     check_absent "INV-M025" "medium" "components/app_hal/include/hal_zigbee.h" \
         'hal_zigbee_test_apply_permit_join_status|hal_zigbee_notify_|hal_zigbee_simulate_|SERVICE_RUNTIME_TEST_HOOKS' \
         "production HAL Zigbee header must not expose test-only hooks or simulation APIs"

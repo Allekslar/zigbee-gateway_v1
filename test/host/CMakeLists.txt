@@ -36,10 +36,13 @@ set(SERVICE_SOURCES
     ../../components/service/read_model_coordinator.cpp
     ../../components/service/network_manager.cpp
     ../../components/service/network_policy_manager.cpp
+    ../../components/service/operation_result_store.cpp
     ../../components/service/persistence_manager.cpp
     ../../components/service/reporting_manager.cpp
     ../../components/service/scan_manager.cpp
     ../../components/service/service_runtime.cpp
+    ../../components/service/state_persistence_coordinator.cpp
+    ../../components/service/zigbee_lifecycle_coordinator.cpp
     ../../components/service/hal_event_adapter.cpp
 )
 
@@ -135,6 +138,21 @@ add_executable(test_service_network_policy_state_access test_service_network_pol
 target_link_libraries(test_service_network_policy_state_access PRIVATE service_host)
 zg_apply_component_compile_policy(test_service_network_policy_state_access)
 add_test(NAME test_service_network_policy_state_access COMMAND test_service_network_policy_state_access)
+
+add_executable(test_operation_result_store test_operation_result_store.cpp)
+target_link_libraries(test_operation_result_store PRIVATE service_host)
+zg_apply_component_compile_policy(test_operation_result_store)
+add_test(NAME test_operation_result_store COMMAND test_operation_result_store)
+
+add_executable(test_zigbee_lifecycle_coordinator test_zigbee_lifecycle_coordinator.cpp)
+target_link_libraries(test_zigbee_lifecycle_coordinator PRIVATE service_host)
+zg_apply_component_compile_policy(test_zigbee_lifecycle_coordinator)
+add_test(NAME test_zigbee_lifecycle_coordinator COMMAND test_zigbee_lifecycle_coordinator)
+
+add_executable(test_state_persistence_coordinator test_state_persistence_coordinator.cpp)
+target_link_libraries(test_state_persistence_coordinator PRIVATE service_host)
+zg_apply_component_compile_policy(test_state_persistence_coordinator)
+add_test(NAME test_state_persistence_coordinator COMMAND test_state_persistence_coordinator)
 
 add_executable(test_service_network_reconnect test_service_network_reconnect.cpp)
 target_link_libraries(test_service_network_reconnect PRIVATE service_host)
