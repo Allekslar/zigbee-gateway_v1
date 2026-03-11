@@ -158,6 +158,7 @@ bool NetworkManager::handle_scan(
         result->status = NetworkOperationStatus::kNoCapacity;
         return true;
     }
+    runtime.note_network_operation_poll_status(request.request_id, NetworkOperationPollStatus::kScanQueued);
     *queue_result = false;
 #else
     (void)request;

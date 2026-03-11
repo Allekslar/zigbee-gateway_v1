@@ -287,6 +287,12 @@ bool ServiceRuntime::queue_network_result(const NetworkResult& result) noexcept 
     return operation_result_store_.publish_network_result(result);
 }
 
+void ServiceRuntime::note_network_operation_poll_status(
+    uint32_t request_id,
+    NetworkOperationPollStatus status) noexcept {
+    operation_result_store_.note_network_poll_status(request_id, status);
+}
+
 core::CoreError ServiceRuntime::post_command(const core::CoreCommand& command) noexcept {
     if (command.type == core::CoreCommandType::kUpdateReportingProfile) {
         if (command.correlation_id == core::kNoCorrelationId) {
@@ -359,7 +365,11 @@ bool ServiceRuntime::post_network_scan(uint32_t request_id) noexcept {
     NetworkRequest request{};
     request.request_id = request_id;
     request.operation = NetworkOperationType::kScan;
-    return network_manager_.enqueue_request(*this, request);
+    const bool queued = network_manager_.enqueue_request(*this, request);
+    if (queued) {
+        operation_result_store_.note_network_poll_status(request_id, NetworkOperationPollStatus::kScanQueued);
+    }
+    return queued;
 }
 
 bool ServiceRuntime::post_network_connect(

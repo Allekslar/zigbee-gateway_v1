@@ -26,10 +26,16 @@ int main() {
     assert(first_request_id != 0U);
     assert(second_request_id == first_request_id + 1U);
 
+    store.note_network_poll_status(7U, service::NetworkOperationPollStatus::kScanQueued);
+    assert(store.get_network_operation_poll_status(7U) == service::NetworkOperationPollStatus::kScanQueued);
+    store.note_network_poll_status(7U, service::NetworkOperationPollStatus::kScanInProgress);
+    assert(store.get_network_operation_poll_status(7U) == service::NetworkOperationPollStatus::kScanInProgress);
     assert(store.publish_network_result(make_result(7U, service::NetworkOperationStatus::kOk)));
     assert(store.publish_network_result(make_result(7U, service::NetworkOperationStatus::kHalFailed)));
+    assert(store.get_network_operation_poll_status(7U) == service::NetworkOperationPollStatus::kReady);
     assert(store.take_network_result(7U, &out));
     assert(out.status == service::NetworkOperationStatus::kHalFailed);
+    assert(store.get_network_operation_poll_status(7U) == service::NetworkOperationPollStatus::kNotReady);
     assert(!store.take_network_result(7U, &out));
 
     for (uint32_t request_id = 1U;

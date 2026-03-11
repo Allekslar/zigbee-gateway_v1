@@ -513,14 +513,16 @@ esp_err_t network_result_get_handler(httpd_req_t* req) {
     service::NetworkResult result{};
     if (!context->runtime->take_network_result(request_id, &result)) {
         (void)httpd_resp_set_type(req, "application/json");
-        if (context->runtime->is_scan_request_queued(request_id)) {
+        const service::NetworkOperationPollStatus poll_status =
+            context->runtime->get_network_operation_poll_status(request_id);
+        if (poll_status == service::NetworkOperationPollStatus::kScanQueued) {
             ESP_LOGI(kTag, "HTTP GET /api/network/result request_id=%lu status=scan_queued", static_cast<unsigned long>(request_id));
             return httpd_resp_send(
                 req,
                 "{\"ready\":false,\"status\":\"scan_queued\"}",
                 HTTPD_RESP_USE_STRLEN);
         }
-        if (context->runtime->is_scan_request_in_progress(request_id)) {
+        if (poll_status == service::NetworkOperationPollStatus::kScanInProgress) {
             ESP_LOGI(
                 kTag,
                 "HTTP GET /api/network/result request_id=%lu status=scan_in_progress",

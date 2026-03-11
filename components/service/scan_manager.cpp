@@ -102,6 +102,10 @@ bool ScanManager::is_request_in_progress(uint32_t request_id) const noexcept {
     return active_request_id_.load(std::memory_order_acquire) == request_id;
 }
 
+uint32_t ScanManager::active_request_id() const noexcept {
+    return active_request_id_.load(std::memory_order_acquire);
+}
+
 void ScanManager::set_request_in_progress_for_test(uint32_t request_id) noexcept {
     active_request_id_.store(request_id, std::memory_order_release);
     busy_.store(request_id != 0U, std::memory_order_release);
@@ -144,6 +148,9 @@ void ScanManager::run_worker_loop(ServiceRuntime& runtime) noexcept {
         SCAN_LOGI("Scan worker picked request_id=%lu", static_cast<unsigned long>(request.request_id));
         busy_.store(true, std::memory_order_release);
         active_request_id_.store(request.request_id, std::memory_order_release);
+        runtime.note_network_operation_poll_status(
+            request.request_id,
+            NetworkOperationPollStatus::kScanInProgress);
 
         NetworkResult result{};
         result.request_id = request.request_id;

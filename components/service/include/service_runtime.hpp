@@ -112,6 +112,7 @@ public:
     bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept override;
     bool get_force_remove_remaining_ms(uint16_t short_addr, uint32_t now_ms, uint32_t* remaining_ms) const noexcept;
     bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept override;
+    NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept override;
     bool is_scan_request_queued(uint32_t request_id) const noexcept override;
     bool is_scan_request_in_progress(uint32_t request_id) const noexcept override;
     bool initialize_hal_adapter() noexcept override;
@@ -153,6 +154,7 @@ private:
     bool push_event(const core::CoreEvent& event) noexcept;
     bool pop_event(core::CoreEvent* out) noexcept;
     bool queue_network_result(const NetworkResult& result) noexcept;
+    void note_network_operation_poll_status(uint32_t request_id, NetworkOperationPollStatus status) noexcept;
     void apply_managers(const core::CoreEvent& event) noexcept;
     void execute_effects(const core::CoreEffectList& effects) noexcept;
     bool drain_command_requests() noexcept;

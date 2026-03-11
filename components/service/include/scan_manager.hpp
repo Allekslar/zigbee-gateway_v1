@@ -22,6 +22,7 @@ public:
     bool pop_request_for_test(uint32_t* request_id) noexcept;
     bool is_request_queued(uint32_t request_id) const noexcept;
     bool is_request_in_progress(uint32_t request_id) const noexcept;
+    uint32_t active_request_id() const noexcept;
     void set_request_in_progress_for_test(uint32_t request_id) noexcept;
     void clear_request_in_progress_for_test() noexcept;
     std::size_t pending_ingress_count() const noexcept;

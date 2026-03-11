@@ -21,10 +21,13 @@ public:
 
     static void set_scan_request_in_progress(ServiceRuntime& runtime, uint32_t request_id) noexcept {
         runtime.scan_manager_.set_request_in_progress_for_test(request_id);
+        runtime.note_network_operation_poll_status(request_id, NetworkOperationPollStatus::kScanInProgress);
     }
 
     static void clear_scan_request_in_progress(ServiceRuntime& runtime) noexcept {
+        const uint32_t request_id = runtime.scan_manager_.active_request_id();
         runtime.scan_manager_.clear_request_in_progress_for_test();
+        runtime.note_network_operation_poll_status(request_id, NetworkOperationPollStatus::kNotReady);
     }
 
     static bool push_network_result(ServiceRuntime& runtime, const ServiceRuntime::NetworkResult& result) noexcept {

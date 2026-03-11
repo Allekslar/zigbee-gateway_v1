@@ -124,6 +124,13 @@ enum class DeviceContactState : uint8_t {
     kOpen = 2,
 };
 
+enum class NetworkOperationPollStatus : uint8_t {
+    kNotReady = 0,
+    kScanQueued = 1,
+    kScanInProgress = 2,
+    kReady = 3,
+};
+
 struct DevicesApiDeviceSnapshot {
     uint16_t short_addr{core::kUnknownDeviceShortAddr};
     bool online{false};
@@ -240,6 +247,7 @@ public:
     virtual bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept = 0;
     virtual bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept = 0;
     virtual bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept = 0;
+    virtual NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_queued(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_in_progress(uint32_t request_id) const noexcept = 0;
     virtual bool initialize_hal_adapter() noexcept = 0;
