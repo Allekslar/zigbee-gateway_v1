@@ -171,8 +171,6 @@ private:
     void note_dropped_event() noexcept;
     bool persist_current_core_state() noexcept;
     bool restore_persisted_core_state() noexcept;
-    bool schedule_force_remove(uint16_t short_addr, uint32_t deadline_ms) noexcept;
-    std::size_t process_force_remove_timeouts(uint32_t now_ms) noexcept;
     std::size_t process_pending_sta_connect(uint32_t now_ms) noexcept;
 
     struct RuntimeStatsStorage {

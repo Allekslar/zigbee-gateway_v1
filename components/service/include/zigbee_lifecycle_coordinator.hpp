@@ -10,6 +10,8 @@ namespace service {
 
 class DeviceManager;
 class NetworkPolicyManager;
+struct NetworkRequest;
+struct NetworkResult;
 class ServiceRuntime;
 
 class ZigbeeLifecycleCoordinator {
@@ -22,6 +24,8 @@ public:
     void process_join_window_policy(ServiceRuntime& runtime, uint32_t now_ms) noexcept;
     bool handle_join_candidate(ServiceRuntime& runtime, uint16_t short_addr, uint32_t now_ms) noexcept;
     void maybe_auto_close_join_window_after_first_join(ServiceRuntime& runtime, uint16_t short_addr) noexcept;
+    bool handle_remove_device(ServiceRuntime& runtime, const NetworkRequest& request, NetworkResult* result) noexcept;
+    std::size_t process_force_remove_timeouts(ServiceRuntime& runtime, uint32_t now_ms) noexcept;
 
 private:
     DeviceManager* device_manager_{nullptr};

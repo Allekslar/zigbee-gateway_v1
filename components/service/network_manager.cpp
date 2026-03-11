@@ -281,38 +281,7 @@ bool NetworkManager::handle_remove_device(
     ServiceRuntime& runtime,
     const NetworkRequest& request,
     NetworkResult* result) noexcept {
-    if (request.device_short_addr == core::kUnknownDeviceShortAddr || request.device_short_addr == 0x0000U) {
-        result->status = NetworkOperationStatus::kInvalidArgument;
-        return true;
-    }
-
-    result->force_remove = request.force_remove;
-    result->force_remove_timeout_ms = request.force_remove_timeout_ms;
-
-    const bool zigbee_ready = runtime.ensure_zigbee_started();
-    if (!zigbee_ready && !request.force_remove) {
-        result->status = NetworkOperationStatus::kHalFailed;
-        return true;
-    }
-
-    if (zigbee_ready) {
-        const hal_zigbee_status_t remove_status = hal_zigbee_remove_device(request.device_short_addr);
-        if (remove_status != HAL_ZIGBEE_STATUS_OK && !request.force_remove) {
-            result->status = NetworkOperationStatus::kHalFailed;
-            return true;
-        }
-    }
-
-    if (request.force_remove) {
-        const uint32_t deadline_ms = runtime.monotonic_now_ms() + request.force_remove_timeout_ms;
-        if (!runtime.schedule_force_remove(request.device_short_addr, deadline_ms)) {
-            result->status = NetworkOperationStatus::kNoCapacity;
-            return true;
-        }
-    }
-
-    result->device_short_addr = request.device_short_addr;
-    return true;
+    return runtime.zigbee_lifecycle_coordinator_.handle_remove_device(runtime, request, result);
 }
 
 }  // namespace service

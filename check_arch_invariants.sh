@@ -385,8 +385,11 @@ run_checks() {
         'ReadModelCoordinator[[:space:]]+read_model_coordinator_' \
         "ServiceRuntime must own ReadModelCoordinator as an internal seam"
     check_present "INV-M032" "medium" "components/service/service_runtime.cpp" \
-        'read_model_coordinator_\.build_network_api_snapshot[[:space:]]*\(|read_model_coordinator_\.publish_network_snapshot[[:space:]]*\(' \
+        'read_model_coordinator_\.on_core_state_published[[:space:]]*\(|read_model_coordinator_\.on_runtime_stats_changed[[:space:]]*\(|read_model_coordinator_\.on_config_changed[[:space:]]*\(|read_model_coordinator_\.on_mqtt_status_changed[[:space:]]*\(' \
         "ServiceRuntime must delegate read-model cache/build operations to ReadModelCoordinator"
+    check_absent "INV-M032" "medium" "components/service/service_runtime.cpp" \
+        'sync_api_snapshots|publish_network_api_snapshot|publish_config_api_snapshot' \
+        "ServiceRuntime must not keep legacy inline read-model sync helpers after extracting ReadModelCoordinator policy"
 
     check_present "INV-M033" "medium" "components/service/include/operation_result_store.hpp" \
         'class[[:space:]]+OperationResultStore' \
@@ -400,9 +403,15 @@ run_checks() {
     check_present "INV-M033" "medium" "components/service/include/service_runtime_api.hpp" \
         'next_operation_request_id[[:space:]]*\(' \
         "ServiceRuntimeApi must expose service-owned operation request-id allocation"
+    check_present "INV-M033" "medium" "components/service/include/service_runtime_api.hpp" \
+        'get_network_operation_poll_status[[:space:]]*\(' \
+        "ServiceRuntimeApi must expose centralized poll status semantics for async network operations"
     check_absent "INV-M033" "medium" "components/service/include/service_runtime.hpp" \
         'network_result_queue_|network_result_count_' \
         "network result queue storage must not remain inline inside ServiceRuntime"
+    check_absent "INV-M033" "medium" "components/web_ui/web_handlers_network.cpp" \
+        'is_scan_request_queued[[:space:]]*\(|is_scan_request_in_progress[[:space:]]*\(' \
+        "web network result polling must not stitch together async scan state from multiple runtime helpers"
 
     check_present "INV-M034" "medium" "components/service/include/zigbee_lifecycle_coordinator.hpp" \
         'class[[:space:]]+ZigbeeLifecycleCoordinator' \
@@ -411,11 +420,17 @@ run_checks() {
         'ZigbeeLifecycleCoordinator[[:space:]]+zigbee_lifecycle_coordinator_' \
         "ServiceRuntime must own ZigbeeLifecycleCoordinator as an internal seam"
     check_present "INV-M034" "medium" "components/service/service_runtime.cpp" \
-        'zigbee_lifecycle_coordinator_\.request_join_window_open[[:space:]]*\(|zigbee_lifecycle_coordinator_\.process_join_window_policy[[:space:]]*\(|zigbee_lifecycle_coordinator_\.handle_join_candidate[[:space:]]*\(' \
-        "ServiceRuntime must delegate join-window and duplicate-join lifecycle operations to ZigbeeLifecycleCoordinator"
+        'zigbee_lifecycle_coordinator_\.request_join_window_open[[:space:]]*\(|zigbee_lifecycle_coordinator_\.process_join_window_policy[[:space:]]*\(|zigbee_lifecycle_coordinator_\.handle_join_candidate[[:space:]]*\(|zigbee_lifecycle_coordinator_\.process_force_remove_timeouts[[:space:]]*\(' \
+        "ServiceRuntime must delegate join-window, duplicate-join, and force-remove lifecycle operations to ZigbeeLifecycleCoordinator"
     check_absent "INV-M034" "medium" "components/service/include/service_runtime.hpp" \
         'join_window_open_cache_|join_window_seconds_left_cache_|is_duplicate_join_candidate[[:space:]]*\(' \
         "join-window cache storage and duplicate-join helper must not remain inline inside ServiceRuntime"
+    check_absent "INV-M034" "medium" "components/service/service_runtime.cpp" \
+        'ServiceRuntime::process_force_remove_timeouts[[:space:]]*\(' \
+        "force-remove timeout lifecycle policy must not remain inline inside ServiceRuntime"
+    check_absent "INV-M034" "medium" "components/service/network_manager.cpp" \
+        'hal_zigbee_remove_device[[:space:]]*\(' \
+        "remove-device Zigbee lifecycle policy must not remain inline inside NetworkManager"
 
     check_present "INV-M035" "medium" "components/service/include/state_persistence_coordinator.hpp" \
         'class[[:space:]]+StatePersistenceCoordinator' \

@@ -759,7 +759,7 @@ bool ServiceRuntime::start_provisioning_ap(const char* ssid, const char* passwor
 
 ServiceRuntime::BootAutoconnectResult ServiceRuntime::autoconnect_from_saved_credentials() noexcept {
     const BootAutoconnectResult result = connectivity_manager_.autoconnect_from_saved_credentials(*this);
-    sync_api_snapshots();
+    notify_read_models_from_runtime_stats();
     return result;
 }
 
@@ -1031,7 +1031,7 @@ std::size_t ServiceRuntime::tick(uint32_t now_ms) noexcept {
         (void)autoconnect_from_saved_credentials();
     }
 
-    sync_api_snapshots();
+    notify_read_models_from_runtime_stats();
     return queued;
 }
 
@@ -1155,34 +1155,8 @@ bool ServiceRuntime::drain_mqtt_status_update() noexcept {
     }
 
     mqtt_status_cache_ = snapshot;
+    read_model_coordinator_.on_mqtt_status_changed(snapshot);
     return true;
-}
-
-std::size_t ServiceRuntime::process_force_remove_timeouts(uint32_t now_ms) noexcept {
-    std::array<uint16_t, DeviceManager::kMaxPendingForceRemove> expired_short_addrs{};
-    const std::size_t expired_count = device_manager_.collect_expired_force_remove(now_ms, &expired_short_addrs);
-
-    std::size_t queued = 0;
-
-    for (std::size_t i = 0; i < expired_count; ++i) {
-        const uint16_t short_addr = expired_short_addrs[i];
-        core::CoreEvent fallback_event{};
-        fallback_event.type = core::CoreEventType::kDeviceLeft;
-        fallback_event.device_short_addr = short_addr;
-        if (push_event(fallback_event)) {
-            ++queued;
-            SR_LOGI(
-                "Force-remove timeout reached, posted fallback kDeviceLeft short_addr=0x%04x",
-                static_cast<unsigned>(short_addr));
-        } else {
-            (void)stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
-            SR_LOGI(
-                "Force-remove timeout reached but queue full, short_addr=0x%04x",
-                static_cast<unsigned>(short_addr));
-        }
-    }
-
-    return queued;
 }
 
 }  // namespace service

@@ -3,6 +3,8 @@
 
 #include "zigbee_lifecycle_coordinator.hpp"
 
+#include <array>
+
 #include "device_manager.hpp"
 #include "hal_zigbee.h"
 #include "log_tags.h"
@@ -109,6 +111,78 @@ void ZigbeeLifecycleCoordinator::maybe_auto_close_join_window_after_first_join(
         "Auto-closed join window after first join short_addr=0x%04x seconds_left=%u",
         static_cast<unsigned>(short_addr),
         static_cast<unsigned>(join_window_seconds_left));
+}
+
+bool ZigbeeLifecycleCoordinator::handle_remove_device(
+    ServiceRuntime& runtime,
+    const NetworkRequest& request,
+    NetworkResult* result) noexcept {
+    if (result == nullptr) {
+        return false;
+    }
+
+    result->status = NetworkOperationStatus::kOk;
+
+    if (request.device_short_addr == core::kUnknownDeviceShortAddr || request.device_short_addr == 0x0000U) {
+        result->status = NetworkOperationStatus::kInvalidArgument;
+        return true;
+    }
+
+    result->force_remove = request.force_remove;
+    result->force_remove_timeout_ms = request.force_remove_timeout_ms;
+
+    const bool zigbee_ready = runtime.ensure_zigbee_started();
+    if (!zigbee_ready && !request.force_remove) {
+        result->status = NetworkOperationStatus::kHalFailed;
+        return true;
+    }
+
+    if (zigbee_ready) {
+        const hal_zigbee_status_t remove_status = hal_zigbee_remove_device(request.device_short_addr);
+        if (remove_status != HAL_ZIGBEE_STATUS_OK && !request.force_remove) {
+            result->status = NetworkOperationStatus::kHalFailed;
+            return true;
+        }
+    }
+
+    if (request.force_remove) {
+        const uint32_t deadline_ms = runtime.monotonic_now_ms() + request.force_remove_timeout_ms;
+        if (!runtime.device_manager_.schedule_force_remove(request.device_short_addr, deadline_ms)) {
+            result->status = NetworkOperationStatus::kNoCapacity;
+            return true;
+        }
+    }
+
+    result->device_short_addr = request.device_short_addr;
+    return true;
+}
+
+std::size_t ZigbeeLifecycleCoordinator::process_force_remove_timeouts(
+    ServiceRuntime& runtime,
+    uint32_t now_ms) noexcept {
+    std::array<uint16_t, DeviceManager::kMaxPendingForceRemove> expired_short_addrs{};
+    const std::size_t expired_count = runtime.device_manager_.collect_expired_force_remove(now_ms, &expired_short_addrs);
+
+    std::size_t queued = 0;
+    for (std::size_t i = 0; i < expired_count; ++i) {
+        const uint16_t short_addr = expired_short_addrs[i];
+        core::CoreEvent fallback_event{};
+        fallback_event.type = core::CoreEventType::kDeviceLeft;
+        fallback_event.device_short_addr = short_addr;
+        if (runtime.push_event(fallback_event)) {
+            ++queued;
+            ZLC_LOGI(
+                "Force-remove timeout reached, posted fallback kDeviceLeft short_addr=0x%04x",
+                static_cast<unsigned>(short_addr));
+        } else {
+            runtime.note_dropped_event();
+            ZLC_LOGI(
+                "Force-remove timeout reached but queue full, short_addr=0x%04x",
+                static_cast<unsigned>(short_addr));
+        }
+    }
+
+    return queued;
 }
 
 }  // namespace service
