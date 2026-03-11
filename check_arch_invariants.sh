@@ -421,8 +421,8 @@ run_checks() {
         'StatePersistenceCoordinator[[:space:]]+state_persistence_coordinator_' \
         "ServiceRuntime must own StatePersistenceCoordinator as an internal seam"
     check_present "INV-M035" "medium" "components/service/service_runtime.cpp" \
-        'state_persistence_coordinator_\.persist_current_core_state[[:space:]]*\(|state_persistence_coordinator_\.restore_persisted_core_state[[:space:]]*\(' \
-        "ServiceRuntime must delegate core-state persist/restore operations to StatePersistenceCoordinator"
+        'state_persistence_coordinator_\.persist_current_core_state[[:space:]]*\(|state_persistence_coordinator_\.restore_persisted_core_state[[:space:]]*\(|state_persistence_coordinator_\.note_persist_state_requested[[:space:]]*\(|state_persistence_coordinator_\.flush_if_needed[[:space:]]*\(' \
+        "ServiceRuntime must delegate core-state persist/restore and scheduling operations to StatePersistenceCoordinator"
     check_absent "INV-M035" "medium" "components/service/include/service_runtime.hpp" \
         'persisted_core_state_storage_|restore_core_state_pending_' \
         "persisted core-state storage and restore-pending flag must not remain inline inside ServiceRuntime"

@@ -20,7 +20,9 @@ int main() {
     state.devices[0].online = true;
     state.devices[0].short_addr = 0x4411;
     assert(registry.publish(state));
-    assert(persistence.persist_current_core_state());
+    persistence.note_persist_state_requested();
+    assert(persistence.flush_if_needed() == service::StatePersistenceCoordinator::FlushResult::kFlushed);
+    assert(persistence.flush_if_needed() == service::StatePersistenceCoordinator::FlushResult::kNoop);
 
     core::CoreRegistry restored_registry;
     service::StatePersistenceCoordinator restored_persistence(restored_registry);

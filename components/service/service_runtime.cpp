@@ -888,9 +888,7 @@ void ServiceRuntime::execute_effects(const core::CoreEffectList& effects) noexce
 
         if (effect.type == core::CoreEffectType::kPersistState) {
             (void)config_manager_.save();
-            if (!persist_current_core_state()) {
-                (void)stats_.failed_effects.fetch_add(1, std::memory_order_relaxed);
-            }
+            state_persistence_coordinator_.note_persist_state_requested();
         }
     }
 }
@@ -911,6 +909,15 @@ std::size_t ServiceRuntime::process_pending() noexcept {
         const uint32_t dropped_ingress = dropped_ingress_events_.exchange(0, std::memory_order_acq_rel);
         (void)stats_.dropped_events.fetch_add(dropped_ingress, std::memory_order_relaxed);
         overall_progress = overall_progress || (dropped_ingress != 0U);
+
+        const StatePersistenceCoordinator::FlushResult persistence_flush =
+            state_persistence_coordinator_.flush_if_needed();
+        if (persistence_flush == StatePersistenceCoordinator::FlushResult::kFlushed) {
+            made_progress = true;
+        } else if (persistence_flush == StatePersistenceCoordinator::FlushResult::kFailed) {
+            made_progress = true;
+            (void)stats_.failed_effects.fetch_add(1, std::memory_order_relaxed);
+        }
 
         if (drain_nvs_writes()) {
             made_progress = true;

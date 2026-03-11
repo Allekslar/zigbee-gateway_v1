@@ -66,6 +66,17 @@ bool StatePersistenceCoordinator::consume_restore_pending() noexcept {
     return restore_core_state_pending_.exchange(false, std::memory_order_acq_rel);
 }
 
+void StatePersistenceCoordinator::note_persist_state_requested() noexcept {
+    persist_core_state_pending_.store(true, std::memory_order_release);
+}
+
+StatePersistenceCoordinator::FlushResult StatePersistenceCoordinator::flush_if_needed() noexcept {
+    if (!persist_core_state_pending_.exchange(false, std::memory_order_acq_rel)) {
+        return FlushResult::kNoop;
+    }
+    return persist_current_core_state() ? FlushResult::kFlushed : FlushResult::kFailed;
+}
+
 bool StatePersistenceCoordinator::persist_current_core_state() noexcept {
     auto* persisted = reinterpret_cast<PersistedCoreStateV1*>(persisted_core_state_storage_.bytes.data());
     *persisted = PersistedCoreStateV1{};
