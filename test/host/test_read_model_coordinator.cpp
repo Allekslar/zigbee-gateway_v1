@@ -66,5 +66,31 @@ int main() {
     assert(network_snapshot.mqtt.last_connect_error ==
            service::NetworkApiSnapshot::MqttConnectionError::kNone);
 
+    core::CoreState state{};
+    state.revision = 22U;
+    state.devices[0].short_addr = 0x1234U;
+    state.devices[0].online = true;
+    state.devices[0].power_on = true;
+    service::DevicesRuntimeSnapshot runtime_snapshot{};
+    runtime_snapshot.join_window_open = true;
+    runtime_snapshot.join_window_seconds_left = 17U;
+    runtime_snapshot.reporting_state[0] = core::CoreReportingState::kReportingActive;
+    runtime_snapshot.last_report_at_ms[0] = 4242U;
+    runtime_snapshot.has_battery[0] = true;
+    runtime_snapshot.battery_percent[0] = 88U;
+
+    assert(coordinator.publish_devices_api_snapshot(state, runtime_snapshot));
+
+    service::DevicesApiSnapshot devices_snapshot{};
+    assert(coordinator.build_devices_api_snapshot(&devices_snapshot));
+    assert(devices_snapshot.revision == 22U);
+    assert(devices_snapshot.device_count == 1U);
+    assert(devices_snapshot.join_window_open);
+    assert(devices_snapshot.join_window_seconds_left == 17U);
+    assert(devices_snapshot.devices[0].short_addr == 0x1234U);
+    assert(devices_snapshot.devices[0].online);
+    assert(devices_snapshot.devices[0].power_on);
+    assert(devices_snapshot.devices[0].battery_percent == 88U);
+
     return 0;
 }

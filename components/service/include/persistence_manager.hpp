@@ -21,6 +21,7 @@ public:
 
     bool post_config_write(
         ServiceRuntime& runtime,
+        uint32_t request_id,
         bool set_timeout_ms,
         uint32_t timeout_ms,
         bool set_max_retries,
@@ -40,6 +41,7 @@ private:
     };
 
     struct ConfigWriteNotification {
+        uint32_t request_id{0};
         bool set_timeout_ms{false};
         uint32_t timeout_ms{0};
         bool set_max_retries{false};

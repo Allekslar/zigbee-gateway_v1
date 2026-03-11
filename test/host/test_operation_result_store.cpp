@@ -20,6 +20,7 @@ service::NetworkResult make_result(uint32_t request_id, service::NetworkOperatio
 int main() {
     service::OperationResultStore store{};
     service::NetworkResult out{};
+    service::ConfigResult config_out{};
 
     const uint32_t first_request_id = store.next_request_id();
     const uint32_t second_request_id = store.next_request_id();
@@ -47,5 +48,17 @@ int main() {
     assert(!store.take_network_result(1U, &out));
     assert(store.take_network_result(2U, &out));
     assert(out.request_id == 2U);
+
+    service::ConfigResult config_result{};
+    config_result.request_id = 100U;
+    config_result.last_command_status = 1U;
+    assert(store.publish_config_result(config_result));
+    config_result.last_command_status = 2U;
+    assert(store.publish_config_result(config_result));
+    assert(store.pending_config_results() == 1U);
+    assert(store.take_config_result(100U, &config_out));
+    assert(config_out.last_command_status == 2U);
+    assert(!store.take_config_result(100U, &config_out));
+
     return 0;
 }

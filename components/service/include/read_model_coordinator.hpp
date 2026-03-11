@@ -41,10 +41,10 @@ public:
 
     explicit ReadModelCoordinator(core::CoreRegistry& registry) noexcept;
 
-    bool build_devices_api_snapshot(
+    bool publish_devices_api_snapshot(
         const core::CoreState& state,
-        const DevicesRuntimeSnapshot& runtime_snapshot,
-        DevicesApiSnapshot* out) const noexcept;
+        const DevicesRuntimeSnapshot& runtime_snapshot) const noexcept;
+    bool build_devices_api_snapshot(DevicesApiSnapshot* out) const noexcept;
     bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept;
     bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept;
 
@@ -89,6 +89,9 @@ private:
     CorePublishInput core_publish_input_{};
     NetworkPublishInput network_publish_input_{};
     ConfigPublishInput config_publish_input_{};
+    mutable RuntimeLock devices_snapshot_lock_{};
+    mutable DevicesApiSnapshot devices_api_snapshot_{};
+    mutable bool devices_api_snapshot_ready_{false};
     mutable RuntimeLock bridge_snapshot_lock_{};
     MqttBridgeSnapshot mqtt_bridge_snapshot_{};
     MatterBridgeSnapshot matter_bridge_snapshot_{};

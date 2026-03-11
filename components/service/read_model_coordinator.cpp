@@ -10,11 +10,31 @@ namespace service {
 ReadModelCoordinator::ReadModelCoordinator(core::CoreRegistry& registry) noexcept
     : bridge_snapshot_builder_(registry) {}
 
-bool ReadModelCoordinator::build_devices_api_snapshot(
+bool ReadModelCoordinator::publish_devices_api_snapshot(
     const core::CoreState& state,
-    const DevicesRuntimeSnapshot& runtime_snapshot,
-    DevicesApiSnapshot* out) const noexcept {
-    return devices_api_snapshot_builder_.build(state, runtime_snapshot, out);
+    const DevicesRuntimeSnapshot& runtime_snapshot) const noexcept {
+    DevicesApiSnapshot snapshot{};
+    if (!devices_api_snapshot_builder_.build(state, runtime_snapshot, &snapshot)) {
+        return false;
+    }
+
+    RuntimeLockGuard guard(devices_snapshot_lock_);
+    devices_api_snapshot_ = snapshot;
+    devices_api_snapshot_ready_ = true;
+    return true;
+}
+
+bool ReadModelCoordinator::build_devices_api_snapshot(DevicesApiSnapshot* out) const noexcept {
+    if (out == nullptr) {
+        return false;
+    }
+
+    RuntimeLockGuard guard(devices_snapshot_lock_);
+    if (!devices_api_snapshot_ready_) {
+        return false;
+    }
+    *out = devices_api_snapshot_;
+    return true;
 }
 
 bool ReadModelCoordinator::build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept {

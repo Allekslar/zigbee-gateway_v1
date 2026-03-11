@@ -381,6 +381,9 @@ run_checks() {
     check_present "INV-M032" "medium" "components/service/include/read_model_coordinator.hpp" \
         'class[[:space:]]+ReadModelCoordinator' \
         "read-model cache/build orchestration must live in ReadModelCoordinator"
+    check_present "INV-M032" "medium" "components/service/include/read_model_coordinator.hpp" \
+        'publish_devices_api_snapshot[[:space:]]*\(|build_devices_api_snapshot[[:space:]]*\([[:space:]]*DevicesApiSnapshot\*' \
+        "ReadModelCoordinator must own cached DevicesApiSnapshot publication and reads"
     check_present "INV-M032" "medium" "components/service/include/service_runtime.hpp" \
         'ReadModelCoordinator[[:space:]]+read_model_coordinator_' \
         "ServiceRuntime must own ReadModelCoordinator as an internal seam"
@@ -394,6 +397,9 @@ run_checks() {
     check_present "INV-M033" "medium" "components/service/include/operation_result_store.hpp" \
         'class[[:space:]]+OperationResultStore' \
         "network operation result queueing must live in a dedicated OperationResultStore seam"
+    check_present "INV-M033" "medium" "components/service/include/operation_result_store.hpp" \
+        'publish_config_result[[:space:]]*\(|take_config_result[[:space:]]*\(' \
+        "OperationResultStore must also own config result queueing APIs"
     check_present "INV-M033" "medium" "components/service/include/service_runtime.hpp" \
         'OperationResultStore[[:space:]]+operation_result_store_' \
         "ServiceRuntime must own OperationResultStore as an internal seam"
@@ -406,6 +412,9 @@ run_checks() {
     check_present "INV-M033" "medium" "components/service/include/service_runtime_api.hpp" \
         'get_network_operation_poll_status[[:space:]]*\(' \
         "ServiceRuntimeApi must expose centralized poll status semantics for async network operations"
+    check_present "INV-M033" "medium" "components/service/include/service_runtime_api.hpp" \
+        'take_config_result[[:space:]]*\(' \
+        "ServiceRuntimeApi must expose service-owned config result reads"
     check_absent "INV-M033" "medium" "components/service/include/service_runtime.hpp" \
         'network_result_queue_|network_result_count_' \
         "network result queue storage must not remain inline inside ServiceRuntime"

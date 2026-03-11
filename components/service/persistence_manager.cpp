@@ -83,6 +83,7 @@ bool PersistenceManager::pop_reporting_profile_write(ReportingProfileWriteNotifi
 
 bool PersistenceManager::post_config_write(
     ServiceRuntime& runtime,
+    uint32_t request_id,
     bool set_timeout_ms,
     uint32_t timeout_ms,
     bool set_max_retries,
@@ -92,6 +93,7 @@ bool PersistenceManager::post_config_write(
     }
 
     ConfigWriteNotification notification{};
+    notification.request_id = request_id;
     notification.set_timeout_ms = set_timeout_ms;
     notification.timeout_ms = timeout_ms;
     notification.set_max_retries = set_max_retries;
@@ -172,6 +174,13 @@ bool PersistenceManager::drain_config_writes(ServiceRuntime& runtime) noexcept {
         runtime.config_max_retries_cache_.store(
             runtime.config_manager_.max_command_retries(),
             std::memory_order_relaxed);
+
+        if (notification.request_id != 0U) {
+            ConfigResult result{};
+            result.request_id = notification.request_id;
+            result.last_command_status = changed ? 1U : 2U;
+            (void)runtime.operation_result_store_.publish_config_result(result);
+        }
     }
 
     return drained;

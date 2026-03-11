@@ -58,6 +58,31 @@ uint32_t OperationResultStore::next_request_id() noexcept {
     }
 }
 
+bool OperationResultStore::publish_config_result(const ConfigResult& result) noexcept {
+    RuntimeLockGuard guard(network_result_lock_);
+    if (result.request_id == 0U) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < config_result_count_; ++i) {
+        if (config_result_queue_[i].request_id == result.request_id) {
+            config_result_queue_[i] = result;
+            return true;
+        }
+    }
+
+    if (config_result_count_ >= kConfigResultQueueCapacity) {
+        for (std::size_t i = 1; i < config_result_count_; ++i) {
+            config_result_queue_[i - 1U] = config_result_queue_[i];
+        }
+        --config_result_count_;
+    }
+
+    config_result_queue_[config_result_count_] = result;
+    ++config_result_count_;
+    return true;
+}
+
 void OperationResultStore::note_network_poll_status(
     uint32_t request_id,
     NetworkOperationPollStatus status) noexcept {
@@ -90,6 +115,28 @@ bool OperationResultStore::publish_network_result(const NetworkResult& result) n
     ++network_result_count_;
     (void)upsert_poll_status_locked(result.request_id, NetworkOperationPollStatus::kReady);
     return true;
+}
+
+bool OperationResultStore::take_config_result(uint32_t request_id, ConfigResult* out) noexcept {
+    RuntimeLockGuard guard(network_result_lock_);
+    if (out == nullptr || request_id == 0U) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < config_result_count_; ++i) {
+        if (config_result_queue_[i].request_id != request_id) {
+            continue;
+        }
+
+        *out = config_result_queue_[i];
+        for (std::size_t j = i + 1U; j < config_result_count_; ++j) {
+            config_result_queue_[j - 1U] = config_result_queue_[j];
+        }
+        --config_result_count_;
+        return true;
+    }
+
+    return false;
 }
 
 bool OperationResultStore::take_network_result(uint32_t request_id, NetworkResult* out) noexcept {
@@ -134,6 +181,11 @@ NetworkOperationPollStatus OperationResultStore::get_network_operation_poll_stat
     }
 
     return NetworkOperationPollStatus::kNotReady;
+}
+
+std::size_t OperationResultStore::pending_config_results() const noexcept {
+    RuntimeLockGuard guard(network_result_lock_);
+    return config_result_count_;
 }
 
 std::size_t OperationResultStore::pending_network_results() const noexcept {

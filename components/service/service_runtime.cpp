@@ -347,6 +347,7 @@ core::CoreError ServiceRuntime::handle_command_result(const core::CoreCommandRes
 bool ServiceRuntime::post_config_write(const ConfigWriteRequest& request) noexcept {
     return persistence_manager_.post_config_write(
         *this,
+        request.request_id,
         request.set_timeout_ms,
         request.timeout_ms,
         request.set_max_retries,
@@ -644,7 +645,8 @@ bool ServiceRuntime::build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnaps
         return false;
     }
 
-    const bool built = read_model_coordinator_.build_devices_api_snapshot(*snapshot.state, runtime_snapshot, out);
+    const bool built = read_model_coordinator_.publish_devices_api_snapshot(*snapshot.state, runtime_snapshot) &&
+                       read_model_coordinator_.build_devices_api_snapshot(out);
     registry_->release_snapshot(&snapshot);
     return built;
 }
@@ -709,6 +711,10 @@ bool ServiceRuntime::build_network_api_snapshot(NetworkApiSnapshot* out) const n
 
 bool ServiceRuntime::build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept {
     return read_model_coordinator_.build_config_api_snapshot(out);
+}
+
+bool ServiceRuntime::take_config_result(uint32_t request_id, ConfigResult* out) noexcept {
+    return operation_result_store_.take_config_result(request_id, out);
 }
 
 bool ServiceRuntime::get_force_remove_remaining_ms(

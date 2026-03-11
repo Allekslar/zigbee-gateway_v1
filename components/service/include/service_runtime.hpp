@@ -110,6 +110,7 @@ public:
     bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept override;
     bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept override;
     bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept override;
+    bool take_config_result(uint32_t request_id, ConfigResult* out) noexcept override;
     bool get_force_remove_remaining_ms(uint16_t short_addr, uint32_t now_ms, uint32_t* remaining_ms) const noexcept;
     bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept override;
     NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept override;

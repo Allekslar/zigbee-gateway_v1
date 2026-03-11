@@ -56,10 +56,16 @@ struct RuntimeStats {
 };
 
 struct ConfigWriteRequest {
+    uint32_t request_id{0};
     bool set_timeout_ms{false};
     uint32_t timeout_ms{0};
     bool set_max_retries{false};
     uint8_t max_retries{0};
+};
+
+struct ConfigResult {
+    uint32_t request_id{0};
+    uint8_t last_command_status{0};
 };
 
 struct ConfigSnapshot {
@@ -246,6 +252,7 @@ public:
     virtual bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept = 0;
     virtual bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept = 0;
     virtual bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept = 0;
+    virtual bool take_config_result(uint32_t request_id, ConfigResult* out) noexcept = 0;
     virtual bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept = 0;
     virtual NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_queued(uint32_t request_id) const noexcept = 0;
