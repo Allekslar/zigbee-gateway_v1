@@ -206,7 +206,9 @@ ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& eff
     config_max_retries_cache_.store(config_manager_.max_command_retries(), std::memory_order_relaxed);
     mqtt_status_cache_.last_connect_error = NetworkApiSnapshot::MqttConnectionError::kNone;
     zigbee_lifecycle_coordinator_.set_join_window_cache(false, 0U);
-    sync_api_snapshots();
+    notify_read_models_from_runtime_stats();
+    notify_read_models_from_config_cache();
+    notify_read_models_from_core_snapshot();
 }
 
 void ServiceRuntime::set_join_window_cache(bool open, uint16_t seconds_left) noexcept {
@@ -220,7 +222,7 @@ bool ServiceRuntime::persist_current_core_state() noexcept {
 bool ServiceRuntime::restore_persisted_core_state() noexcept {
     const bool restored = state_persistence_coordinator_.restore_persisted_core_state();
     if (restored) {
-        sync_api_snapshots();
+        notify_read_models_from_core_snapshot();
     }
     return restored;
 }
@@ -662,35 +664,33 @@ bool ServiceRuntime::capture_core_read_model(CoreReadModel* out) const noexcept 
     return true;
 }
 
-void ServiceRuntime::publish_network_api_snapshot(const CoreReadModel& core_snapshot) noexcept {
+void ServiceRuntime::notify_read_models_from_runtime_stats() noexcept {
     ReadModelCoordinator::NetworkPublishInput input{};
-    input.revision = core_snapshot.revision;
-    input.connected = core_snapshot.network_connected;
     input.refresh_requests = stats_.network_refresh_requests.load(std::memory_order_relaxed);
     input.current_backoff_ms = stats_.current_backoff_ms.load(std::memory_order_relaxed);
     input.mqtt = mqtt_status_cache_;
-    read_model_coordinator_.publish_network_snapshot(input);
+    read_model_coordinator_.on_runtime_stats_changed(input);
 }
 
-void ServiceRuntime::publish_config_api_snapshot(const CoreReadModel& core_snapshot) noexcept {
+void ServiceRuntime::notify_read_models_from_config_cache() noexcept {
     ReadModelCoordinator::ConfigPublishInput input{};
-    input.revision = core_snapshot.revision;
-    input.last_command_status = core_snapshot.last_command_status;
     input.command_timeout_ms = config_timeout_ms_cache_.load(std::memory_order_relaxed);
     input.max_command_retries = static_cast<uint8_t>(config_max_retries_cache_.load(std::memory_order_relaxed));
     input.autoconnect_failures = stats_.autoconnect_failures.load(std::memory_order_relaxed);
-    read_model_coordinator_.publish_config_snapshot(input);
+    read_model_coordinator_.on_config_changed(input);
 }
 
-void ServiceRuntime::sync_api_snapshots() noexcept {
+void ServiceRuntime::notify_read_models_from_core_snapshot() noexcept {
     CoreReadModel core_snapshot{};
     if (!capture_core_read_model(&core_snapshot)) {
         return;
     }
 
-    publish_network_api_snapshot(core_snapshot);
-    publish_config_api_snapshot(core_snapshot);
-    read_model_coordinator_.refresh_bridge_snapshots();
+    ReadModelCoordinator::CorePublishInput input{};
+    input.revision = core_snapshot.revision;
+    input.network_connected = core_snapshot.network_connected;
+    input.last_command_status = core_snapshot.last_command_status;
+    read_model_coordinator_.on_core_state_published(input);
 }
 
 bool ServiceRuntime::build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept {
@@ -712,15 +712,18 @@ bool ServiceRuntime::take_network_result(uint32_t request_id, NetworkResult* out
     return operation_result_store_.take_network_result(request_id, out);
 }
 
+NetworkOperationPollStatus ServiceRuntime::get_network_operation_poll_status(uint32_t request_id) const noexcept {
+    return operation_result_store_.get_network_operation_poll_status(request_id);
+}
+
 bool ServiceRuntime::is_scan_request_queued(uint32_t request_id) const noexcept {
-    if (request_id == 0) {
-        return false;
-    }
-    return scan_manager_.is_request_queued(request_id) || network_manager_.is_scan_request_queued(request_id);
+    return operation_result_store_.get_network_operation_poll_status(request_id) ==
+           NetworkOperationPollStatus::kScanQueued;
 }
 
 bool ServiceRuntime::is_scan_request_in_progress(uint32_t request_id) const noexcept {
-    return scan_manager_.is_request_in_progress(request_id);
+    return operation_result_store_.get_network_operation_poll_status(request_id) ==
+           NetworkOperationPollStatus::kScanInProgress;
 }
 
 bool ServiceRuntime::initialize_hal_adapter() noexcept {
@@ -729,7 +732,6 @@ bool ServiceRuntime::initialize_hal_adapter() noexcept {
     }
 
     state_persistence_coordinator_.mark_restore_pending();
-    sync_api_snapshots();
     return true;
 }
 
@@ -976,7 +978,11 @@ std::size_t ServiceRuntime::process_pending() noexcept {
     }
 
     if (overall_progress) {
-        sync_api_snapshots();
+        notify_read_models_from_runtime_stats();
+        notify_read_models_from_config_cache();
+        if (processed != 0U) {
+            notify_read_models_from_core_snapshot();
+        }
     }
 
     return processed;
@@ -1005,7 +1011,7 @@ std::size_t ServiceRuntime::tick(uint32_t now_ms) noexcept {
     }
 
     queued += process_pending_sta_connect(now_ms);
-    queued += process_force_remove_timeouts(now_ms);
+    queued += zigbee_lifecycle_coordinator_.process_force_remove_timeouts(*this, now_ms);
 
     CoreReadModel core_snapshot{};
     const bool have_core_snapshot = capture_core_read_model(&core_snapshot);
@@ -1112,10 +1118,6 @@ bool ServiceRuntime::request_join_window_open(uint16_t duration_seconds) noexcep
 
 void ServiceRuntime::process_zigbee_network_policy(uint32_t now_ms) noexcept {
     zigbee_lifecycle_coordinator_.process_join_window_policy(*this, now_ms);
-}
-
-bool ServiceRuntime::schedule_force_remove(uint16_t short_addr, uint32_t deadline_ms) noexcept {
-    return device_manager_.schedule_force_remove(short_addr, deadline_ms);
 }
 
 std::size_t ServiceRuntime::process_pending_sta_connect(uint32_t now_ms) noexcept {

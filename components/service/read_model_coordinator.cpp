@@ -43,33 +43,39 @@ bool ReadModelCoordinator::build_matter_bridge_snapshot(MatterBridgeSnapshot* ou
     return true;
 }
 
-void ReadModelCoordinator::publish_network_snapshot(const NetworkPublishInput& input) noexcept {
+void ReadModelCoordinator::rebuild_network_snapshot() noexcept {
     const uint32_t start_seq = network_api_snapshot_.seq.load(std::memory_order_relaxed);
     network_api_snapshot_.seq.store(start_seq + 1U, std::memory_order_release);
-    network_api_snapshot_.revision.store(input.revision, std::memory_order_relaxed);
-    network_api_snapshot_.connected.store(input.connected, std::memory_order_relaxed);
-    network_api_snapshot_.refresh_requests.store(input.refresh_requests, std::memory_order_relaxed);
-    network_api_snapshot_.current_backoff_ms.store(input.current_backoff_ms, std::memory_order_relaxed);
-    network_api_snapshot_.mqtt_enabled.store(input.mqtt.enabled, std::memory_order_relaxed);
-    network_api_snapshot_.mqtt_connected.store(input.mqtt.connected, std::memory_order_relaxed);
+    network_api_snapshot_.revision.store(core_publish_input_.revision, std::memory_order_relaxed);
+    network_api_snapshot_.connected.store(core_publish_input_.network_connected, std::memory_order_relaxed);
+    network_api_snapshot_.refresh_requests.store(network_publish_input_.refresh_requests, std::memory_order_relaxed);
+    network_api_snapshot_.current_backoff_ms.store(
+        network_publish_input_.current_backoff_ms,
+        std::memory_order_relaxed);
+    network_api_snapshot_.mqtt_enabled.store(network_publish_input_.mqtt.enabled, std::memory_order_relaxed);
+    network_api_snapshot_.mqtt_connected.store(network_publish_input_.mqtt.connected, std::memory_order_relaxed);
     network_api_snapshot_.mqtt_last_connect_error.store(
-        static_cast<uint32_t>(input.mqtt.last_connect_error),
+        static_cast<uint32_t>(network_publish_input_.mqtt.last_connect_error),
         std::memory_order_relaxed);
     std::memcpy(
         network_api_snapshot_.mqtt_broker_endpoint_summary.data(),
-        input.mqtt.broker_endpoint_summary.data(),
+        network_publish_input_.mqtt.broker_endpoint_summary.data(),
         network_api_snapshot_.mqtt_broker_endpoint_summary.size());
     network_api_snapshot_.seq.store(start_seq + 2U, std::memory_order_release);
 }
 
-void ReadModelCoordinator::publish_config_snapshot(const ConfigPublishInput& input) noexcept {
+void ReadModelCoordinator::rebuild_config_snapshot() noexcept {
     const uint32_t start_seq = config_api_snapshot_.seq.load(std::memory_order_relaxed);
     config_api_snapshot_.seq.store(start_seq + 1U, std::memory_order_release);
-    config_api_snapshot_.revision.store(input.revision, std::memory_order_relaxed);
-    config_api_snapshot_.last_command_status.store(input.last_command_status, std::memory_order_relaxed);
-    config_api_snapshot_.command_timeout_ms.store(input.command_timeout_ms, std::memory_order_relaxed);
-    config_api_snapshot_.max_command_retries.store(input.max_command_retries, std::memory_order_relaxed);
-    config_api_snapshot_.autoconnect_failures.store(input.autoconnect_failures, std::memory_order_relaxed);
+    config_api_snapshot_.revision.store(core_publish_input_.revision, std::memory_order_relaxed);
+    config_api_snapshot_.last_command_status.store(core_publish_input_.last_command_status, std::memory_order_relaxed);
+    config_api_snapshot_.command_timeout_ms.store(config_publish_input_.command_timeout_ms, std::memory_order_relaxed);
+    config_api_snapshot_.max_command_retries.store(
+        config_publish_input_.max_command_retries,
+        std::memory_order_relaxed);
+    config_api_snapshot_.autoconnect_failures.store(
+        config_publish_input_.autoconnect_failures,
+        std::memory_order_relaxed);
     config_api_snapshot_.seq.store(start_seq + 2U, std::memory_order_release);
 }
 
@@ -89,6 +95,29 @@ void ReadModelCoordinator::refresh_bridge_snapshots() noexcept {
         matter_bridge_snapshot_ = matter_snapshot;
         matter_bridge_snapshot_ready_ = true;
     }
+}
+
+void ReadModelCoordinator::on_core_state_published(const CorePublishInput& input) noexcept {
+    core_publish_input_ = input;
+    rebuild_network_snapshot();
+    rebuild_config_snapshot();
+    refresh_bridge_snapshots();
+}
+
+void ReadModelCoordinator::on_runtime_stats_changed(const NetworkPublishInput& input) noexcept {
+    network_publish_input_ = input;
+    rebuild_network_snapshot();
+    rebuild_config_snapshot();
+}
+
+void ReadModelCoordinator::on_config_changed(const ConfigPublishInput& input) noexcept {
+    config_publish_input_ = input;
+    rebuild_config_snapshot();
+}
+
+void ReadModelCoordinator::on_mqtt_status_changed(const NetworkApiSnapshot::MqttStatusSnapshot& snapshot) noexcept {
+    network_publish_input_.mqtt = snapshot;
+    rebuild_network_snapshot();
 }
 
 bool ReadModelCoordinator::build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept {

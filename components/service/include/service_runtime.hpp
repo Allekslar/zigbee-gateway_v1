@@ -202,9 +202,9 @@ private:
     };
 
     bool capture_core_read_model(CoreReadModel* out) const noexcept;
-    void publish_network_api_snapshot(const CoreReadModel& core_snapshot) noexcept;
-    void publish_config_api_snapshot(const CoreReadModel& core_snapshot) noexcept;
-    void sync_api_snapshots() noexcept;
+    void notify_read_models_from_core_snapshot() noexcept;
+    void notify_read_models_from_runtime_stats() noexcept;
+    void notify_read_models_from_config_cache() noexcept;
     bool drain_mqtt_status_update() noexcept;
 
     // CoreRegistry is owned by ServiceRuntime; managers must consume prepared
