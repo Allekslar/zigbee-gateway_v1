@@ -442,7 +442,7 @@ esp_err_t network_scan_get_handler(httpd_req_t* req) {
     ESP_LOGI(kTag, "HTTP GET /api/network/scan");
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
-    const uint32_t request_id = allocate_correlation_id(context);
+    const uint32_t request_id = context->runtime->next_operation_request_id();
     if (!context->runtime->post_network_scan(request_id)) {
         return send_json_error(req, "503 Service Unavailable", "scan_queue_full");
     }
@@ -457,7 +457,7 @@ esp_err_t network_credentials_status_get_handler(httpd_req_t* req) {
     ESP_LOGI(kTag, "HTTP GET /api/network/credentials/status");
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
-    const uint32_t request_id = allocate_correlation_id(context);
+    const uint32_t request_id = context->runtime->next_operation_request_id();
     if (!context->runtime->post_network_credentials_status(request_id)) {
         return send_json_error(req, "503 Service Unavailable", "credentials_queue_full");
     }
@@ -492,7 +492,7 @@ esp_err_t network_connect_post_handler(httpd_req_t* req) {
         save_credentials ? "true" : "false");
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
-    const uint32_t request_id = allocate_correlation_id(context);
+    const uint32_t request_id = context->runtime->next_operation_request_id();
     if (!context->runtime->post_network_connect(request_id, ssid, password, save_credentials)) {
         return send_json_error(req, "503 Service Unavailable", "connect_queue_full");
     }

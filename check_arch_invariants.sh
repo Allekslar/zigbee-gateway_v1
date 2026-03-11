@@ -395,8 +395,11 @@ run_checks() {
         'OperationResultStore[[:space:]]+operation_result_store_' \
         "ServiceRuntime must own OperationResultStore as an internal seam"
     check_present "INV-M033" "medium" "components/service/service_runtime.cpp" \
-        'operation_result_store_\.publish_network_result[[:space:]]*\(|operation_result_store_\.take_network_result[[:space:]]*\(' \
-        "ServiceRuntime must delegate network result queue operations to OperationResultStore"
+        'operation_result_store_\.next_request_id[[:space:]]*\(|operation_result_store_\.publish_network_result[[:space:]]*\(|operation_result_store_\.take_network_result[[:space:]]*\(' \
+        "ServiceRuntime must delegate request-id generation and network result queue operations to OperationResultStore"
+    check_present "INV-M033" "medium" "components/service/include/service_runtime_api.hpp" \
+        'next_operation_request_id[[:space:]]*\(' \
+        "ServiceRuntimeApi must expose service-owned operation request-id allocation"
     check_absent "INV-M033" "medium" "components/service/include/service_runtime.hpp" \
         'network_result_queue_|network_result_count_' \
         "network result queue storage must not remain inline inside ServiceRuntime"
@@ -408,11 +411,11 @@ run_checks() {
         'ZigbeeLifecycleCoordinator[[:space:]]+zigbee_lifecycle_coordinator_' \
         "ServiceRuntime must own ZigbeeLifecycleCoordinator as an internal seam"
     check_present "INV-M034" "medium" "components/service/service_runtime.cpp" \
-        'zigbee_lifecycle_coordinator_\.request_join_window_open[[:space:]]*\(|zigbee_lifecycle_coordinator_\.process_join_window_policy[[:space:]]*\(' \
-        "ServiceRuntime must delegate join-window lifecycle operations to ZigbeeLifecycleCoordinator"
+        'zigbee_lifecycle_coordinator_\.request_join_window_open[[:space:]]*\(|zigbee_lifecycle_coordinator_\.process_join_window_policy[[:space:]]*\(|zigbee_lifecycle_coordinator_\.handle_join_candidate[[:space:]]*\(' \
+        "ServiceRuntime must delegate join-window and duplicate-join lifecycle operations to ZigbeeLifecycleCoordinator"
     check_absent "INV-M034" "medium" "components/service/include/service_runtime.hpp" \
-        'join_window_open_cache_|join_window_seconds_left_cache_' \
-        "join-window cache storage must not remain inline inside ServiceRuntime"
+        'join_window_open_cache_|join_window_seconds_left_cache_|is_duplicate_join_candidate[[:space:]]*\(' \
+        "join-window cache storage and duplicate-join helper must not remain inline inside ServiceRuntime"
 
     check_present "INV-M035" "medium" "components/service/include/state_persistence_coordinator.hpp" \
         'class[[:space:]]+StatePersistenceCoordinator' \

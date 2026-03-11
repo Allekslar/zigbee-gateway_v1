@@ -200,7 +200,7 @@ ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& eff
       effect_executor_(&effect_executor),
       read_model_coordinator_(registry),
       state_persistence_coordinator_(registry),
-      zigbee_lifecycle_coordinator_(network_policy_manager_) {
+      zigbee_lifecycle_coordinator_(network_policy_manager_, device_manager_) {
     (void)config_manager_.load();
     config_timeout_ms_cache_.store(config_manager_.command_timeout_ms(), std::memory_order_relaxed);
     config_max_retries_cache_.store(config_manager_.max_command_retries(), std::memory_order_relaxed);
@@ -271,6 +271,10 @@ bool ServiceRuntime::pop_event(core::CoreEvent* out) noexcept {
     queue_head_ = (queue_head_ + 1U) % kEventQueueCapacity;
     --queue_count_;
     return true;
+}
+
+uint32_t ServiceRuntime::next_operation_request_id() noexcept {
+    return operation_result_store_.next_request_id();
 }
 
 bool ServiceRuntime::post_event(const core::CoreEvent& event) noexcept {
@@ -409,28 +413,7 @@ bool ServiceRuntime::post_open_join_window(uint32_t request_id, uint16_t duratio
 }
 
 bool ServiceRuntime::post_zigbee_join_candidate(uint16_t short_addr) noexcept {
-    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U) {
-        return false;
-    }
-
-    const uint32_t now_ms = monotonic_now_ms();
-    if (is_duplicate_join_candidate(short_addr, now_ms)) {
-        SR_LOGI(
-            "Suppress duplicate join candidate short_addr=0x%04x window_ms=%lu",
-            static_cast<unsigned>(short_addr),
-            static_cast<unsigned long>(DeviceManager::kJoinDedupWindowMs));
-        return true;
-    }
-
-    core::CoreEvent event{};
-    event.type = core::CoreEventType::kDeviceJoined;
-    event.device_short_addr = short_addr;
-    if (!push_event(event)) {
-        return false;
-    }
-
-    zigbee_lifecycle_coordinator_.maybe_auto_close_join_window_after_first_join(*this, short_addr);
-    return true;
+    return zigbee_lifecycle_coordinator_.handle_join_candidate(*this, short_addr, monotonic_now_ms());
 }
 
 bool ServiceRuntime::post_zigbee_interview_result(
@@ -1121,10 +1104,6 @@ uint32_t ServiceRuntime::monotonic_now_ms() const noexcept {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
 #endif
-}
-
-bool ServiceRuntime::is_duplicate_join_candidate(uint16_t short_addr, uint32_t now_ms) noexcept {
-    return device_manager_.is_duplicate_join_candidate(short_addr, now_ms);
 }
 
 bool ServiceRuntime::request_join_window_open(uint16_t duration_seconds) noexcept {

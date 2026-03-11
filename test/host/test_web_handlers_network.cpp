@@ -2,6 +2,7 @@
 /* Copyright (C) 2026 Alex.K. */
 
 #include <cassert>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -94,6 +95,23 @@ extern "C" esp_err_t httpd_query_key_value(const char *qry, const char *key, cha
 #include "hal_wifi.h"
 #include "hal_nvs.h"
 
+namespace {
+
+uint32_t extract_request_id(const std::string& response) {
+    const std::string token = "\"request_id\":";
+    const std::size_t pos = response.find(token);
+    assert(pos != std::string::npos);
+    const std::size_t start = pos + token.size();
+    std::size_t end = start;
+    while (end < response.size() && std::isdigit(static_cast<unsigned char>(response[end])) != 0) {
+        ++end;
+    }
+    assert(end > start);
+    return static_cast<uint32_t>(std::stoul(response.substr(start, end - start)));
+}
+
+}  // namespace
+
 int main() {
     core::CoreRegistry registry;
     service::EffectExecutor effect_executor;
@@ -115,14 +133,14 @@ int main() {
     g_last_response.clear();
     esp_err_t err = web_ui::network_scan_get_handler(&req);
     assert(err == ESP_OK);
-    assert(g_last_response.find("\"request_id\":100") != std::string::npos);
+    const uint32_t scan_request_id = extract_request_id(g_last_response);
     assert(g_last_response.find("\"operation\":\"scan\"") != std::string::npos);
 
     
     runtime.process_pending();
 
     
-    g_query_string = "request_id=100";
+    g_query_string = "request_id=" + std::to_string(scan_request_id);
     g_chunks.clear();
     err = web_ui::network_result_get_handler(&req);
     assert(err == ESP_OK);
@@ -156,20 +174,18 @@ int main() {
     g_last_status.clear();
     
     
-    next_id.store(200);
-
     err = web_ui::network_connect_post_handler(&req);
     assert(err == ESP_OK);
     assert(g_last_status == "202 Accepted");
     assert(g_last_response.find("\"accepted\":true") != std::string::npos);
-    assert(g_last_response.find("\"request_id\":200") != std::string::npos);
+    const uint32_t connect_request_id = extract_request_id(g_last_response);
 
     
     runtime.process_pending();
     runtime.tick(current_time + 1000);
     
     service::NetworkResult connect_result{};
-    assert(runtime.take_network_result(200, &connect_result));
+    assert(runtime.take_network_result(connect_request_id, &connect_result));
     assert(connect_result.operation == service::NetworkOperationType::kConnect);
     assert(connect_result.status == service::NetworkOperationStatus::kOk);
     assert(std::strcmp(connect_result.ssid, test_ssid) == 0);
@@ -179,15 +195,14 @@ int main() {
     
     (void)hal_nvs_set_str("wifi_ssid", "");
     (void)hal_nvs_set_str("wifi_password", "");
-    next_id.store(300);
     g_last_response.clear();
     err = web_ui::network_credentials_status_get_handler(&req);
     assert(err == ESP_OK);
-    assert(g_last_response.find("\"request_id\":300") != std::string::npos);
+    const uint32_t credentials_request_id = extract_request_id(g_last_response);
 
     runtime.process_pending();
 
-    g_query_string = "request_id=300";
+    g_query_string = "request_id=" + std::to_string(credentials_request_id);
     g_last_response.clear();
     err = web_ui::network_result_get_handler(&req);
     assert(err == ESP_OK);
@@ -200,13 +215,13 @@ int main() {
     assert(hal_nvs_set_str("wifi_ssid", "SavedWiFi") == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_str("wifi_password", "secret123") == HAL_NVS_STATUS_OK);
     
-    next_id.store(400);
     err = web_ui::network_credentials_status_get_handler(&req);
     assert(err == ESP_OK);
+    const uint32_t saved_credentials_request_id = extract_request_id(g_last_response);
 
     runtime.process_pending();
 
-    g_query_string = "request_id=400";
+    g_query_string = "request_id=" + std::to_string(saved_credentials_request_id);
     g_last_response.clear();
     err = web_ui::network_result_get_handler(&req);
     assert(err == ESP_OK);

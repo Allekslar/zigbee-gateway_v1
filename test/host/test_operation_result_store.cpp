@@ -21,6 +21,11 @@ int main() {
     service::OperationResultStore store{};
     service::NetworkResult out{};
 
+    const uint32_t first_request_id = store.next_request_id();
+    const uint32_t second_request_id = store.next_request_id();
+    assert(first_request_id != 0U);
+    assert(second_request_id == first_request_id + 1U);
+
     assert(store.publish_network_result(make_result(7U, service::NetworkOperationStatus::kOk)));
     assert(store.publish_network_result(make_result(7U, service::NetworkOperationStatus::kHalFailed)));
     assert(store.take_network_result(7U, &out));

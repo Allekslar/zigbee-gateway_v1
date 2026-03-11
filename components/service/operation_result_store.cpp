@@ -5,6 +5,19 @@
 
 namespace service {
 
+uint32_t OperationResultStore::next_request_id() noexcept {
+    for (;;) {
+        uint32_t current = next_request_id_.load(std::memory_order_acquire);
+        uint32_t next = current + 1U;
+        if (next == 0U) {
+            next = 1U;
+        }
+        if (next_request_id_.compare_exchange_weak(current, next, std::memory_order_acq_rel, std::memory_order_acquire)) {
+            return current;
+        }
+    }
+}
+
 bool OperationResultStore::publish_network_result(const NetworkResult& result) noexcept {
     RuntimeLockGuard guard(network_result_lock_);
 

@@ -65,6 +65,7 @@ public:
 
     ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& effect_executor) noexcept;
 
+    uint32_t next_operation_request_id() noexcept override;
     bool post_event(const core::CoreEvent& event) noexcept;
     core::CoreError post_command(const core::CoreCommand& command) noexcept override;
     core::CoreError submit_command(const core::CoreCommand& command) noexcept;
@@ -142,6 +143,7 @@ private:
     friend class PersistenceManager;
     friend class ScanManager;
     friend class ServiceRuntimeTestAccess;
+    friend class ZigbeeLifecycleCoordinator;
 
 private:
 #ifdef ESP_PLATFORM
@@ -159,7 +161,6 @@ private:
     bool drain_config_writes() noexcept;
     bool drain_network_requests() noexcept;
     uint32_t monotonic_now_ms() const noexcept;
-    bool is_duplicate_join_candidate(uint16_t short_addr, uint32_t now_ms) noexcept;
     bool ensure_wifi_mode_for_scan() noexcept;
     bool ensure_wifi_mode_for_sta_connect() noexcept;
     bool request_join_window_open(uint16_t duration_seconds) noexcept;

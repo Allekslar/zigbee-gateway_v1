@@ -301,7 +301,7 @@ esp_err_t device_join_post_handler(httpd_req_t* req) {
         return send_json_error(req, "400 Bad Request", "invalid_duration_seconds");
     }
 
-    const uint32_t request_id = allocate_correlation_id(context);
+    const uint32_t request_id = context->runtime->next_operation_request_id();
     ESP_LOGI(
         kTag,
         "HTTP POST /api/devices/join request_id=%lu duration_seconds=%lu",
@@ -340,7 +340,7 @@ esp_err_t device_remove_post_handler(httpd_req_t* req) {
         force_remove_timeout_ms = force_remove_timeout_raw;
     }
 
-    const uint32_t request_id = allocate_correlation_id(context);
+    const uint32_t request_id = context->runtime->next_operation_request_id();
     if (!context->runtime->post_remove_device(
             request_id,
             static_cast<uint16_t>(short_addr_raw),

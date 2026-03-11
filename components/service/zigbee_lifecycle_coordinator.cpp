@@ -3,6 +3,7 @@
 
 #include "zigbee_lifecycle_coordinator.hpp"
 
+#include "device_manager.hpp"
 #include "hal_zigbee.h"
 #include "log_tags.h"
 #include "network_policy_manager.hpp"
@@ -25,8 +26,10 @@ constexpr const char* kTag = LOG_TAG_SERVICE_RUNTIME;
 
 }  // namespace
 
-ZigbeeLifecycleCoordinator::ZigbeeLifecycleCoordinator(NetworkPolicyManager& network_policy_manager) noexcept
-    : network_policy_manager_(&network_policy_manager) {}
+ZigbeeLifecycleCoordinator::ZigbeeLifecycleCoordinator(
+    NetworkPolicyManager& network_policy_manager,
+    DeviceManager& device_manager) noexcept
+    : device_manager_(&device_manager), network_policy_manager_(&network_policy_manager) {}
 
 void ZigbeeLifecycleCoordinator::set_join_window_cache(bool open, uint16_t seconds_left) noexcept {
     join_window_open_cache_.store(open, std::memory_order_release);
@@ -54,6 +57,33 @@ bool ZigbeeLifecycleCoordinator::request_join_window_open(
 
 void ZigbeeLifecycleCoordinator::process_join_window_policy(ServiceRuntime& runtime, uint32_t now_ms) noexcept {
     network_policy_manager_->process_zigbee_join_window_policy(runtime, now_ms);
+}
+
+bool ZigbeeLifecycleCoordinator::handle_join_candidate(
+    ServiceRuntime& runtime,
+    uint16_t short_addr,
+    uint32_t now_ms) noexcept {
+    if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U) {
+        return false;
+    }
+
+    if (device_manager_->is_duplicate_join_candidate(short_addr, now_ms)) {
+        ZLC_LOGI(
+            "Suppress duplicate join candidate short_addr=0x%04x window_ms=%lu",
+            static_cast<unsigned>(short_addr),
+            static_cast<unsigned long>(DeviceManager::kJoinDedupWindowMs));
+        return true;
+    }
+
+    core::CoreEvent event{};
+    event.type = core::CoreEventType::kDeviceJoined;
+    event.device_short_addr = short_addr;
+    if (!runtime.push_event(event)) {
+        return false;
+    }
+
+    maybe_auto_close_join_window_after_first_join(runtime, short_addr);
+    return true;
 }
 
 void ZigbeeLifecycleCoordinator::maybe_auto_close_join_window_after_first_join(
