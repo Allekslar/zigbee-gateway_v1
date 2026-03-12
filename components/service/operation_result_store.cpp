@@ -3,6 +3,8 @@
 
 #include "operation_result_store.hpp"
 
+#include <limits>
+
 namespace service {
 
 bool OperationResultStore::upsert_poll_status_locked(
@@ -48,10 +50,8 @@ void OperationResultStore::remove_poll_status_locked(uint32_t request_id) noexce
 uint32_t OperationResultStore::next_request_id() noexcept {
     for (;;) {
         uint32_t current = next_request_id_.load(std::memory_order_acquire);
-        uint32_t next = current + 1U;
-        if (next == 0U) {
-            next = 1U;
-        }
+        const uint32_t next =
+            (current == std::numeric_limits<uint32_t>::max()) ? 1U : (current + 1U);
         if (next_request_id_.compare_exchange_weak(current, next, std::memory_order_acq_rel, std::memory_order_acquire)) {
             return current;
         }

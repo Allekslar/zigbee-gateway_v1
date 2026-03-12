@@ -16,7 +16,7 @@ Focus: stable layered architecture, business-logic isolation from HAL, host-side
 - provides a Web UI and HTTP API for control;
 - uses separated layers `core -> service -> app_hal`;
 - includes an active MQTT bridge transport/command/discovery path (Phase 2 completed);
-- includes a Matter bridge scaffold (Phase 3 in progress).
+- includes a Matter bridge runtime path (Phase 3 completed).
 
 ## Current Scope And Roadmap
 
@@ -24,7 +24,7 @@ Focus: stable layered architecture, business-logic isolation from HAL, host-side
 |------|-------------------|----------------|
 | Phase 1 | Completed | Zigbee, HTTP, mDNS |
 | Phase 2 | Completed: MQTT transport, topics, commands, status path, Home Assistant discovery, and broker HIL smoke | MQTT |
-| Phase 3 | Module structure prepared | Matter-over-Thread/Wi-Fi |
+| Phase 3 | Completed: runtime contract, snapshot semantics, command/update loop, robustness gates, and Matter host/HIL smoke | Matter-over-Thread/Wi-Fi |
 
 ## Key Documents
 
@@ -44,7 +44,7 @@ components/service/   - use-case managers, orchestration
 components/app_hal/   - adapters to ESP-IDF/stacks (C ABI)
 components/web_ui/    - web server, routes, handlers, assets
 components/mqtt_bridge/   - MQTT bridge (Phase 2)
-components/matter_bridge/ - Matter bridge (Phase 3)
+components/matter_bridge/ - Matter bridge (Phase 3 completed runtime path)
 test/host/            - core/service unit tests on host
 test/integration/     - integration host tests for web/platform shims
 test/target/          - target HAL tests for ESP32-C6

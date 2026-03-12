@@ -203,8 +203,8 @@ class ServiceRuntimeApi : public MatterRuntimeApi {
 public:
     virtual ~ServiceRuntimeApi() = default;
 
-    virtual uint32_t next_operation_request_id() noexcept = 0;
-    virtual core::CoreError post_command(const core::CoreCommand& command) noexcept = 0;
+    virtual uint32_t next_operation_request_id() noexcept override = 0;
+    virtual core::CoreError post_command(const core::CoreCommand& command) noexcept override = 0;
     virtual bool post_config_write(const ConfigWriteRequest& request) noexcept = 0;
     virtual bool post_reporting_profile_write(const ConfigManager::ReportingProfile& profile) noexcept = 0;
     virtual bool post_network_scan(uint32_t request_id) noexcept = 0;
