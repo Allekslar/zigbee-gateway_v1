@@ -192,6 +192,10 @@ Matter snapshot-to-attribute bridge contract:
 - `MatterRuntimeApi::build_matter_bridge_snapshot(...)` is the narrow service-owned read-model contract consumed by Matter bridge.
 - `ServiceRuntimeApi` extends `MatterRuntimeApi`, so bootstrap wiring still uses one runtime instance without exposing the full service surface to Matter bridge code.
 - `MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot&)` translates normalized Matter bridge snapshot devices to attribute updates.
+- Snapshot identity is `short_addr`; bridge deltas are field-based and deterministic.
+- Revision-only snapshot changes do not emit attribute deltas if payload fields are unchanged.
+- First active device appearance emits `availability=true` and `stale` status plus class-specific attributes present in snapshot payload.
+- Device disappearance emits `availability=false`.
 - `MatterBridge::drain_attribute_updates(...)` returns deterministic, bounded deltas for publishing.
 - Translation keeps Matter-specific transport logic out of Core; Core layout does not leak directly into Matter consumers.
 

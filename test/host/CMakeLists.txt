@@ -416,6 +416,21 @@ target_link_libraries(test_matter_runtime_feed PRIVATE service_host)
 zg_apply_component_compile_policy(test_matter_runtime_feed)
 add_test(NAME test_matter_runtime_feed COMMAND test_matter_runtime_feed)
 
+add_executable(test_matter_snapshot_semantics
+    test_matter_snapshot_semantics.cpp
+    ../../components/matter_bridge/matter_bridge.cpp
+    ../../components/matter_bridge/matter_device_map.cpp
+)
+target_include_directories(test_matter_snapshot_semantics PRIVATE
+    ../../components/matter_bridge/include
+    ../../components/service/include
+    ../../components/core/include
+    ../../components/app_hal/include
+    ../../components/common/include
+)
+zg_apply_component_compile_policy(test_matter_snapshot_semantics)
+add_test(NAME test_matter_snapshot_semantics COMMAND test_matter_snapshot_semantics)
+
 add_executable(test_matter_runtime_attach_contract
     test_matter_runtime_attach_contract.cpp
     ../../components/matter_bridge/matter_bridge.cpp
