@@ -17,6 +17,7 @@ Environment variables:
   GATEWAY_READY_SEC   Max wait for gateway HTTP API readiness at startup (default: 30)
   FORCE_REMOVE_TIMEOUT_MS  Force-remove timeout armed in gateway after remove request (default: 15000)
   HTTP_FETCH_RETRIES  Retries per HTTP JSON fetch before giving up (default: 3)
+  HTTP_REQUEST_RETRIES  Retries for HTTP POST/GET request payload operations (default: 3)
   HTTP_RETRY_SEC      Delay between transient HTTP retries (default: 1)
   POLL_SEC            HTTP poll interval in seconds (default: 1)
 
@@ -46,6 +47,7 @@ POWER_RETRY_SEC="${POWER_RETRY_SEC:-3}"
 GATEWAY_READY_SEC="${GATEWAY_READY_SEC:-30}"
 FORCE_REMOVE_TIMEOUT_MS="${FORCE_REMOVE_TIMEOUT_MS:-15000}"
 HTTP_FETCH_RETRIES="${HTTP_FETCH_RETRIES:-3}"
+HTTP_REQUEST_RETRIES="${HTTP_REQUEST_RETRIES:-3}"
 HTTP_RETRY_SEC="${HTTP_RETRY_SEC:-1}"
 POLL_SEC="${POLL_SEC:-1}"
 
@@ -99,6 +101,39 @@ fetch_json() {
   done
 
   echo "Failed to fetch valid JSON from ${GW_BASE_URL}${path} after ${HTTP_FETCH_RETRIES} attempts" >&2
+  return 1
+}
+
+request_with_retries() {
+  local method="$1"
+  local path="$2"
+  local body="${3:-}"
+  local out_file="$4"
+  local attempt=1
+  local tmp_file="${out_file}.tmp"
+
+  while (( attempt <= HTTP_REQUEST_RETRIES )); do
+    if [[ -n "${body}" ]]; then
+      if curl -fsS -X "${method}" -H "Content-Type: application/json" --data "${body}" \
+          "${GW_BASE_URL}${path}" > "${tmp_file}" 2>/dev/null; then
+        mv "${tmp_file}" "${out_file}"
+        return 0
+      fi
+    else
+      if curl -fsS -X "${method}" "${GW_BASE_URL}${path}" > "${tmp_file}" 2>/dev/null; then
+        mv "${tmp_file}" "${out_file}"
+        return 0
+      fi
+    fi
+
+    rm -f "${tmp_file}"
+    if (( attempt < HTTP_REQUEST_RETRIES )); then
+      sleep "${HTTP_RETRY_SEC}"
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  echo "Failed request ${method} ${GW_BASE_URL}${path} after ${HTTP_REQUEST_RETRIES} attempts" >&2
   return 1
 }
 
@@ -224,6 +259,27 @@ PY
   return 1
 }
 
+wait_for_join_window_closed() {
+  local timeout_sec="$1"
+  local out_file="$2"
+  local deadline=$((SECONDS + timeout_sec))
+
+  while (( SECONDS < deadline )); do
+    if ! fetch_json "/api/devices" "${out_file}"; then
+      sleep "${POLL_SEC}"
+      continue
+    fi
+    local join_window_open
+    join_window_open="$(json_eval 'data.get("join_window_open", False)' "${out_file}")"
+    if [[ "${join_window_open}" != "true" ]]; then
+      return 0
+    fi
+    sleep "${POLL_SEC}"
+  done
+
+  return 1
+}
+
 extract_new_short_addr() {
   local before_file="$1"
   local after_file="$2"
@@ -292,8 +348,9 @@ PY
 request_power_state() {
   local short_addr="$1"
   local desired="$2"
-  request "POST" "/api/devices/power" \
-    "{\"short_addr\":${short_addr},\"power_on\":${desired}}" > /dev/null
+  local out_file="$3"
+  request_with_retries "POST" "/api/devices/power" \
+    "{\"short_addr\":${short_addr},\"power_on\":${desired}}" "${out_file}" > /dev/null
 }
 
 wait_for_command_success_after_revision() {
@@ -327,6 +384,7 @@ ensure_power_command_success_with_retries() {
   local out_file="$4"
   local deadline=$((SECONDS + timeout_sec))
   local attempt_window="${POWER_RETRY_SEC}"
+  local request_file="${tmp_dir}/request_power.json"
 
   if (( attempt_window < 1 )); then
     attempt_window=1
@@ -339,7 +397,10 @@ ensure_power_command_success_with_retries() {
     fi
     local before_revision
     before_revision="$(json_eval 'data["revision"]' "${out_file}")"
-    request_power_state "${short_addr}" "${desired}"
+    if ! request_power_state "${short_addr}" "${desired}" "${request_file}"; then
+      sleep "${POLL_SEC}"
+      continue
+    fi
     if wait_for_command_success_after_revision "${before_revision}" "${attempt_window}" "${out_file}"; then
       return 0
     fi
@@ -368,8 +429,19 @@ initial_count="$(json_eval 'data["device_count"]' "${devices_before_file}")"
 echo "Gateway: ${GW_BASE_URL}"
 echo "Initial device_count=${initial_count}"
 
-join_response="$(request "POST" "/api/devices/join" "{\"duration_seconds\":${JOIN_SECONDS}}")"
-join_request_id="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["request_id"])' <<< "${join_response}")"
+join_request_file="${tmp_dir}/request_join.json"
+if ! request_with_retries "POST" "/api/devices/join" "{\"duration_seconds\":${JOIN_SECONDS}}" "${join_request_file}"; then
+  echo "Failed to open join window" >&2
+  exit 1
+fi
+join_request_id="$(python3 - "${join_request_file}" <<'PY'
+import json
+import sys
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+print(data["request_id"])
+PY
+)"
 wait_for_async_result "${join_request_id}" 10 "${async_file}"
 echo "Join window opened for ${JOIN_SECONDS}s"
 
@@ -387,9 +459,8 @@ new_short_addr="$(extract_new_short_addr "${devices_before_file}" "${devices_aft
 }
 echo "Joined device short_addr=${new_short_addr}"
 
-join_window_open="$(json_eval 'data.get("join_window_open", False)' "${devices_after_join_file}")"
-if [[ "${join_window_open}" == "true" ]]; then
-  echo "Join window is still open after first join; expected auto-close" >&2
+if ! wait_for_join_window_closed 10 "${devices_check_file}"; then
+  echo "Join window did not auto-close after first join within 10s" >&2
   exit 1
 fi
 echo "Join window auto-close OK"
@@ -416,9 +487,21 @@ for ((cycle = 1; cycle <= MATTER_LOOP_CYCLES; ++cycle)); do
   echo "Matter loop cycle ${cycle}/${MATTER_LOOP_CYCLES} OK"
 done
 
-remove_response="$(request "POST" "/api/devices/remove" \
-  "{\"short_addr\":${new_short_addr},\"force_remove\":true,\"force_remove_timeout_ms\":${FORCE_REMOVE_TIMEOUT_MS}}")"
-remove_request_id="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["request_id"])' <<< "${remove_response}")"
+remove_request_file="${tmp_dir}/request_remove.json"
+if ! request_with_retries "POST" "/api/devices/remove" \
+    "{\"short_addr\":${new_short_addr},\"force_remove\":true,\"force_remove_timeout_ms\":${FORCE_REMOVE_TIMEOUT_MS}}" \
+    "${remove_request_file}"; then
+  echo "Failed to submit remove request for short_addr=${new_short_addr}" >&2
+  exit 1
+fi
+remove_request_id="$(python3 - "${remove_request_file}" <<'PY'
+import json
+import sys
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+print(data["request_id"])
+PY
+)"
 wait_for_async_result "${remove_request_id}" 20 "${async_file}"
 
 if ! wait_for_short_addr_missing "${new_short_addr}" 30 "${devices_check_file}"; then
