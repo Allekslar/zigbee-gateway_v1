@@ -429,6 +429,13 @@ run_checks() {
         'CoreEvent|CoreState|join_window|reporting_state|device_count|short_addr remap' \
         "HAL Matter adapter must not contain domain lifecycle/policy logic"
 
+    check_absent "INV-M040" "medium" "components/matter_bridge" \
+        'malloc[[:space:]]*\(|calloc[[:space:]]*\(|realloc[[:space:]]*\(|free[[:space:]]*\(|[[:space:]]new[[:space:]]|[[:space:]]delete[[:space:]]' \
+        "Matter bridge runtime path must remain bounded and avoid heap allocations"
+    check_absent "INV-M040" "medium" "components/matter_bridge" \
+        '#include[[:space:]]+\"core_registry\.hpp\"|#include[[:space:]]+\"core_events\.hpp\"|pin_current[[:space:]]*\(|snapshot_copy[[:space:]]*\(|CoreRegistry' \
+        "Matter bridge must not mutate/read CoreRegistry directly (Single Writer boundary)"
+
     check_present "INV-M024" "medium" "components/service/include/bridge_snapshot_builder.hpp" \
         'class[[:space:]]+BridgeSnapshotBuilder' \
         "service bridge snapshot mapping must live in a dedicated helper"
