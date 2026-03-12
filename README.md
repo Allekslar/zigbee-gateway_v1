@@ -197,6 +197,7 @@ Matter snapshot-to-attribute bridge contract:
 - First active device appearance emits `availability=true` and `stale` status plus class-specific attributes present in snapshot payload.
 - Device disappearance emits `availability=false`.
 - `MatterBridge::drain_attribute_updates(...)` returns deterministic, bounded deltas for publishing.
+- Per-sync update production is bounded by `kMatterMaxUpdatesPerSync`; overflow is truncated (with warning on target) to keep runtime stable under pressure.
 - Translation keeps Matter-specific transport logic out of Core; Core layout does not leak directly into Matter consumers.
 
 Matter command ingress contract:

@@ -400,6 +400,19 @@ run_checks() {
         'CoreEventType::kCommandSetDevicePowerRequested|CoreEvent[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\\{' \
         "Matter bridge must not bypass ServiceRuntime command ingress by constructing Core events directly"
 
+    check_present "INV-M038" "medium" "components/matter_bridge/matter_bridge.cpp" \
+        'if[[:space:]]*\([[:space:]]*started\(\)[[:space:]]*\)' \
+        "Matter bridge start path must guard against duplicate start"
+    check_present "INV-M038" "medium" "components/matter_bridge/matter_bridge.cpp" \
+        'return[[:space:]]+true;' \
+        "Matter bridge duplicate-start guard must return success idempotently"
+    check_present "INV-M038" "medium" "components/matter_bridge/matter_bridge.cpp" \
+        'pending_update_count_[[:space:]]*<[[:space:]]*kMatterMaxUpdatesPerSync' \
+        "Matter bridge update queue must remain bounded by kMatterMaxUpdatesPerSync"
+    check_present "INV-M038" "medium" "components/matter_bridge/matter_bridge.cpp" \
+        'xTaskAbortDelay[[:space:]]*\(' \
+        "Matter bridge stop path must wake delayed task to reduce shutdown races and long waits"
+
     check_present "INV-M024" "medium" "components/service/include/bridge_snapshot_builder.hpp" \
         'class[[:space:]]+BridgeSnapshotBuilder' \
         "service bridge snapshot mapping must live in a dedicated helper"

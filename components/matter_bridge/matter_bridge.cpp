@@ -86,6 +86,10 @@ bool publish_update_to_hal(const MatterAttributeUpdate& update) noexcept {
 }  // namespace
 
 bool MatterBridge::start() noexcept {
+    if (started()) {
+        return true;
+    }
+
     reset_sync_state();
 #ifdef ESP_PLATFORM
     if (hal_matter_init() != 0) {
@@ -101,13 +105,25 @@ bool MatterBridge::start() noexcept {
 }
 
 void MatterBridge::stop() noexcept {
-    reset_sync_state();
     started_.store(false, std::memory_order_release);
 #ifdef ESP_PLATFORM
-    for (uint8_t i = 0; i < 20U && task_handle_ != nullptr; ++i) {
+    if (task_handle_ != nullptr) {
+        (void)xTaskAbortDelay(static_cast<TaskHandle_t>(task_handle_));
+    }
+
+    bool stopped = false;
+    for (uint8_t i = 0; i < 100U; ++i) {
+        if (task_handle_ == nullptr) {
+            stopped = true;
+            break;
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+    if (!stopped && task_handle_ != nullptr) {
+        ESP_LOGW(kTag, "Matter bridge task did not stop within grace window");
+    }
 #endif
+    reset_sync_state();
 }
 
 bool MatterBridge::started() const noexcept {
@@ -179,10 +195,13 @@ std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& sna
     }
 
     pending_update_count_ = 0;
+    bool updates_dropped = false;
 
     auto enqueue = [&](const MatterAttributeUpdate& update) noexcept {
         if (pending_update_count_ < kMatterMaxUpdatesPerSync) {
             pending_updates_[pending_update_count_++] = update;
+        } else {
+            updates_dropped = true;
         }
     };
 
@@ -312,6 +331,12 @@ std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& sna
     for (std::size_t i = 0; i < pending_update_count_; ++i) {
         (void)publish_update_to_hal(pending_updates_[i]);
     }
+
+#ifdef ESP_PLATFORM
+    if (updates_dropped) {
+        ESP_LOGW(kTag, "Matter update queue overflow: dropped updates in this sync cycle");
+    }
+#endif
 
     return pending_update_count_;
 }

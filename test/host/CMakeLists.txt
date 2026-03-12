@@ -447,6 +447,21 @@ target_link_libraries(test_matter_runtime_attach_contract PRIVATE service_host)
 zg_apply_component_compile_policy(test_matter_runtime_attach_contract)
 add_test(NAME test_matter_runtime_attach_contract COMMAND test_matter_runtime_attach_contract)
 
+add_executable(test_matter_runtime_robustness
+    test_matter_runtime_robustness.cpp
+    ../../components/matter_bridge/matter_bridge.cpp
+    ../../components/matter_bridge/matter_device_map.cpp
+)
+target_include_directories(test_matter_runtime_robustness PRIVATE
+    ../../components/matter_bridge/include
+    ../../components/service/include
+    ../../components/core/include
+    ../../components/app_hal/include
+    ../../components/common/include
+)
+zg_apply_component_compile_policy(test_matter_runtime_robustness)
+add_test(NAME test_matter_runtime_robustness COMMAND test_matter_runtime_robustness)
+
 add_executable(test_matter_runtime_command_loop
     test_matter_runtime_command_loop.cpp
     ../../components/matter_bridge/matter_bridge.cpp
