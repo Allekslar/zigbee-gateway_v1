@@ -189,7 +189,8 @@ Implementation API: `components/matter_bridge/include/matter_endpoint_map.hpp`.
 Matter snapshot-to-attribute bridge contract:
 
 - `MatterBridge::set_endpoint_map(...)` installs a bounded endpoint mapping table.
-- `ServiceRuntimeApi::build_matter_bridge_snapshot(...)` is the service-owned bridge read model for Matter consumers.
+- `MatterRuntimeApi::build_matter_bridge_snapshot(...)` is the narrow service-owned read-model contract consumed by Matter bridge.
+- `ServiceRuntimeApi` extends `MatterRuntimeApi`, so bootstrap wiring still uses one runtime instance without exposing the full service surface to Matter bridge code.
 - `MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot&)` translates normalized Matter bridge snapshot devices to attribute updates.
 - `MatterBridge::drain_attribute_updates(...)` returns deterministic, bounded deltas for publishing.
 - Translation keeps Matter-specific transport logic out of Core; Core layout does not leak directly into Matter consumers.
@@ -266,6 +267,7 @@ idf.py -C test/target -B build-target-tests build
 - HIL smoke/full: run in CI on a self-hosted runner.
 - Gateway Zigbee HIL smoke (`test/hil`): real gateway reboot/join/on-off/remove scenario.
 - Gateway MQTT HIL smoke (`test/hil`): real broker publish/subscribe + join/power/remove scenario.
+- Gateway Matter runtime HIL smoke (`test/hil`): real join/command loop/remove path with Matter bridge runtime feed active.
 
 Host integration:
 
@@ -286,6 +288,15 @@ Gateway Zigbee HIL smoke:
 
 ```bash
 GW_BASE_URL=http://192.168.178.171 scripts/run_gateway_zigbee_smoke.sh
+```
+
+Gateway Matter runtime HIL smoke:
+
+```bash
+GW_BASE_URL=http://192.168.178.171 \
+JOIN_SECONDS=30 \
+MATTER_LOOP_CYCLES=2 \
+scripts/run_gateway_matter_hil_smoke.sh
 ```
 
 ## Code Coverage (Core + Service)

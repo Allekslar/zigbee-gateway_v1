@@ -371,6 +371,22 @@ run_checks() {
         'g_matter\.start[[:space:]]*\(' \
         "app_main must start Matter bridge runtime feed path"
 
+    check_present "INV-M036" "medium" "components/service/include/matter_runtime_api.hpp" \
+        'class[[:space:]]+MatterRuntimeApi' \
+        "service must define a narrow MatterRuntimeApi contract for Matter bridge integration"
+    check_present "INV-M036" "medium" "components/service/include/matter_runtime_api.hpp" \
+        'build_matter_bridge_snapshot[[:space:]]*\(|post_command[[:space:]]*\(|next_operation_request_id[[:space:]]*\(' \
+        "MatterRuntimeApi must expose snapshot feed and command-loop ingress primitives used by Matter bridge"
+    check_present "INV-M036" "medium" "components/service/include/service_runtime_api.hpp" \
+        'class[[:space:]]+ServiceRuntimeApi[[:space:]]*:[[:space:]]*public[[:space:]]+MatterRuntimeApi' \
+        "ServiceRuntimeApi must extend MatterRuntimeApi to keep Matter path on a stable narrow contract"
+    check_present "INV-M036" "medium" "components/matter_bridge/include/matter_bridge.hpp" \
+        '#include[[:space:]]+\"matter_runtime_api\.hpp\"' \
+        "Matter bridge must depend on narrow MatterRuntimeApi contract header"
+    check_absent "INV-M036" "medium" "components/matter_bridge/include/matter_bridge.hpp" \
+        '#include[[:space:]]+\"service_runtime_api\.hpp\"' \
+        "Matter bridge must not include the full ServiceRuntimeApi header directly"
+
     check_present "INV-M024" "medium" "components/service/include/bridge_snapshot_builder.hpp" \
         'class[[:space:]]+BridgeSnapshotBuilder' \
         "service bridge snapshot mapping must live in a dedicated helper"

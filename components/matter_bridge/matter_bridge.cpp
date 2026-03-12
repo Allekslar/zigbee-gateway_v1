@@ -114,7 +114,7 @@ bool MatterBridge::started() const noexcept {
     return started_.load(std::memory_order_acquire);
 }
 
-void MatterBridge::attach_runtime(service::ServiceRuntimeApi* runtime) noexcept {
+void MatterBridge::attach_runtime(service::MatterRuntimeApi* runtime) noexcept {
     runtime_ = runtime;
 #ifdef ESP_PLATFORM
     (void)ensure_task_started();
@@ -149,6 +149,28 @@ std::size_t MatterBridge::sync_runtime_snapshot() noexcept {
     }
 
     return sync_snapshot(runtime_snapshot_cache_);
+}
+
+core::CoreError MatterBridge::post_power_command(uint16_t short_addr,
+                                                 bool desired_power_on,
+                                                 uint32_t issued_at_ms,
+                                                 uint32_t* correlation_id_out) noexcept {
+    if (runtime_ == nullptr || short_addr == core::kUnknownDeviceShortAddr) {
+        return core::CoreError::kInvalidArgument;
+    }
+
+    core::CoreCommand command{};
+    command.type = core::CoreCommandType::kSetDevicePower;
+    command.correlation_id = runtime_->next_operation_request_id();
+    command.device_short_addr = short_addr;
+    command.desired_power_on = desired_power_on;
+    command.issued_at_ms = issued_at_ms;
+
+    if (correlation_id_out != nullptr) {
+        *correlation_id_out = command.correlation_id;
+    }
+
+    return runtime_->post_command(command);
 }
 
 std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& snapshot) noexcept {

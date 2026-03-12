@@ -8,7 +8,7 @@
 #include <cstdint>
 
 #include "matter_endpoint_map.hpp"
-#include "service_runtime_api.hpp"
+#include "matter_runtime_api.hpp"
 
 namespace matter_bridge {
 
@@ -36,8 +36,13 @@ public:
     bool start() noexcept;
     void stop() noexcept;
     bool started() const noexcept;
-    void attach_runtime(service::ServiceRuntimeApi* runtime) noexcept;
+    void attach_runtime(service::MatterRuntimeApi* runtime) noexcept;
     bool set_endpoint_map(const MatterEndpointMapEntry* map, std::size_t size) noexcept;
+    core::CoreError post_power_command(
+        uint16_t short_addr,
+        bool desired_power_on,
+        uint32_t issued_at_ms,
+        uint32_t* correlation_id_out) noexcept;
     std::size_t sync_runtime_snapshot() noexcept;
     std::size_t sync_snapshot(const service::MatterBridgeSnapshot& snapshot) noexcept;
     std::size_t drain_attribute_updates(MatterAttributeUpdate* out, std::size_t capacity) noexcept;
@@ -72,7 +77,7 @@ private:
     DeviceShadow sync_shadow_scratch_[core::kMaxDevices]{};
     std::size_t pending_update_count_{0};
     MatterAttributeUpdate pending_updates_[kMatterMaxUpdatesPerSync]{};
-    service::ServiceRuntimeApi* runtime_{nullptr};
+    service::MatterRuntimeApi* runtime_{nullptr};
 #ifdef ESP_PLATFORM
     void* task_handle_{nullptr};
 #endif

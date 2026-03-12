@@ -22,6 +22,12 @@ Additional MQTT broker smoke covers:
 3. `power/set` sent through the broker changes retained device state;
 4. force-removing the device publishes retained `availability=offline`.
 
+Additional Matter runtime smoke covers:
+
+1. join-window -> first-device auto-close path with Matter bridge runtime feed active;
+2. bounded ON/OFF command-update loop on the joined device;
+3. remove path and device disappearance verification.
+
 ## Runner
 
 Use the semi-automated runner:
@@ -38,6 +44,17 @@ GW_BASE_URL=http://192.168.178.171 \
 MQTT_USER=... \
 MQTT_PASS=... \
 scripts/run_gateway_mqtt_hil_smoke.sh
+```
+
+Matter runtime HIL smoke:
+
+```bash
+GW_BASE_URL=http://192.168.178.171 \
+JOIN_SECONDS=30 \
+MATTER_LOOP_CYCLES=2 \
+POWER_READY_SEC=30 \
+POWER_RETRY_SEC=3 \
+scripts/run_gateway_matter_hil_smoke.sh
 ```
 
 Useful environment variables:
@@ -67,6 +84,19 @@ FORCE_REMOVE_TIMEOUT_MS=15000 \
 scripts/run_gateway_mqtt_hil_smoke.sh
 ```
 
+Useful environment variables for Matter runtime smoke:
+
+```bash
+GW_BASE_URL=http://192.168.178.171 \
+JOIN_SECONDS=30 \
+MATTER_LOOP_CYCLES=2 \
+POWER_READY_SEC=30 \
+POWER_RETRY_SEC=3 \
+GATEWAY_READY_SEC=30 \
+FORCE_REMOVE_TIMEOUT_MS=15000 \
+scripts/run_gateway_matter_hil_smoke.sh
+```
+
 ## Operator Actions
 
 The runner pauses only when physical interaction is required:
@@ -77,6 +107,10 @@ The runner pauses only when physical interaction is required:
 Everything else is verified through the public HTTP API.
 
 The MQTT runner pauses only when physical interaction is required:
+
+- put one new Zigbee end device into pairing mode.
+
+The Matter runner pauses only when physical interaction is required:
 
 - put one new Zigbee end device into pairing mode.
 
