@@ -386,6 +386,9 @@ run_checks() {
     check_absent "INV-M036" "medium" "components/matter_bridge/include/matter_bridge.hpp" \
         '#include[[:space:]]+\"service_runtime_api\.hpp\"' \
         "Matter bridge must not include the full ServiceRuntimeApi header directly"
+    check_absent "INV-M036" "medium" "components/matter_bridge" \
+        '#include[[:space:]]+\"service_runtime_api\.hpp\"|ServiceRuntimeApi' \
+        "Matter bridge implementation must not depend on full ServiceRuntimeApi type/header"
 
     check_present "INV-M024" "medium" "components/service/include/bridge_snapshot_builder.hpp" \
         'class[[:space:]]+BridgeSnapshotBuilder' \
