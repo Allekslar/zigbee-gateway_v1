@@ -312,6 +312,12 @@ MATTER_LOOP_CYCLES=2 \
 scripts/run_gateway_matter_hil_smoke.sh
 ```
 
+Matter Phase 3 focused local gate:
+
+```bash
+scripts/run_matter_phase3_checks.sh
+```
+
 ## Code Coverage (Core + Service)
 
 ```bash
