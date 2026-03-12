@@ -386,7 +386,10 @@ run_checks() {
     check_absent "INV-M036" "medium" "components/matter_bridge/include/matter_bridge.hpp" \
         '#include[[:space:]]+\"service_runtime_api\.hpp\"' \
         "Matter bridge must not include the full ServiceRuntimeApi header directly"
-    check_absent "INV-M036" "medium" "components/matter_bridge" \
+    check_absent "INV-M036" "medium" "components/matter_bridge/include/matter_bridge.hpp" \
+        'ServiceRuntimeApi' \
+        "Matter bridge public header must not reference full ServiceRuntimeApi type"
+    check_absent "INV-M036" "medium" "components/matter_bridge/matter_bridge.cpp" \
         '#include[[:space:]]+\"service_runtime_api\.hpp\"|ServiceRuntimeApi' \
         "Matter bridge implementation must not depend on full ServiceRuntimeApi type/header"
 
@@ -412,6 +415,19 @@ run_checks() {
     check_present "INV-M038" "medium" "components/matter_bridge/matter_bridge.cpp" \
         'xTaskAbortDelay[[:space:]]*\(' \
         "Matter bridge stop path must wake delayed task to reduce shutdown races and long waits"
+
+    check_present "INV-M039" "medium" "components/matter_bridge/README.md" \
+        'RTTI|exceptions|ADR_EXCEPTIONS' \
+        "Matter bridge module must document local RTTI/exception policy and ADR exception workflow"
+    check_present "INV-M039" "medium" "components/app_hal/hal_matter.c" \
+        'hal_matter_stack_init|hal_matter_stack_publish_attribute_update' \
+        "HAL Matter adapter must expose only thin weak-hook transport extension seam"
+    check_absent "INV-M039" "medium" "components/app_hal/hal_matter.c" \
+        '#include[[:space:]]+\"core_|#include[[:space:]]+\"service_' \
+        "HAL Matter adapter must not depend on Core/Service layer headers"
+    check_absent "INV-M039" "medium" "components/app_hal/hal_matter.c" \
+        'CoreEvent|CoreState|join_window|reporting_state|device_count|short_addr remap' \
+        "HAL Matter adapter must not contain domain lifecycle/policy logic"
 
     check_present "INV-M024" "medium" "components/service/include/bridge_snapshot_builder.hpp" \
         'class[[:space:]]+BridgeSnapshotBuilder' \

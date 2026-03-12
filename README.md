@@ -212,8 +212,10 @@ Matter HAL C ABI contract:
 
 - `hal_matter_publish_attribute_update(const hal_matter_attribute_update_t*)` is the thin C boundary for normalized sensor attribute updates.
 - `hal_matter_attribute_update_t` carries only transport data (`endpoint_id`, attribute kind, scalar value fields) and contains no business policy/state machine.
+- `hal_matter.c` exposes only weak-hook transport seam for platform adapters; domain lifecycle policy stays out of HAL.
 
 Implementation API: `components/app_hal/include/hal_matter.h`.
+Module notes: `components/matter_bridge/README.md`.
 
 ## Requirements
 

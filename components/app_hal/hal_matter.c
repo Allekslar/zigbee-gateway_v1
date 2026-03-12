@@ -4,7 +4,8 @@
 #include "hal_matter.h"
 
 #ifdef ESP_PLATFORM
-// Weak hooks for a platform-specific Matter stack adapter.
+// Thin C ABI adapter: these weak hooks are the only platform extension seam.
+// Domain/state policy must stay in service/matter_bridge layers.
 int __attribute__((weak)) hal_matter_stack_init(void) {
     return -1;
 }
