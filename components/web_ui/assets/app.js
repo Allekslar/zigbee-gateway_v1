@@ -10,6 +10,7 @@
   let forceRemoveIndicatorTimer = null;
   let joinSubmitInFlight = false;
   let devicesLoadInFlight = false;
+  let devicesLoadInFlightSince = 0;
   let scanInFlight = false;
   let pendingRemoveRequest = null;
   let statusToastTimer = null;
@@ -17,6 +18,8 @@
   const pendingPowerCommands = new Map();
   const optimisticPowerState = new Map();
   const pendingPowerFeedbackMs = 8000;
+  const defaultHttpTimeoutMs = 8000;
+  const pollHttpTimeoutMs = 4000;
 
   const ui = {
     statusLine: byId("status-line"),
@@ -102,8 +105,45 @@
   async function requestJson(url, options) {
     log("request:start", url, options && options.method ? options.method : "GET");
     const requestOptions = Object.assign({ cache: "no-store" }, options || {});
-    const response = await fetch(url, requestOptions);
-    const text = await response.text();
+    const timeoutCandidate = Number(withDefault(requestOptions.timeoutMs, defaultHttpTimeoutMs));
+    const timeoutMs = Number.isFinite(timeoutCandidate) && timeoutCandidate > 0 ? timeoutCandidate : defaultHttpTimeoutMs;
+    delete requestOptions.timeoutMs;
+
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    if (controller !== null) {
+      requestOptions.signal = controller.signal;
+    }
+
+    let response;
+    let text = "";
+    let raceTimeoutHandle = null;
+    try {
+      const fetchPromise = fetch(url, requestOptions);
+      const timeoutPromise = new Promise(function (_resolve, reject) {
+        raceTimeoutHandle = window.setTimeout(function () {
+          if (controller !== null) {
+            controller.abort();
+          }
+          const timeoutError = new Error("request_timeout");
+          timeoutError.code = "timeout";
+          reject(timeoutError);
+        }, timeoutMs);
+      });
+      response = await Promise.race([fetchPromise, timeoutPromise]);
+      text = await response.text();
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        const timeoutError = new Error("request_timeout");
+        timeoutError.code = "timeout";
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      if (raceTimeoutHandle !== null) {
+        window.clearTimeout(raceTimeoutHandle);
+      }
+    }
+
     log("request:response", url, response.status, text);
     let payload = {};
     if (text) {
@@ -273,10 +313,24 @@
     const interval = Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 150;
 
     while (Date.now() - startedAt <= timeout) {
-      const result = await requestJson(
-        "/api/network/result?request_id=" + String(requestId) + "&_ts=" + String(Date.now()),
-        { method: "GET" }
-      );
+      let result = null;
+      try {
+        result = await requestJson(
+          "/api/network/result?request_id=" + String(requestId) + "&_ts=" + String(Date.now()),
+          { method: "GET", timeoutMs: pollHttpTimeoutMs }
+        );
+      } catch (error) {
+        const transient =
+          error &&
+          (error.code === "timeout" ||
+            error.message === "request_timeout" ||
+            error.message === "Failed to fetch");
+        if (transient) {
+          await sleep(interval);
+          continue;
+        }
+        throw error;
+      }
       if (Boolean(result.ready)) {
         return result;
       }
@@ -397,13 +451,18 @@
       return;
     }
     deviceListPollTimer = window.setInterval(function () {
+      if (devicesLoadInFlight && Date.now() - devicesLoadInFlightSince > defaultHttpTimeoutMs + 2000) {
+        log("device polling watchdog: reset stale in-flight flag");
+        devicesLoadInFlight = false;
+        devicesLoadInFlightSince = 0;
+      }
       if (scanInFlight) {
         return;
       }
       loadDevices().catch(function (error) {
         log("device polling loadDevices failed:", error && error.message ? error.message : error);
       });
-    }, 2000);
+    }, 3000);
   }
 
   function applyJoinWindowState(open, secondsLeft) {
@@ -437,21 +496,23 @@
       return;
     }
     devicesLoadInFlight = true;
+    devicesLoadInFlightSince = Date.now();
     log("loadDevices");
     try {
-      const data = await requestJson("/api/devices", { method: "GET" });
+      const data = await requestJson("/api/devices", { method: "GET", timeoutMs: pollHttpTimeoutMs });
       lastDevicesPayload = data;
       reconcilePendingPowerCommands(Array.isArray(data.devices) ? data.devices : []);
       renderDevices(data);
       applyJoinWindowState(data.join_window_open, data.join_window_seconds_left);
     } finally {
       devicesLoadInFlight = false;
+      devicesLoadInFlightSince = 0;
     }
   }
 
   async function loadNetwork() {
     log("loadNetwork");
-    const data = await requestJson("/api/network", { method: "GET" });
+    const data = await requestJson("/api/network", { method: "GET", timeoutMs: pollHttpTimeoutMs });
     const mqtt = data && data.mqtt ? data.mqtt : {};
     ui.networkConnected.textContent = data.connected ? "yes" : "no";
     ui.networkRevision.textContent = String(withDefault(data.revision, "-"));
@@ -463,7 +524,7 @@
 
   async function loadCredentialsStatus() {
     log("loadCredentialsStatus");
-    const accepted = await requestJson("/api/network/credentials/status", { method: "GET" });
+    const accepted = await requestJson("/api/network/credentials/status", { method: "GET", timeoutMs: pollHttpTimeoutMs });
     const requestId = extractRequestId(accepted);
     const data = await pollNetworkResult(requestId, 2000, 100);
     const saved = Boolean(data.saved);
@@ -508,7 +569,7 @@
 
   async function loadConfig() {
     log("loadConfig");
-    const data = await requestJson("/api/config", { method: "GET" });
+    const data = await requestJson("/api/config", { method: "GET", timeoutMs: pollHttpTimeoutMs });
     ui.configTimeout.value = String(withDefault(data.command_timeout_ms, ""));
     ui.configRetries.value = String(withDefault(data.max_command_retries, ""));
     ui.configLastStatus.textContent = String(withDefault(data.last_command_status, "-"));
@@ -518,12 +579,18 @@
   async function refreshAll() {
     log("refreshAll");
     setStatus("Refreshing...", "warn");
-    try {
-      await Promise.all([loadDevices(), loadNetwork(), loadCredentialsStatus(), loadConfig()]);
+    const settled = await Promise.allSettled([loadDevices(), loadNetwork(), loadCredentialsStatus(), loadConfig()]);
+    const failed = settled.filter(function (entry) {
+      return entry.status === "rejected";
+    });
+    if (failed.length === 0) {
       setStatus("Data updated", "ok");
-    } catch (error) {
-      setStatus("Refresh failed: " + error.message, "error");
+      return;
     }
+
+    const firstReason = failed[0] && failed[0].reason ? failed[0].reason : null;
+    const firstMessage = firstReason && firstReason.message ? firstReason.message : "partial_refresh_failed";
+    setStatus("Partial refresh: " + firstMessage, "warn");
   }
 
   async function submitNetworkRefresh() {

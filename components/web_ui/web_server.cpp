@@ -38,17 +38,24 @@ bool WebServer::start() noexcept {
     config.uri_match_fn = httpd_uri_match_wildcard;
     // Keep headroom for future API additions.
     config.max_uri_handlers = 24;
+    // Keep sockets at platform-safe ceiling for current lwIP config.
+    config.max_open_sockets = 7;
+    config.backlog_conn = 8;
     // Some handlers format multi-field JSON responses and can overflow
     // default 4KB HTTPD stack on ESP32-C6 under real traffic.
     config.stack_size = 12288;
 
 #ifdef ESP_PLATFORM
-    // Under repeated HIL polling, stale keep-alive sockets can exhaust the
-    // small lwIP fd budget on ESP32-C6. Let HTTPD reap the oldest sessions
-    // and fail idle clients faster instead of wedging accept().
+    // Under repeated UI polling, opening a new TCP connection per request can
+    // quickly exhaust the small lwIP socket budget. Keep-alive reduces socket
+    // churn, while LRU purge and short wait timeouts still reclaim stale peers.
     config.lru_purge_enable = true;
     config.recv_wait_timeout = 5;
     config.send_wait_timeout = 5;
+    config.keep_alive_enable = true;
+    config.keep_alive_idle = 8;
+    config.keep_alive_interval = 4;
+    config.keep_alive_count = 2;
     ESP_LOGI(kTag, "Starting HTTP server stack_size=%u max_uri_handlers=%u", config.stack_size, config.max_uri_handlers);
 #endif
 
