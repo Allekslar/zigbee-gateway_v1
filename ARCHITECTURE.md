@@ -14,11 +14,11 @@
 
 The application evolves through three phases:
 
-| Phase | Description | Protocols |
-|------|------|-----------|
-| **Phase 1** | Zigbee Gateway + Web UI | Zigbee, HTTP, mDNS |
-| **Phase 2** | + Zigbee2MQTT | + MQTT |
-| **Phase 3** | + Matter Bridge | + Matter-over-Thread/Wi‑Fi |
+| Phase | Status | Description | Protocols |
+|------|--------|-------------|-----------|
+| **Phase 1** | Completed | Zigbee Gateway + Web UI | Zigbee, HTTP, mDNS |
+| **Phase 2** | Completed | + Zigbee2MQTT | + MQTT |
+| **Phase 3** | Completed | + Matter Bridge | + Matter-over-Thread/Wi‑Fi |
 
 ---
 

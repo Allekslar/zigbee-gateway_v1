@@ -26,6 +26,22 @@ Focus: stable layered architecture, business-logic isolation from HAL, host-side
 | Phase 2 | Completed: MQTT transport, topics, commands, status path, Home Assistant discovery, and broker HIL smoke | MQTT |
 | Phase 3 | Completed: runtime contract, snapshot semantics, command/update loop, robustness gates, and Matter host/HIL smoke | Matter-over-Thread/Wi-Fi |
 
+## Phase 3 Closure Evidence
+
+```bash
+# 1) Full blocking local gate (includes target HAL test firmware build)
+scripts/run_blocking_local_checks.sh
+
+# 2) Focused Matter Phase 3 regression gate
+scripts/run_matter_phase3_checks.sh
+
+# 3) Real-gateway Matter HIL smoke
+GW_BASE_URL=http://192.168.178.171 \
+JOIN_SECONDS=30 \
+MATTER_LOOP_CYCLES=2 \
+scripts/run_gateway_matter_hil_smoke.sh
+```
+
 ## Key Documents
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - architecture, layers, design invariants.
