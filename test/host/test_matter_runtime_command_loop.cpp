@@ -51,10 +51,18 @@ int main() {
     assert(has_bool_update(updates, drained, matter_bridge::MatterAttributeType::kStale, 50U, false));
 
     uint32_t correlation_id = 0U;
+    uint32_t correlation_id_2 = 0U;
     assert(bridge.post_power_command(0x2201U, true, 100U, &correlation_id) == core::CoreError::kOk);
+    assert(bridge.post_power_command(0x2201U, false, 101U, &correlation_id_2) == core::CoreError::kOk);
     assert(correlation_id != 0U);
+    assert(correlation_id_2 != 0U);
+    assert(correlation_id_2 > correlation_id);
     assert(runtime.process_pending() >= 1U);
-    assert(runtime.pending_commands() == 1U);
+    assert(runtime.pending_commands() == 2U);
+
+    // Power command ingress itself must not emit Matter deltas until snapshot payload changes.
+    assert(bridge.sync_runtime_snapshot() == 0U);
+    assert(bridge.drain_attribute_updates(updates, matter_bridge::kMatterMaxUpdatesPerSync) == 0U);
 
     core::CoreCommandResult result{};
     result.correlation_id = correlation_id;
@@ -62,7 +70,17 @@ int main() {
     result.completed_at_ms = 110U;
     assert(runtime.handle_command_result(result) == core::CoreError::kOk);
     assert(runtime.process_pending() == 1U);
+    assert(runtime.pending_commands() == 1U);
+
+    core::CoreCommandResult result_2{};
+    result_2.correlation_id = correlation_id_2;
+    result_2.type = core::CoreCommandResultType::kSuccess;
+    result_2.completed_at_ms = 111U;
+    assert(runtime.handle_command_result(result_2) == core::CoreError::kOk);
+    assert(runtime.process_pending() == 1U);
     assert(runtime.pending_commands() == 0U);
+    assert(bridge.sync_runtime_snapshot() == 0U);
+    assert(bridge.drain_attribute_updates(updates, matter_bridge::kMatterMaxUpdatesPerSync) == 0U);
 
     core::CoreEvent occupancy{};
     occupancy.type = core::CoreEventType::kDeviceTelemetryUpdated;

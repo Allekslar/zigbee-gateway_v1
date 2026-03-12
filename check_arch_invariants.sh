@@ -390,6 +390,16 @@ run_checks() {
         '#include[[:space:]]+\"service_runtime_api\.hpp\"|ServiceRuntimeApi' \
         "Matter bridge implementation must not depend on full ServiceRuntimeApi type/header"
 
+    check_present "INV-M037" "medium" "components/matter_bridge/include/matter_bridge.hpp" \
+        'post_power_command[[:space:]]*\(' \
+        "Matter bridge must expose an explicit command ingress API for power command loop"
+    check_present "INV-M037" "medium" "components/matter_bridge/matter_bridge.cpp" \
+        'CoreCommandType::kSetDevicePower|next_operation_request_id[[:space:]]*\(|post_command[[:space:]]*\(' \
+        "Matter power command ingress must flow through runtime request-id + post_command path"
+    check_absent "INV-M037" "medium" "components/matter_bridge/matter_bridge.cpp" \
+        'CoreEventType::kCommandSetDevicePowerRequested|CoreEvent[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\\{' \
+        "Matter bridge must not bypass ServiceRuntime command ingress by constructing Core events directly"
+
     check_present "INV-M024" "medium" "components/service/include/bridge_snapshot_builder.hpp" \
         'class[[:space:]]+BridgeSnapshotBuilder' \
         "service bridge snapshot mapping must live in a dedicated helper"

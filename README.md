@@ -199,6 +199,12 @@ Matter snapshot-to-attribute bridge contract:
 - `MatterBridge::drain_attribute_updates(...)` returns deterministic, bounded deltas for publishing.
 - Translation keeps Matter-specific transport logic out of Core; Core layout does not leak directly into Matter consumers.
 
+Matter command ingress contract:
+
+- `MatterBridge::post_power_command(...)` forwards power commands through `MatterRuntimeApi` (`next_operation_request_id()` + `post_command(...)`).
+- Matter bridge must not mutate Core/Registry directly and must not synthesize Core events by itself.
+- Attribute deltas are emitted only from snapshot payload changes, not directly from command enqueueing.
+
 Implementation API: `components/matter_bridge/include/matter_bridge.hpp`.
 
 Matter HAL C ABI contract:
