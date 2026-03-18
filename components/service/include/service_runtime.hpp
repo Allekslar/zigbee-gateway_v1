@@ -18,6 +18,7 @@
 #include "connectivity_manager.hpp"
 #include "network_manager.hpp"
 #include "network_policy_manager.hpp"
+#include "ota_manager.hpp"
 #include "operation_result_store.hpp"
 #include "persistence_manager.hpp"
 #include "read_model_coordinator.hpp"
@@ -80,6 +81,7 @@ public:
         bool save_credentials) noexcept override;
     bool post_network_credentials_status(uint32_t request_id) noexcept override;
     bool post_mqtt_status(const MqttStatusSnapshot& snapshot) noexcept override;
+    bool post_ota_start(const OtaStartRequest& request) noexcept override;
     bool post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept override;
     bool post_zigbee_join_candidate(uint16_t short_addr) noexcept;
     bool post_zigbee_interview_result(
@@ -108,12 +110,15 @@ public:
     bool build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnapshot* out) const noexcept override;
     bool build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept override;
     bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept override;
+    bool build_ota_api_snapshot(OtaApiSnapshot* out) const noexcept override;
     bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept override;
     bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept override;
     bool take_config_result(uint32_t request_id, ConfigResult* out) noexcept override;
     bool get_force_remove_remaining_ms(uint16_t short_addr, uint32_t now_ms, uint32_t* remaining_ms) const noexcept;
     bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept override;
+    bool take_ota_result(uint32_t request_id, OtaResult* out) noexcept override;
     NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept override;
+    OtaPollStatus get_ota_poll_status(uint32_t request_id) const noexcept override;
     bool is_scan_request_queued(uint32_t request_id) const noexcept override;
     bool is_scan_request_in_progress(uint32_t request_id) const noexcept override;
     bool initialize_hal_adapter() noexcept override;
@@ -142,6 +147,7 @@ private:
     friend class ConnectivityManager;
     friend class NetworkManager;
     friend class NetworkPolicyManager;
+    friend class OtaManager;
     friend class PersistenceManager;
     friend class ScanManager;
     friend class ServiceRuntimeTestAccess;
@@ -155,7 +161,9 @@ private:
     bool push_event(const core::CoreEvent& event) noexcept;
     bool pop_event(core::CoreEvent* out) noexcept;
     bool queue_network_result(const NetworkResult& result) noexcept;
+    bool queue_ota_result(const OtaResult& result) noexcept;
     void note_network_operation_poll_status(uint32_t request_id, NetworkOperationPollStatus status) noexcept;
+    void note_ota_poll_status(uint32_t request_id, OtaPollStatus status) noexcept;
     void apply_managers(const core::CoreEvent& event) noexcept;
     void execute_effects(const core::CoreEffectList& effects) noexcept;
     bool drain_command_requests() noexcept;
@@ -163,6 +171,8 @@ private:
     bool drain_nvs_writes() noexcept;
     bool drain_config_writes() noexcept;
     bool drain_network_requests() noexcept;
+    bool drain_ota_requests() noexcept;
+    bool drain_ota_status_update() noexcept;
     uint32_t monotonic_now_ms() const noexcept;
     bool ensure_wifi_mode_for_scan() noexcept;
     bool ensure_wifi_mode_for_sta_connect() noexcept;
@@ -220,6 +230,7 @@ private:
     DeviceManager device_manager_{};
     NetworkManager network_manager_{};
     NetworkPolicyManager network_policy_manager_{};
+    OtaManager ota_manager_{};
     ScanManager scan_manager_{};
     core::CoreEventBus event_bus_{};
 
@@ -245,6 +256,7 @@ private:
 #ifdef ESP_PLATFORM
     void* runtime_task_handle_{nullptr};
     void* scan_worker_task_handle_{nullptr};
+    void* ota_worker_task_handle_{nullptr};
 #endif
 };
 

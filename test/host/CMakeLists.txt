@@ -36,6 +36,7 @@ set(SERVICE_SOURCES
     ../../components/service/read_model_coordinator.cpp
     ../../components/service/network_manager.cpp
     ../../components/service/network_policy_manager.cpp
+    ../../components/service/ota_manager.cpp
     ../../components/service/ota_bootstrap.cpp
     ../../components/service/operation_result_store.cpp
     ../../components/service/persistence_manager.cpp
@@ -484,3 +485,13 @@ target_include_directories(test_matter_runtime_command_loop PRIVATE
 target_link_libraries(test_matter_runtime_command_loop PRIVATE service_host)
 zg_apply_component_compile_policy(test_matter_runtime_command_loop)
 add_test(NAME test_matter_runtime_command_loop COMMAND test_matter_runtime_command_loop)
+
+add_executable(test_service_ota test_service_ota.cpp)
+target_link_libraries(test_service_ota PRIVATE service_host)
+zg_apply_component_compile_policy(test_service_ota)
+add_test(NAME test_service_ota COMMAND test_service_ota)
+
+add_executable(test_web_handlers_ota test_web_handlers_ota.cpp)
+target_link_libraries(test_web_handlers_ota PRIVATE service_host web_ui_host)
+zg_apply_component_compile_policy(test_web_handlers_ota)
+add_test(NAME test_web_handlers_ota COMMAND test_web_handlers_ota)

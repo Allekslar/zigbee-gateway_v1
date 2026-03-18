@@ -12,23 +12,27 @@ bool g_static_ok = true;
 bool g_device_ok = true;
 bool g_network_ok = true;
 bool g_config_ok = true;
+bool g_ota_ok = true;
 
 int g_call_index = 0;
 int g_static_call_order = 0;
 int g_device_call_order = 0;
 int g_network_call_order = 0;
 int g_config_call_order = 0;
+int g_ota_call_order = 0;
 
 void reset_expectations() {
     g_static_ok = true;
     g_device_ok = true;
     g_network_ok = true;
     g_config_ok = true;
+    g_ota_ok = true;
     g_call_index = 0;
     g_static_call_order = 0;
     g_device_call_order = 0;
     g_network_call_order = 0;
     g_config_call_order = 0;
+    g_ota_call_order = 0;
 }
 
 }  // namespace
@@ -63,6 +67,13 @@ bool register_config_routes(void* server_handle, WebRouteContext* context) noexc
     return g_config_ok;
 }
 
+bool register_ota_routes(void* server_handle, WebRouteContext* context) noexcept {
+    (void)server_handle;
+    (void)context;
+    g_ota_call_order = ++g_call_index;
+    return g_ota_ok;
+}
+
 }  // namespace web_ui
 
 #include "../../components/web_ui/web_routes.cpp"
@@ -70,17 +81,13 @@ bool register_config_routes(void* server_handle, WebRouteContext* context) noexc
 int main() {
     std::atomic<uint32_t> next_correlation_id{1U};
     web_ui::WebRouteContext context{};
-    context.registry = reinterpret_cast<core::CoreRegistry*>(0x1);
-    context.runtime = reinterpret_cast<service::ServiceRuntime*>(0x1);
+    context.runtime = reinterpret_cast<service::ServiceRuntimeApi*>(0x1);
     context.next_correlation_id = &next_correlation_id;
 
     assert(!web_ui::register_web_routes(nullptr, &context));
     assert(!web_ui::register_web_routes(reinterpret_cast<void*>(0x1), nullptr));
 
     web_ui::WebRouteContext invalid_context = context;
-    invalid_context.registry = nullptr;
-    assert(!web_ui::register_web_routes(reinterpret_cast<void*>(0x1), &invalid_context));
-    invalid_context = context;
     invalid_context.runtime = nullptr;
     assert(!web_ui::register_web_routes(reinterpret_cast<void*>(0x1), &invalid_context));
     invalid_context = context;
@@ -110,6 +117,12 @@ int main() {
     g_config_ok = false;
     assert(!web_ui::register_web_routes(reinterpret_cast<void*>(0x1), &context));
     assert(g_config_call_order == 4);
+    assert(g_ota_call_order == 0);
+
+    reset_expectations();
+    g_ota_ok = false;
+    assert(!web_ui::register_web_routes(reinterpret_cast<void*>(0x1), &context));
+    assert(g_ota_call_order == 5);
 
     reset_expectations();
     assert(web_ui::register_web_routes(reinterpret_cast<void*>(0x1), &context));
@@ -117,6 +130,7 @@ int main() {
     assert(g_device_call_order == 2);
     assert(g_network_call_order == 3);
     assert(g_config_call_order == 4);
+    assert(g_ota_call_order == 5);
 
     return 0;
 }

@@ -45,6 +45,9 @@ constexpr TickType_t kRuntimeTaskPeriodTicks = pdMS_TO_TICKS(20);
 constexpr const char* kScanWorkerTaskName = "wifi_scan_worker";
 constexpr uint32_t kScanWorkerTaskStackSize = 4608U;
 constexpr UBaseType_t kScanWorkerTaskPriority = 5U;
+constexpr const char* kOtaWorkerTaskName = "ota_worker";
+constexpr uint32_t kOtaWorkerTaskStackSize = 8192U;
+constexpr UBaseType_t kOtaWorkerTaskPriority = 5U;
 #endif
 
 uint32_t clamp_force_remove_timeout(uint32_t timeout_ms) noexcept {
@@ -287,10 +290,18 @@ bool ServiceRuntime::queue_network_result(const NetworkResult& result) noexcept 
     return operation_result_store_.publish_network_result(result);
 }
 
+bool ServiceRuntime::queue_ota_result(const OtaResult& result) noexcept {
+    return operation_result_store_.publish_ota_result(result);
+}
+
 void ServiceRuntime::note_network_operation_poll_status(
     uint32_t request_id,
     NetworkOperationPollStatus status) noexcept {
     operation_result_store_.note_network_poll_status(request_id, status);
+}
+
+void ServiceRuntime::note_ota_poll_status(uint32_t request_id, OtaPollStatus status) noexcept {
+    operation_result_store_.note_ota_poll_status(request_id, status);
 }
 
 core::CoreError ServiceRuntime::post_command(const core::CoreCommand& command) noexcept {
@@ -411,6 +422,10 @@ bool ServiceRuntime::post_mqtt_status(const MqttStatusSnapshot& snapshot) noexce
     pending_mqtt_status_update_.snapshot.broker_endpoint_summary.back() = '\0';
     pending_mqtt_status_update_.present = true;
     return true;
+}
+
+bool ServiceRuntime::post_ota_start(const OtaStartRequest& request) noexcept {
+    return ota_manager_.enqueue_request(*this, request);
 }
 
 bool ServiceRuntime::post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept {
@@ -713,6 +728,10 @@ bool ServiceRuntime::build_config_api_snapshot(ConfigApiSnapshot* out) const noe
     return read_model_coordinator_.build_config_api_snapshot(out);
 }
 
+bool ServiceRuntime::build_ota_api_snapshot(OtaApiSnapshot* out) const noexcept {
+    return ota_manager_.build_api_snapshot(out);
+}
+
 bool ServiceRuntime::take_config_result(uint32_t request_id, ConfigResult* out) noexcept {
     return operation_result_store_.take_config_result(request_id, out);
 }
@@ -728,8 +747,16 @@ bool ServiceRuntime::take_network_result(uint32_t request_id, NetworkResult* out
     return operation_result_store_.take_network_result(request_id, out);
 }
 
+bool ServiceRuntime::take_ota_result(uint32_t request_id, OtaResult* out) noexcept {
+    return operation_result_store_.take_ota_result(request_id, out);
+}
+
 NetworkOperationPollStatus ServiceRuntime::get_network_operation_poll_status(uint32_t request_id) const noexcept {
     return operation_result_store_.get_network_operation_poll_status(request_id);
+}
+
+OtaPollStatus ServiceRuntime::get_ota_poll_status(uint32_t request_id) const noexcept {
+    return operation_result_store_.get_ota_poll_status(request_id);
 }
 
 bool ServiceRuntime::is_scan_request_queued(uint32_t request_id) const noexcept {
@@ -823,6 +850,25 @@ bool ServiceRuntime::start() noexcept {
     }
 
     scan_worker_task_handle_ = scan_worker_task;
+
+    TaskHandle_t ota_worker_task = nullptr;
+    const BaseType_t ota_task_ok = xTaskCreate(
+        &OtaManager::worker_task_entry,
+        kOtaWorkerTaskName,
+        kOtaWorkerTaskStackSize,
+        this,
+        kOtaWorkerTaskPriority,
+        &ota_worker_task);
+    if (ota_task_ok != pdPASS) {
+        vTaskDelete(scan_worker_task);
+        vTaskDelete(runtime_task);
+        scan_worker_task_handle_ = nullptr;
+        runtime_task_handle_ = nullptr;
+        SR_LOGI("Failed to create OTA worker task");
+        return false;
+    }
+
+    ota_worker_task_handle_ = ota_worker_task;
     SR_LOGI("Service runtime task started");
     return true;
 #else
@@ -900,6 +946,9 @@ std::size_t ServiceRuntime::process_pending() noexcept {
     if (drain_mqtt_status_update()) {
         overall_progress = true;
     }
+    if (drain_ota_status_update()) {
+        overall_progress = true;
+    }
     for (;;) {
         if (processed >= kMaxProcessedEventsPerCycle) {
             break;
@@ -933,6 +982,14 @@ std::size_t ServiceRuntime::process_pending() noexcept {
         }
 
         if (drain_network_requests()) {
+            made_progress = true;
+        }
+
+        if (drain_ota_requests()) {
+            made_progress = true;
+        }
+
+        if (drain_ota_status_update()) {
             made_progress = true;
         }
 
@@ -1084,7 +1141,8 @@ std::size_t ServiceRuntime::pending_events() const noexcept {
 
     return local_queue_count + command_manager_.pending_ingress_count() + persistence_manager_.pending_ingress_count() +
            network_manager_.pending_ingress_count() + operation_result_store_.pending_network_results() +
-           scan_manager_.pending_ingress_count();
+           operation_result_store_.pending_ota_results() + scan_manager_.pending_ingress_count() +
+           ota_manager_.pending_ingress_count();
 }
 
 std::size_t ServiceRuntime::pending_commands() const noexcept {
@@ -1113,6 +1171,23 @@ bool ServiceRuntime::drain_config_writes() noexcept {
 
 bool ServiceRuntime::drain_network_requests() noexcept {
     return network_manager_.drain_requests(*this);
+}
+
+bool ServiceRuntime::drain_ota_requests() noexcept {
+#ifdef ESP_PLATFORM
+    return false;
+#else
+    return ota_manager_.drain_requests(*this);
+#endif
+}
+
+bool ServiceRuntime::drain_ota_status_update() noexcept {
+    OtaManager::StatusUpdate update{};
+    if (!ota_manager_.take_status_update(&update)) {
+        return false;
+    }
+
+    return ota_manager_.apply_status_update(update);
 }
 
 uint32_t ServiceRuntime::monotonic_now_ms() const noexcept {

@@ -138,6 +138,67 @@ enum class NetworkOperationPollStatus : uint8_t {
     kReady = 3,
 };
 
+enum class OtaStage : uint8_t {
+    kIdle = 0,
+    kQueued = 1,
+    kDownloading = 2,
+    kSwitchPending = 3,
+    kRebootPending = 4,
+    kFailed = 5,
+};
+
+enum class OtaPollStatus : uint8_t {
+    kNotReady = 0,
+    kQueued = 1,
+    kDownloading = 2,
+    kReady = 3,
+};
+
+enum class OtaOperationStatus : uint8_t {
+    kOk = 0,
+    kInvalidArgument = 1,
+    kNoCapacity = 2,
+    kDownloadFailed = 3,
+    kVerifyFailed = 4,
+    kApplyFailed = 5,
+    kInternalError = 6,
+};
+
+struct OtaStartRequest {
+    static constexpr std::size_t kUrlMaxLen = 192U;
+    static constexpr std::size_t kVersionMaxLen = 32U;
+
+    uint32_t request_id{0};
+    std::array<char, kUrlMaxLen> url{};
+    std::array<char, kVersionMaxLen> target_version{};
+};
+
+struct OtaApiSnapshot {
+    static constexpr std::size_t kVersionMaxLen = OtaStartRequest::kVersionMaxLen;
+
+    uint32_t active_request_id{0};
+    bool busy{false};
+    OtaStage stage{OtaStage::kIdle};
+    OtaOperationStatus last_error{OtaOperationStatus::kOk};
+    uint32_t downloaded_bytes{0};
+    uint32_t image_size{0};
+    bool image_size_known{false};
+    std::array<char, kVersionMaxLen> current_version{};
+    std::array<char, kVersionMaxLen> target_version{};
+};
+
+struct OtaResult {
+    static constexpr std::size_t kVersionMaxLen = OtaStartRequest::kVersionMaxLen;
+
+    uint32_t request_id{0};
+    OtaOperationStatus status{OtaOperationStatus::kInternalError};
+    bool reboot_required{false};
+    uint32_t downloaded_bytes{0};
+    uint32_t image_size{0};
+    bool image_size_known{false};
+    std::array<char, kVersionMaxLen> target_version{};
+};
+
 struct DevicesApiDeviceSnapshot {
     uint16_t short_addr{core::kUnknownDeviceShortAddr};
     bool online{false};
@@ -215,6 +276,7 @@ public:
         bool save_credentials) noexcept = 0;
     virtual bool post_network_credentials_status(uint32_t request_id) noexcept = 0;
     virtual bool post_mqtt_status(const NetworkApiSnapshot::MqttStatusSnapshot& snapshot) noexcept = 0;
+    virtual bool post_ota_start(const OtaStartRequest& request) noexcept = 0;
     virtual bool post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept = 0;
     virtual bool post_remove_device(
         uint32_t request_id,
@@ -225,11 +287,14 @@ public:
     virtual bool build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnapshot* out) const noexcept = 0;
     virtual bool build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept = 0;
     virtual bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept = 0;
+    virtual bool build_ota_api_snapshot(OtaApiSnapshot* out) const noexcept = 0;
     virtual bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept = 0;
     virtual bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept override = 0;
     virtual bool take_config_result(uint32_t request_id, ConfigResult* out) noexcept = 0;
     virtual bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept = 0;
+    virtual bool take_ota_result(uint32_t request_id, OtaResult* out) noexcept = 0;
     virtual NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept = 0;
+    virtual OtaPollStatus get_ota_poll_status(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_queued(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_in_progress(uint32_t request_id) const noexcept = 0;
     virtual bool initialize_hal_adapter() noexcept = 0;

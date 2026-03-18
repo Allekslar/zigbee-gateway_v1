@@ -11,6 +11,7 @@ idf_component_register(
         "web_handlers_device.cpp"
         "web_handlers_network.cpp"
         "web_handlers_config.cpp"
+        "web_handlers_ota.cpp"
         "web_handler_common.cpp"
     INCLUDE_DIRS "include"
     REQUIRES core service common esp_http_server esp_timer

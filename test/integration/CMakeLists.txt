@@ -33,6 +33,7 @@ set(SERVICE_SOURCES
     ../../components/service/effect_executor.cpp
     ../../components/service/network_manager.cpp
     ../../components/service/network_policy_manager.cpp
+    ../../components/service/ota_manager.cpp
     ../../components/service/ota_bootstrap.cpp
     ../../components/service/persistence_manager.cpp
     ../../components/service/reporting_manager.cpp
@@ -129,3 +130,17 @@ target_include_directories(test_integration_web_handlers_static
 )
 zg_apply_component_compile_policy(test_integration_web_handlers_static)
 add_test(NAME test_integration_web_handlers_static COMMAND test_integration_web_handlers_static)
+
+add_executable(test_integration_web_handlers_ota test_integration_web_handlers_ota.cpp)
+target_include_directories(test_integration_web_handlers_ota
+    PRIVATE
+        ../../components/web_ui/include
+        ../../components/web_ui
+        ../../components/service/include
+        ../../components/app_hal/include
+        ../../components/common/include
+        ../../components/core/include
+)
+target_link_libraries(test_integration_web_handlers_ota PRIVATE web_ui_integration)
+zg_apply_component_compile_policy(test_integration_web_handlers_ota)
+add_test(NAME test_integration_web_handlers_ota COMMAND test_integration_web_handlers_ota)

@@ -27,6 +27,10 @@ bool register_web_routes(void* server_handle, WebRouteContext* context) noexcept
         return false;
     }
 
+    if (!register_ota_routes(server_handle, context)) {
+        return false;
+    }
+
     return true;
 }
 

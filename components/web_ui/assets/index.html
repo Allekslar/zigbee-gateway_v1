@@ -159,6 +159,51 @@
         </div>
       </section>
 
+      <section class="card" aria-labelledby="ota-title">
+        <h2 id="ota-title">OTA</h2>
+        <div class="grid-2">
+          <div>
+            <span class="label">Current Version:</span>
+            <strong id="ota-current-version">-</strong>
+          </div>
+          <div>
+            <span class="label">Target Version:</span>
+            <strong id="ota-target-version">-</strong>
+          </div>
+          <div>
+            <span class="label">Stage:</span>
+            <strong id="ota-stage">-</strong>
+          </div>
+          <div>
+            <span class="label">Progress:</span>
+            <strong id="ota-progress">-</strong>
+          </div>
+          <div>
+            <span class="label">Last Error:</span>
+            <strong id="ota-last-error">-</strong>
+          </div>
+          <div>
+            <span class="label">Active Request:</span>
+            <strong id="ota-request-id">-</strong>
+          </div>
+        </div>
+        <form id="ota-form">
+          <div class="form-grid">
+            <label>
+              Firmware URL
+              <input id="ota-url" name="url" type="url" maxlength="191" placeholder="https://example.com/gateway.bin" required />
+            </label>
+            <label>
+              Target Version
+              <input id="ota-target-input" name="target_version" type="text" maxlength="31" placeholder="optional" />
+            </label>
+          </div>
+          <div class="actions">
+            <button id="ota-submit-btn" type="submit">Start OTA</button>
+          </div>
+        </form>
+      </section>
+
       <section class="card" aria-labelledby="status-title">
         <h2 id="status-title">Status</h2>
         <p id="status-line" class="status-line">Ready</p>

@@ -12,6 +12,7 @@
   let devicesLoadInFlight = false;
   let devicesLoadInFlightSince = 0;
   let scanInFlight = false;
+  let otaSubmitInFlight = false;
   let pendingRemoveRequest = null;
   let statusToastTimer = null;
   let lastDevicesPayload = { devices: [], join_window_open: false, join_window_seconds_left: 0 };
@@ -49,6 +50,16 @@
     configRetries: byId("config-retries"),
     configLastStatus: byId("config-last-status"),
     configRevision: byId("config-revision"),
+    otaForm: byId("ota-form"),
+    otaUrl: byId("ota-url"),
+    otaTargetInput: byId("ota-target-input"),
+    otaSubmitBtn: byId("ota-submit-btn"),
+    otaCurrentVersion: byId("ota-current-version"),
+    otaTargetVersion: byId("ota-target-version"),
+    otaStage: byId("ota-stage"),
+    otaProgress: byId("ota-progress"),
+    otaLastError: byId("ota-last-error"),
+    otaRequestId: byId("ota-request-id"),
     removeConfirmBox: byId("remove-confirm-box"),
     removeConfirmText: byId("remove-confirm-text"),
     removeForceRow: byId("remove-force-row"),
@@ -343,6 +354,45 @@
     throw new Error("operation_timeout");
   }
 
+  async function pollOtaResult(requestId, timeoutMs, pollIntervalMs, onPending) {
+    const startedAt = Date.now();
+    const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 20000;
+    const interval = Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 250;
+
+    while (Date.now() - startedAt <= timeout) {
+      const snapshot = await loadOta();
+      if (Number(withDefault(snapshot && snapshot.active_request_id, 0)) === Number(requestId) && typeof onPending === "function") {
+        onPending(snapshot);
+      }
+
+      let result = null;
+      try {
+        result = await requestJson(
+          "/api/ota/result?request_id=" + String(requestId) + "&_ts=" + String(Date.now()),
+          { method: "GET", timeoutMs: pollHttpTimeoutMs }
+        );
+      } catch (error) {
+        const transient =
+          error &&
+          (error.code === "timeout" ||
+            error.message === "request_timeout" ||
+            error.message === "Failed to fetch");
+        if (transient) {
+          await sleep(interval);
+          continue;
+        }
+        throw error;
+      }
+
+      if (Boolean(result.ready)) {
+        return result;
+      }
+      await sleep(interval);
+    }
+
+    throw new Error("operation_timeout");
+  }
+
   function renderDevices(data) {
     const devices = Array.isArray(data.devices) ? data.devices : [];
     if (devices.length === 0) {
@@ -576,10 +626,39 @@
     ui.configRevision.textContent = String(withDefault(data.revision, "-"));
   }
 
+  function renderOta(data) {
+    const currentVersion = String(withDefault(data && data.current_version, "")) || "-";
+    const targetVersion = String(withDefault(data && data.target_version, "")) || "-";
+    const stage = String(withDefault(data && data.stage, "idle"));
+    const lastError = String(withDefault(data && data.last_error, "ok"));
+    const requestId = Number(withDefault(data && data.active_request_id, 0));
+    const downloadedBytes = Number(withDefault(data && data.downloaded_bytes, 0));
+    const imageSize = Number(withDefault(data && data.image_size, 0));
+    const progressPercent = Number(withDefault(data && data.progress_percent, 0));
+    const imageSizeKnown = Boolean(withDefault(data && data.image_size_known, false));
+    const progressText = imageSizeKnown && imageSize > 0
+      ? String(progressPercent) + "% (" + String(downloadedBytes) + "/" + String(imageSize) + " B)"
+      : String(downloadedBytes) + " B";
+
+    ui.otaCurrentVersion.textContent = currentVersion;
+    ui.otaTargetVersion.textContent = targetVersion;
+    ui.otaStage.textContent = stage;
+    ui.otaProgress.textContent = progressText;
+    ui.otaLastError.textContent = lastError;
+    ui.otaRequestId.textContent = requestId > 0 ? String(requestId) : "-";
+  }
+
+  async function loadOta() {
+    log("loadOta");
+    const data = await requestJson("/api/ota", { method: "GET", timeoutMs: pollHttpTimeoutMs });
+    renderOta(data);
+    return data;
+  }
+
   async function refreshAll() {
     log("refreshAll");
     setStatus("Refreshing...", "warn");
-    const settled = await Promise.allSettled([loadDevices(), loadNetwork(), loadCredentialsStatus(), loadConfig()]);
+    const settled = await Promise.allSettled([loadDevices(), loadNetwork(), loadCredentialsStatus(), loadConfig(), loadOta()]);
     const failed = settled.filter(function (entry) {
       return entry.status === "rejected";
     });
@@ -880,6 +959,68 @@
     }
   }
 
+  async function submitOta(event) {
+    event.preventDefault();
+    if (otaSubmitInFlight) {
+      return;
+    }
+
+    const url = ui.otaUrl.value.trim();
+    const targetVersion = ui.otaTargetInput.value.trim();
+    if (!url) {
+      setStatus("OTA URL is required", "error");
+      return;
+    }
+
+    otaSubmitInFlight = true;
+    if (ui.otaSubmitBtn) {
+      ui.otaSubmitBtn.disabled = true;
+    }
+
+    setStatus("Starting OTA...", "warn");
+    try {
+      const accepted = await requestJson("/api/ota", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: url,
+          target_version: targetVersion,
+        }),
+      });
+      const requestId = extractRequestId(accepted);
+      const result = await pollOtaResult(requestId, 30000, 500, function (snapshot) {
+        const stage = String(withDefault(snapshot && snapshot.stage, "queued"));
+        if (stage === "queued") {
+          setStatus("OTA queued...", "warn");
+          return;
+        }
+
+        const progress = Number(withDefault(snapshot && snapshot.progress_percent, 0));
+        setStatus("OTA " + stage + " (" + String(progress) + "%)", "warn");
+      });
+
+      if (!Boolean(result.ok)) {
+        throw new Error(String(withDefault(result.error, "ota_failed")));
+      }
+
+      await loadOta();
+      setStatus(
+        result.reboot_required
+          ? "OTA image staged successfully. Reboot is scheduled automatically."
+          : "OTA completed successfully.",
+        "ok"
+      );
+    } catch (error) {
+      await loadOta().catch(function () {});
+      setStatus("OTA failed: " + error.message, "error");
+    } finally {
+      otaSubmitInFlight = false;
+      if (ui.otaSubmitBtn) {
+        ui.otaSubmitBtn.disabled = false;
+      }
+    }
+  }
+
   bind(ui.refreshAllBtn, "click", refreshAll);
   bind(ui.networkRefreshBtn, "click", submitNetworkRefresh);
   bind(ui.networkScanBtn, "click", scanNetworks);
@@ -889,6 +1030,7 @@
   });
   bind(ui.deviceJoinBtn, "click", submitDeviceJoin);
   bind(ui.configForm, "submit", submitConfig);
+  bind(ui.otaForm, "submit", submitOta);
   bind(ui.removeConfirmBtn, "click", function () {
     if (!pendingRemoveRequest) {
       return;
