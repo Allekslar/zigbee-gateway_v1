@@ -8,6 +8,7 @@ idf_component_register(
         "hal_mqtt.c"
         "hal_zigbee.c"
         "hal_matter.c"
+        "hal_ota.c"
         "hal_nvs.c"
         "hal_wifi.c"
         "hal_mdns.c"
@@ -21,6 +22,12 @@ idf_component_register(
         esp_event
         esp_netif
         esp_timer
+        esp_system
+        app_update
+        bootloader_support
+        esp_http_client
+        esp_https_ota
+        mbedtls
         mqtt
         nvs_flash
         esp_driver_gpio

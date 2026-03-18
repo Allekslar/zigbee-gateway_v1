@@ -33,6 +33,7 @@ set(SERVICE_SOURCES
     ../../components/service/effect_executor.cpp
     ../../components/service/network_manager.cpp
     ../../components/service/network_policy_manager.cpp
+    ../../components/service/ota_bootstrap.cpp
     ../../components/service/persistence_manager.cpp
     ../../components/service/reporting_manager.cpp
     ../../components/service/scan_manager.cpp
@@ -43,6 +44,7 @@ set(SERVICE_SOURCES
 set(APP_HAL_SERVICE_SOURCES
     ../../components/app_hal/hal_led.c
     ../../components/app_hal/hal_nvs.c
+    ../../components/app_hal/hal_ota.c
     ../../components/app_hal/hal_wifi.c
     ../../components/app_hal/hal_zigbee.c
 )
@@ -73,6 +75,7 @@ set(APP_HAL_PLATFORM_SOURCES
     ../../components/app_hal/hal_mdns.c
     ../../components/app_hal/hal_spiffs.c
     ../../components/app_hal/hal_matter.c
+    ../../components/app_hal/hal_ota.c
     ../../components/app_hal/hal_rcp.c
 )
 

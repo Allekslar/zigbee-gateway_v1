@@ -35,6 +35,9 @@ jobs:
       - name: Build firmware
         run: . /opt/esp/idf/export.sh && idf.py build
 
+      - name: Check OTA slot size (firmware)
+        run: bash ./scripts/check_ota_slot_size.sh build partitions.csv
+
   host-tests:
     name: Host Unit Tests (Core)
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
@@ -156,6 +159,9 @@ jobs:
       - name: Build target HAL tests firmware
         run: . /opt/esp/idf/export.sh && idf.py -C test/target -B build-target-tests build
 
+      - name: Check OTA slot size (target HAL tests firmware)
+        run: bash ./scripts/check_ota_slot_size.sh build-target-tests test/target/partitions.csv
+
   target-hal-tests-hil-smoke:
     name: Target HAL Tests HIL Smoke (ESP32-C6)
     # Safe fallback: require explicit opt-in to avoid stuck jobs when no self-hosted HIL runner is configured.
@@ -230,6 +236,9 @@ jobs:
 
       - name: Build target HAL tests firmware
         run: . "${HIL_IDF_EXPORT_RESOLVED}" >/dev/null 2>&1 && idf.py -C test/target -B build-target-tests build
+
+      - name: Check OTA slot size (target HAL tests firmware)
+        run: bash ./scripts/check_ota_slot_size.sh build-target-tests test/target/partitions.csv
 
       - name: Flash and run target HAL smoke tests on hardware
         run: |

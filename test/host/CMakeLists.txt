@@ -36,6 +36,7 @@ set(SERVICE_SOURCES
     ../../components/service/read_model_coordinator.cpp
     ../../components/service/network_manager.cpp
     ../../components/service/network_policy_manager.cpp
+    ../../components/service/ota_bootstrap.cpp
     ../../components/service/operation_result_store.cpp
     ../../components/service/persistence_manager.cpp
     ../../components/service/reporting_manager.cpp
@@ -49,6 +50,7 @@ set(SERVICE_SOURCES
 set(APP_HAL_SOURCES
     ../../components/app_hal/hal_led.c
     ../../components/app_hal/hal_nvs.c
+    ../../components/app_hal/hal_ota.c
     ../../components/app_hal/hal_wifi.c
     ../../components/app_hal/hal_zigbee.c
 )
@@ -178,6 +180,11 @@ add_executable(test_service_network_autoconnect_limit test_service_network_autoc
 target_link_libraries(test_service_network_autoconnect_limit PRIVATE service_host)
 zg_apply_component_compile_policy(test_service_network_autoconnect_limit)
 add_test(NAME test_service_network_autoconnect_limit COMMAND test_service_network_autoconnect_limit)
+
+add_executable(test_ota_bootstrap test_ota_bootstrap.cpp)
+target_link_libraries(test_ota_bootstrap PRIVATE service_host)
+zg_apply_component_compile_policy(test_ota_bootstrap)
+add_test(NAME test_ota_bootstrap COMMAND test_ota_bootstrap)
 
 add_executable(test_service_saved_credentials_zigbee_start test_service_saved_credentials_zigbee_start.cpp)
 target_link_libraries(test_service_saved_credentials_zigbee_start PRIVATE service_host)

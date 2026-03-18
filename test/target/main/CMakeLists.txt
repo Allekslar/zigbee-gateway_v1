@@ -8,6 +8,7 @@ idf_component_register(
         "test_main.c"
         "../test_hal_mqtt.c"
         "../test_hal_nvs.c"
+        "../test_hal_ota.c"
         "../test_hal_zigbee.c"
         "../test_reporting_flow.c"
         "../test_reporting_faults.c"

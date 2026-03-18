@@ -64,6 +64,7 @@ run_case() {
   local name="$1"
   local timeout_sec="$2"
   local log_path="hil-target-hal-${name}.local.log"
+  local summary_regex="[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored"
   local status=0
   local parse_unity_from_log=1
   local heartbeat_pid=0
@@ -147,16 +148,45 @@ run_case() {
     set -e
   else
     start_heartbeat
+    rm -f "${log_path}"
+    touch "${log_path}"
+
     set +e
-    timeout "${timeout_sec}" \
-      script -q -e -c "idf.py -C test/target -B build-target-tests -p ${ESPPORT} flash monitor" /dev/null \
-      > "${log_path}" 2>&1
-    status=$?
+    script -q -e -c "idf.py -C test/target -B build-target-tests -p ${ESPPORT} flash monitor" /dev/null \
+      > "${log_path}" 2>&1 &
+    local monitor_pid=$!
+
+    (
+      tail -n 0 -F "${log_path}" | grep -m1 -E "${summary_regex}"
+    ) >/dev/null 2>&1 &
+    local watcher_pid=$!
+
+    (
+      sleep "${timeout_sec}"
+      kill "${monitor_pid}" >/dev/null 2>&1 || true
+    ) &
+    local timer_pid=$!
+
+    wait "${watcher_pid}"
+    local watcher_status=$?
+
+    kill "${timer_pid}" >/dev/null 2>&1 || true
+    wait "${timer_pid}" 2>/dev/null || true
+
+    kill "${monitor_pid}" >/dev/null 2>&1 || true
+    wait "${monitor_pid}"
+    local monitor_status=$?
+
+    if [[ "${watcher_status}" -ne 0 ]]; then
+      status="${monitor_status}"
+    else
+      status=0
+    fi
     set -e
     stop_heartbeat
   fi
 
-  if [[ "${status}" -ne 0 && "${status}" -ne 124 ]]; then
+  if [[ "${status}" -ne 0 && "${status}" -ne 124 && "${status}" -ne 143 ]]; then
     echo "${name}: flash/monitor failed with status=${status}" >&2
     tail -n 200 "${log_path}" || true
     exit "${status}"

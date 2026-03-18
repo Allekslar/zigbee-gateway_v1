@@ -7,6 +7,41 @@ config ZGW_ENABLE_DEBUG_LOGS
     bool "Enable debug logs"
     default y
 
+menu "OTA"
+
+config ZGW_OTA_ENABLED
+    bool "Enable OTA foundation"
+    default y
+
+config ZGW_OTA_BOOT_CONFIRM_ENABLED
+    bool "Confirm pending OTA image after successful startup"
+    depends on ZGW_OTA_ENABLED
+    default y
+
+config ZGW_OTA_BOOT_CONFIRM_TIMEOUT_MS
+    int "OTA boot confirmation timeout in milliseconds"
+    depends on ZGW_OTA_BOOT_CONFIRM_ENABLED
+    range 1000 120000
+    default 15000
+
+config ZGW_OTA_USE_CERT_BUNDLE
+    bool "Use ESP x509 certificate bundle for OTA HTTPS"
+    depends on ZGW_OTA_ENABLED
+    default y
+
+config ZGW_OTA_AUTO_REBOOT_ENABLED
+    bool "Automatically reboot after successful OTA staging"
+    depends on ZGW_OTA_ENABLED
+    default y
+
+config ZGW_OTA_REBOOT_DELAY_MS
+    int "Delay before OTA-triggered reboot in milliseconds"
+    depends on ZGW_OTA_AUTO_REBOOT_ENABLED
+    range 500 30000
+    default 3000
+
+endmenu
+
 config ZGW_MQTT_TRANSPORT_ENABLED
     bool "Enable MQTT transport adapter"
     default n

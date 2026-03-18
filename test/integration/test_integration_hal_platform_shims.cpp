@@ -6,6 +6,7 @@
 
 #include "hal_matter.h"
 #include "hal_mdns.h"
+#include "hal_ota.h"
 #include "hal_rcp.h"
 #include "hal_spiffs.h"
 
@@ -33,6 +34,13 @@ int main() {
     update.attr_type = HAL_MATTER_ATTR_TEMPERATURE_CENTI_C;
     update.int_value = 2150;
     assert(hal_matter_publish_attribute_update(&update) == 0);
+
+    char version[32] = {};
+    assert(!hal_ota_running_partition_pending_verify());
+    assert(hal_ota_mark_running_partition_valid() == 0);
+    assert(hal_ota_schedule_restart(0U) == 0);
+    assert(hal_ota_get_running_version(version, sizeof(version)));
+    assert(version[0] != '\0');
 
     const uint8_t sample_block[4] = {1U, 2U, 3U, 4U};
     assert(hal_rcp_update_begin() == 0);

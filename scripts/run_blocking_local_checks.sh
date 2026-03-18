@@ -10,6 +10,7 @@ Runs the blocking local verification bundle for architecture-sensitive changes:
 2. Host unit tests
 3. Required migration smoke
 4. Target HAL test firmware build
+5. OTA slot size guard for target HAL test firmware
 
 Options:
   --strict       Treat low-severity architecture findings as blocking too.
@@ -114,6 +115,9 @@ if [[ "${skip_target}" -eq 0 ]]; then
   ensure_idf_env
   run_step "Build target HAL test firmware" \
     idf.py -C test/target -B "${TARGET_BUILD_DIR}" build
+
+  run_step "Check OTA slot size (target test firmware)" \
+    bash ./scripts/check_ota_slot_size.sh "${TARGET_BUILD_DIR}" "test/target/partitions.csv"
 else
   echo
   echo "==> Skipping target HAL test firmware build"

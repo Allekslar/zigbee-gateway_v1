@@ -10,6 +10,8 @@
 #include "log_tags.h"
 #include "matter_bridge.hpp"
 #include "mqtt_bridge.hpp"
+#include "ota_bootstrap.hpp"
+#include "sdkconfig.h"
 #include "service_runtime.hpp"
 #include "web_server.hpp"
 
@@ -95,4 +97,21 @@ extern "C" void app_main(void) {
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
+
+#if CONFIG_ZGW_OTA_ENABLED && CONFIG_ZGW_OTA_BOOT_CONFIRM_ENABLED
+    switch (service::confirm_pending_ota_image()) {
+        case service::OtaBootConfirmResult::kNotRequired:
+            break;
+        case service::OtaBootConfirmResult::kConfirmed:
+            ESP_LOGI(kTag, "OTA image confirmation completed");
+            break;
+        case service::OtaBootConfirmResult::kFailed:
+        default:
+            ESP_LOGE(kTag, "OTA boot confirmation failed");
+            while (true) {
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+            break;
+    }
+#endif
 }
