@@ -14,6 +14,8 @@ namespace web_ui {
 
 namespace {
 
+constexpr std::size_t kStaticAssetChunkSize = 1024U;
+
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
 extern const uint8_t style_css_start[] asm("_binary_style_css_start");
@@ -38,7 +40,21 @@ esp_err_t send_embedded_file(
     (void)httpd_resp_set_hdr(req, "Cache-Control", "no-store, max-age=0");
     (void)httpd_resp_set_hdr(req, "Pragma", "no-cache");
     (void)httpd_resp_set_hdr(req, "Expires", "0");
-    return httpd_resp_send(req, reinterpret_cast<const char*>(start), static_cast<ssize_t>(file_size));
+
+    std::size_t offset = 0U;
+    while (offset < file_size) {
+        const std::size_t remaining = file_size - offset;
+        const std::size_t chunk_size = remaining > kStaticAssetChunkSize ? kStaticAssetChunkSize : remaining;
+        if (httpd_resp_send_chunk(
+                req,
+                reinterpret_cast<const char*>(start + offset),
+                static_cast<ssize_t>(chunk_size)) != ESP_OK) {
+            return ESP_FAIL;
+        }
+        offset += chunk_size;
+    }
+
+    return httpd_resp_send_chunk(req, nullptr, 0);
 }
 
 esp_err_t root_get_handler(httpd_req_t* req) {

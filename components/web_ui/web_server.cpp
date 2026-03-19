@@ -55,7 +55,7 @@ bool WebServer::start() noexcept {
     // churn, while LRU purge and short wait timeouts still reclaim stale peers.
     config.lru_purge_enable = true;
     config.recv_wait_timeout = 5;
-    config.send_wait_timeout = 5;
+    config.send_wait_timeout = 15;
     config.keep_alive_enable = true;
     config.keep_alive_idle = 8;
     config.keep_alive_interval = 4;

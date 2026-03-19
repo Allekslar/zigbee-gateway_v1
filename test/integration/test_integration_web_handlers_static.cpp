@@ -85,8 +85,11 @@ extern "C" int httpd_req_recv(httpd_req_t* req, char* buf, size_t len) {
 
 extern "C" esp_err_t httpd_resp_send_chunk(httpd_req_t* req, const char* buf, ssize_t len) {
     (void)req;
-    (void)buf;
-    (void)len;
+    if (buf == nullptr || len == 0) {
+        return ESP_OK;
+    }
+    g_last_response.append(
+        (len == HTTPD_RESP_USE_STRLEN) ? buf : std::string(buf, static_cast<std::size_t>(len)));
     return ESP_OK;
 }
 

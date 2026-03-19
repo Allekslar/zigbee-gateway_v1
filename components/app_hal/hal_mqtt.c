@@ -25,15 +25,15 @@
 #endif
 
 #ifndef CONFIG_ZGW_MQTT_KEEPALIVE_SEC
-#define CONFIG_ZGW_MQTT_KEEPALIVE_SEC 60
+#define CONFIG_ZGW_MQTT_KEEPALIVE_SEC 120
 #endif
 
 #ifndef CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS
-#define CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS 15000
+#define CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS 30000
 #endif
 
 #ifndef CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS
-#define CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS 30000
+#define CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS 45000
 #endif
 
 typedef struct {
@@ -122,6 +122,13 @@ static void hal_mqtt_event_handler(void* handler_args, esp_event_base_t base, in
             hal_mqtt_dispatch_connected();
             break;
         case MQTT_EVENT_DISCONNECTED:
+            if (g_hal_mqtt.connected) {
+                ESP_LOGW(
+                    kTag,
+                    "MQTT session dropped after established connection uri=%s keepalive_sec=%d",
+                    hal_mqtt_configured_uri(),
+                    CONFIG_ZGW_MQTT_KEEPALIVE_SEC);
+            }
             g_hal_mqtt.connected = false;
             ESP_LOGW(kTag, "MQTT disconnected uri=%s", hal_mqtt_configured_uri());
             hal_mqtt_dispatch_disconnected();
@@ -143,6 +150,13 @@ static void hal_mqtt_event_handler(void* handler_args, esp_event_base_t base, in
                         CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS,
                         CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS,
                         stack_err);
+                } else if (last_esp_err == 0U && sock_errno == 11) {
+                    ESP_LOGW(
+                        kTag,
+                        "MQTT transport write stalled uri=%s reconnect_backoff_ms=%d transport_sock_errno=%d",
+                        hal_mqtt_configured_uri(),
+                        CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS,
+                        sock_errno);
                 } else {
                     ESP_LOGE(
                         kTag,

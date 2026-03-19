@@ -87,19 +87,19 @@ config ZGW_MQTT_KEEPALIVE_SEC
     int "MQTT keepalive seconds"
     depends on ZGW_MQTT_TRANSPORT_ENABLED
     range 15 300
-    default 60
+    default 120
 
 config ZGW_MQTT_NETWORK_TIMEOUT_MS
     int "MQTT network timeout (ms)"
     depends on ZGW_MQTT_TRANSPORT_ENABLED
     range 1000 60000
-    default 15000
+    default 30000
 
 config ZGW_MQTT_RECONNECT_TIMEOUT_MS
     int "MQTT reconnect backoff (ms)"
     depends on ZGW_MQTT_TRANSPORT_ENABLED
     range 1000 120000
-    default 30000
+    default 45000
 
 config ZGW_MQTT_RESUME_AFTER_OTA_DELAY_MS
     int "MQTT resume delay after OTA failure (ms)"
