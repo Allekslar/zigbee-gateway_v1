@@ -143,15 +143,16 @@ static void hal_mqtt_event_handler(void* handler_args, esp_event_base_t base, in
                         CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS,
                         CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS,
                         stack_err);
+                } else {
+                    ESP_LOGE(
+                        kTag,
+                        "MQTT error uri=%s error_type=%d esp_tls_last_esp_err=0x%x esp_tls_stack_err=0x%x transport_sock_errno=%d",
+                        hal_mqtt_configured_uri(),
+                        (int)event->error_handle->error_type,
+                        last_esp_err,
+                        stack_err,
+                        sock_errno);
                 }
-                ESP_LOGE(
-                    kTag,
-                    "MQTT error uri=%s error_type=%d esp_tls_last_esp_err=0x%x esp_tls_stack_err=0x%x transport_sock_errno=%d",
-                    hal_mqtt_configured_uri(),
-                    (int)event->error_handle->error_type,
-                    last_esp_err,
-                    stack_err,
-                    sock_errno);
             } else {
                 ESP_LOGE(kTag, "MQTT error uri=%s", hal_mqtt_configured_uri());
             }
