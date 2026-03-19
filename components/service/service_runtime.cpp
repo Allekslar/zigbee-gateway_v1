@@ -204,14 +204,18 @@ ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& eff
       read_model_coordinator_(registry),
       state_persistence_coordinator_(registry),
       zigbee_lifecycle_coordinator_(network_policy_manager_, device_manager_) {
-    (void)config_manager_.load();
-    config_timeout_ms_cache_.store(config_manager_.command_timeout_ms(), std::memory_order_relaxed);
-    config_max_retries_cache_.store(config_manager_.max_command_retries(), std::memory_order_relaxed);
+    reload_config_bootstrap_state();
     mqtt_status_cache_.last_connect_error = NetworkApiSnapshot::MqttConnectionError::kNone;
     zigbee_lifecycle_coordinator_.set_join_window_cache(false, 0U);
     notify_read_models_from_runtime_stats();
-    notify_read_models_from_config_cache();
     notify_read_models_from_core_snapshot();
+}
+
+void ServiceRuntime::reload_config_bootstrap_state() noexcept {
+    (void)config_manager_.load();
+    config_timeout_ms_cache_.store(config_manager_.command_timeout_ms(), std::memory_order_relaxed);
+    config_max_retries_cache_.store(config_manager_.max_command_retries(), std::memory_order_relaxed);
+    notify_read_models_from_config_cache();
 }
 
 void ServiceRuntime::set_join_window_cache(bool open, uint16_t seconds_left) noexcept {
@@ -774,6 +778,7 @@ bool ServiceRuntime::initialize_hal_adapter() noexcept {
         return false;
     }
 
+    reload_config_bootstrap_state();
     state_persistence_coordinator_.mark_restore_pending();
     return true;
 }

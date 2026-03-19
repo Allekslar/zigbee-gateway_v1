@@ -216,6 +216,7 @@ private:
     void notify_read_models_from_core_snapshot() noexcept;
     void notify_read_models_from_runtime_stats() noexcept;
     void notify_read_models_from_config_cache() noexcept;
+    void reload_config_bootstrap_state() noexcept;
     bool drain_mqtt_status_update() noexcept;
 
     // CoreRegistry is owned by ServiceRuntime; managers must consume prepared
