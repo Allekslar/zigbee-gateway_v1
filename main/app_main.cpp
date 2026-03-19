@@ -2,6 +2,7 @@
 /* Copyright (C) 2026 Alex.K. */
 
 #include "core_registry.hpp"
+#include <inttypes.h>
 #include "effect_executor.hpp"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -70,10 +71,34 @@ extern "C" void app_main(void) {
     }
 
     if (!g_runtime.start()) {
-        ESP_LOGE(kTag, "Service runtime task start failed");
+        const service::ConfigManager::LoadReport& config_report = g_runtime.config_load_report();
+        ESP_LOGE(
+            kTag,
+            "Service runtime start failed (config bootstrap status=%u from_schema=%" PRIu32 " to_schema=%" PRIu32 ")",
+            static_cast<unsigned>(config_report.status),
+            config_report.from_schema_version,
+            config_report.to_schema_version);
         while (true) {
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
+    }
+
+    const service::ConfigManager::LoadReport& config_report = g_runtime.config_load_report();
+    if (config_report.status == service::ConfigManager::LoadStatus::kMigrated) {
+        ESP_LOGI(
+            kTag,
+            "Config schema migration applied (%" PRIu32 " -> %" PRIu32 ")",
+            config_report.from_schema_version,
+            config_report.to_schema_version);
+    } else if (config_report.status == service::ConfigManager::LoadStatus::kFreshInstall) {
+        ESP_LOGI(kTag, "Config schema initialized for fresh install (%" PRIu32 ")", config_report.to_schema_version);
+    }
+    if (config_report.schema_repair_persist_failed) {
+        ESP_LOGW(
+            kTag,
+            "Config schema repair could not be persisted (from_schema=%" PRIu32 " to_schema=%" PRIu32 ")",
+            config_report.from_schema_version,
+            config_report.to_schema_version);
     }
 
     if (!g_web_server.start()) {

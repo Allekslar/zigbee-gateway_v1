@@ -38,9 +38,13 @@ bool WebServer::start() noexcept {
     config.uri_match_fn = httpd_uri_match_wildcard;
     // Keep headroom for future API additions.
     config.max_uri_handlers = 24;
-    // Keep sockets at platform-safe ceiling for current lwIP config.
-    config.max_open_sockets = 7;
+#ifdef ESP_PLATFORM
+    // Reserve socket headroom for OTA HTTPS, MQTT reconnects, and system traffic.
+    // A smaller HTTPD ceiling works better than letting UI polling consume most of
+    // the global lwIP socket budget on ESP32-C6.
+    config.max_open_sockets = 4;
     config.backlog_conn = 8;
+#endif
     // Some handlers format multi-field JSON responses and can overflow
     // default 4KB HTTPD stack on ESP32-C6 under real traffic.
     config.stack_size = 12288;

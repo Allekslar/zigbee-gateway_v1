@@ -8,6 +8,9 @@
 #include <string>
 #include <vector>
 
+#include "core_registry.hpp"
+#include "effect_executor.hpp"
+#include "service_runtime.hpp"
 #include "web_handler_common.hpp"
 
 #ifndef ESP_PLATFORM
@@ -92,7 +95,6 @@ int main() {
 
     std::atomic<uint32_t> next_id{100};
     web_ui::WebRouteContext route_ctx{};
-    route_ctx.registry = &registry;
     route_ctx.runtime = &runtime;
     route_ctx.next_correlation_id = &next_id;
 

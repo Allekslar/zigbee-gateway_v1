@@ -14,6 +14,7 @@ void test_hal_zigbee_suppresses_implicit_permit_join_after_authorization(void);
 void test_reporting_flow_join_to_first_report_and_reboot_recovery(void);
 void test_reporting_faults_malformed_duplicate_out_of_order_timeout(void);
 void test_config_manager_migrates_legacy_v1(void);
+void test_config_manager_repairs_zero_schema_with_current_keys(void);
 void test_config_manager_reporting_profile_persist_restore(void);
 void test_service_join_policy_deduplicates_candidates(void);
 void test_web_api_http_command_result_updates_snapshot(void);
@@ -37,6 +38,7 @@ void app_main(void) {
     RUN_TEST(test_reporting_flow_join_to_first_report_and_reboot_recovery);
     RUN_TEST(test_reporting_faults_malformed_duplicate_out_of_order_timeout);
     RUN_TEST(test_config_manager_migrates_legacy_v1);
+    RUN_TEST(test_config_manager_repairs_zero_schema_with_current_keys);
     RUN_TEST(test_config_manager_reporting_profile_persist_restore);
     RUN_TEST(test_service_join_policy_deduplicates_candidates);
     RUN_TEST(test_web_api_http_command_result_updates_snapshot);

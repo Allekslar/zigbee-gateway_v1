@@ -52,6 +52,10 @@ extern "C" esp_err_t httpd_resp_set_hdr(httpd_req_t* req, const char* field, con
 
 extern "C" esp_err_t httpd_resp_send(httpd_req_t* req, const char* buf, ssize_t len) {
     (void)req;
+    if (buf == nullptr || len == 0) {
+        g_last_response.clear();
+        return ESP_OK;
+    }
     g_last_response = (len == HTTPD_RESP_USE_STRLEN) ? buf : std::string(buf, static_cast<std::size_t>(len));
     return ESP_OK;
 }
@@ -111,8 +115,9 @@ void clear_http_capture() {
 
 int main() {
     web_ui::WebRouteContext context{};
-    context.registry = reinterpret_cast<core::CoreRegistry*>(0x1);
-    context.runtime = reinterpret_cast<service::ServiceRuntime*>(0x1);
+    std::atomic<uint32_t> next_correlation_id{1U};
+    context.runtime = reinterpret_cast<service::ServiceRuntimeApi*>(0x1);
+    context.next_correlation_id = &next_correlation_id;
 
     httpd_req_t req{};
     req.user_ctx = &context;
@@ -133,6 +138,12 @@ int main() {
     assert(g_last_type == "application/javascript; charset=utf-8");
     assert(g_last_response.find("console.log('ok');") != std::string::npos);
 
+    clear_http_capture();
+    assert(web_ui::favicon_get_handler(&req) == ESP_OK);
+    assert(g_last_type == "image/x-icon");
+    assert(g_last_response.empty());
+    assert(g_set_hdr_calls == 1);
+
     assert(!web_ui::register_static_routes(nullptr, &context));
     assert(!web_ui::register_static_routes(reinterpret_cast<void*>(1), nullptr));
 
@@ -140,7 +151,7 @@ int main() {
     g_register_fail_at = 0;
     assert(web_ui::register_static_routes(reinterpret_cast<void*>(1), &context));
     const int success_registration_count = g_register_call_count;
-    assert(success_registration_count == 4);
+    assert(success_registration_count == 5);
 
     for (int fail_at = 1; fail_at <= success_registration_count; ++fail_at) {
         g_register_call_count = 0;

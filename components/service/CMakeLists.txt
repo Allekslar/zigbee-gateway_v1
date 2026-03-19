@@ -16,6 +16,7 @@ idf_component_register(
         "network_manager.cpp"
         "network_policy_manager.cpp"
         "ota_manager.cpp"
+        "ota_manifest.cpp"
         "ota_bootstrap.cpp"
         "operation_result_store.cpp"
         "persistence_manager.cpp"

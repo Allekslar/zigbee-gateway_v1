@@ -17,6 +17,22 @@ constexpr const char* kLegacyKeyMaxRetries = "cmd_retries";
 constexpr const char* kKeyReportingProfileCount = "cfg_rpt_cnt";
 constexpr const char* kLegacyV2KeyReportingProfileCount = "cfg_rpt_count";
 
+void test_missing_schema_initializes_fresh_install() {
+    assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
+
+    service::ConfigManager manager;
+    assert(manager.load());
+    assert(manager.schema_version() == service::ConfigManager::kCurrentSchemaVersion);
+    assert(manager.load_report().status == service::ConfigManager::LoadStatus::kFreshInstall);
+    assert(manager.load_report().from_schema_version == 0U);
+    assert(manager.load_report().to_schema_version == service::ConfigManager::kCurrentSchemaVersion);
+    assert(manager.load_report().schema_key_missing);
+
+    uint32_t persisted = 0U;
+    assert(hal_nvs_get_u32(kKeySchemaVersion, &persisted) == HAL_NVS_STATUS_OK);
+    assert(persisted == service::ConfigManager::kCurrentSchemaVersion);
+}
+
 void test_migrate_v1_legacy_values() {
     assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32(kLegacyKeyTimeoutMs, 9000U) == HAL_NVS_STATUS_OK);
@@ -26,6 +42,8 @@ void test_migrate_v1_legacy_values() {
     service::ConfigManager manager;
     assert(manager.load());
     assert(manager.schema_version() == service::ConfigManager::kCurrentSchemaVersion);
+    assert(manager.load_report().status == service::ConfigManager::LoadStatus::kMigrated);
+    assert(manager.load_report().from_schema_version == 1U);
     assert(manager.command_timeout_ms() == 9000U);
     assert(manager.max_command_retries() == 4U);
 
@@ -38,6 +56,26 @@ void test_migrate_v1_legacy_values() {
     assert(persisted == 4U);
 }
 
+void test_zero_schema_with_current_scalar_keys_repairs_schema() {
+    assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
+    assert(hal_nvs_set_u32(kKeySchemaVersion, 0U) == HAL_NVS_STATUS_OK);
+    assert(hal_nvs_set_u32(kKeyTimeoutMs, 6500U) == HAL_NVS_STATUS_OK);
+    assert(hal_nvs_set_u32(kKeyMaxRetries, 3U) == HAL_NVS_STATUS_OK);
+
+    service::ConfigManager manager;
+    assert(manager.load());
+    assert(manager.schema_version() == service::ConfigManager::kCurrentSchemaVersion);
+    assert(manager.load_report().status == service::ConfigManager::LoadStatus::kReady);
+    assert(manager.load_report().from_schema_version == service::ConfigManager::kCurrentSchemaVersion);
+    assert(!manager.load_report().schema_key_missing);
+    assert(manager.command_timeout_ms() == 6500U);
+    assert(manager.max_command_retries() == 3U);
+
+    uint32_t persisted = 0U;
+    assert(hal_nvs_get_u32(kKeySchemaVersion, &persisted) == HAL_NVS_STATUS_OK);
+    assert(persisted == service::ConfigManager::kCurrentSchemaVersion);
+}
+
 void test_invalid_legacy_values_fallback_to_defaults() {
     assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32(kLegacyKeyTimeoutMs, 0U) == HAL_NVS_STATUS_OK);
@@ -47,6 +85,7 @@ void test_invalid_legacy_values_fallback_to_defaults() {
     service::ConfigManager manager;
     assert(manager.load());
     assert(manager.schema_version() == service::ConfigManager::kCurrentSchemaVersion);
+    assert(manager.load_report().status == service::ConfigManager::LoadStatus::kMigrated);
     assert(manager.command_timeout_ms() == service::ConfigManager::kDefaultCommandTimeoutMs);
     assert(manager.max_command_retries() == service::ConfigManager::kDefaultMaxCommandRetries);
 }
@@ -58,6 +97,7 @@ void test_reject_future_schema() {
 
     service::ConfigManager manager;
     assert(!manager.load());
+    assert(manager.load_report().status == service::ConfigManager::LoadStatus::kFailed);
 }
 
 void test_reporting_profile_persist_restore() {
@@ -107,6 +147,8 @@ void test_migrate_v2_legacy_reporting_keys_idempotent() {
     service::ConfigManager first_boot;
     assert(first_boot.load());
     assert(first_boot.schema_version() == service::ConfigManager::kCurrentSchemaVersion);
+    assert(first_boot.load_report().status == service::ConfigManager::LoadStatus::kMigrated);
+    assert(first_boot.load_report().from_schema_version == 2U);
     assert(first_boot.reporting_profile_count() == 1U);
 
     service::ConfigManager::ReportingProfileKey key{};
@@ -145,12 +187,15 @@ void test_migrate_v2_without_legacy_reporting_keys_is_safe() {
     service::ConfigManager manager;
     assert(manager.load());
     assert(manager.schema_version() == service::ConfigManager::kCurrentSchemaVersion);
+    assert(manager.load_report().status == service::ConfigManager::LoadStatus::kMigrated);
 }
 
 }  // namespace
 
 int main() {
+    test_missing_schema_initializes_fresh_install();
     test_migrate_v1_legacy_values();
+    test_zero_schema_with_current_scalar_keys_repairs_schema();
     test_invalid_legacy_values_fallback_to_defaults();
     test_reject_future_schema();
     test_reporting_profile_persist_restore();

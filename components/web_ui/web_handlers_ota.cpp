@@ -57,6 +57,18 @@ const char* ota_status_token(service::OtaOperationStatus status) noexcept {
             return "verify_failed";
         case service::OtaOperationStatus::kApplyFailed:
             return "apply_failed";
+        case service::OtaOperationStatus::kManifestInvalid:
+            return "manifest_invalid";
+        case service::OtaOperationStatus::kProjectMismatch:
+            return "project_mismatch";
+        case service::OtaOperationStatus::kBoardMismatch:
+            return "board_mismatch";
+        case service::OtaOperationStatus::kChipTargetMismatch:
+            return "chip_target_mismatch";
+        case service::OtaOperationStatus::kSchemaMismatch:
+            return "schema_mismatch";
+        case service::OtaOperationStatus::kDowngradeRejected:
+            return "downgrade_rejected";
         case service::OtaOperationStatus::kInternalError:
         default:
             return "internal_error";
@@ -134,6 +146,48 @@ bool escape_json_string(const char* input, char* output, std::size_t output_capa
     return true;
 }
 
+const char* ota_submit_error_message(service::OtaSubmitStatus status) noexcept {
+    switch (status) {
+        case service::OtaSubmitStatus::kBusy:
+            return "ota_queue_full";
+        case service::OtaSubmitStatus::kInvalidRequest:
+            return "invalid_ota_request";
+        case service::OtaSubmitStatus::kInvalidManifest:
+            return "invalid_ota_manifest";
+        case service::OtaSubmitStatus::kProjectMismatch:
+            return "project_mismatch";
+        case service::OtaSubmitStatus::kBoardMismatch:
+            return "board_mismatch";
+        case service::OtaSubmitStatus::kChipTargetMismatch:
+            return "chip_target_mismatch";
+        case service::OtaSubmitStatus::kSchemaMismatch:
+            return "schema_mismatch";
+        case service::OtaSubmitStatus::kDowngradeRejected:
+            return "downgrade_rejected";
+        case service::OtaSubmitStatus::kAccepted:
+        default:
+            return "ota_error";
+    }
+}
+
+const char* ota_submit_http_status(service::OtaSubmitStatus status) noexcept {
+    switch (status) {
+        case service::OtaSubmitStatus::kBusy:
+            return "503 Service Unavailable";
+        case service::OtaSubmitStatus::kProjectMismatch:
+        case service::OtaSubmitStatus::kBoardMismatch:
+        case service::OtaSubmitStatus::kChipTargetMismatch:
+        case service::OtaSubmitStatus::kSchemaMismatch:
+        case service::OtaSubmitStatus::kDowngradeRejected:
+            return "409 Conflict";
+        case service::OtaSubmitStatus::kInvalidRequest:
+        case service::OtaSubmitStatus::kInvalidManifest:
+        case service::OtaSubmitStatus::kAccepted:
+        default:
+            return "400 Bad Request";
+    }
+}
+
 esp_err_t ota_get_handler(httpd_req_t* req) {
     if (req == nullptr || req->user_ctx == nullptr) {
         return ESP_FAIL;
@@ -195,15 +249,23 @@ esp_err_t ota_post_handler(httpd_req_t* req) {
     }
 
     service::OtaStartRequest request{};
-    if (!find_json_string_field(body, "url", request.url.data(), request.url.size()) || request.url[0] == '\0') {
+    if (!find_json_string_field(body, "url", request.manifest.url.data(), request.manifest.url.size()) ||
+        request.manifest.url[0] == '\0') {
         return send_json_error(req, "400 Bad Request", "invalid_url");
     }
-    (void)find_json_string_field(body, "target_version", request.target_version.data(), request.target_version.size());
+    (void)find_json_string_field(body, "target_version", request.manifest.version.data(), request.manifest.version.size());
+    (void)find_json_string_field(body, "project", request.manifest.project.data(), request.manifest.project.size());
+    (void)find_json_string_field(body, "board", request.manifest.board.data(), request.manifest.board.size());
+    (void)find_json_string_field(body, "chip_target", request.manifest.chip_target.data(), request.manifest.chip_target.size());
+    (void)find_json_string_field(body, "sha256", request.manifest.sha256.data(), request.manifest.sha256.size());
+    (void)find_json_u32_field(body, "min_schema", &request.manifest.min_schema);
+    (void)find_json_bool_field(body, "allow_downgrade", &request.manifest.allow_downgrade);
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
     request.request_id = context->runtime->next_operation_request_id();
-    if (!context->runtime->post_ota_start(request)) {
-        return send_json_error(req, "503 Service Unavailable", "ota_queue_full");
+    const service::OtaSubmitStatus submit_status = context->runtime->post_ota_start(request);
+    if (submit_status != service::OtaSubmitStatus::kAccepted) {
+        return send_json_error(req, ota_submit_http_status(submit_status), ota_submit_error_message(submit_status));
     }
 
     char response[160]{};

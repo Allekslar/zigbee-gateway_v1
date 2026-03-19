@@ -35,6 +35,9 @@ jobs:
       - name: Build firmware
         run: . /opt/esp/idf/export.sh && idf.py build
 
+      - name: Validate OTA trust config
+        run: bash ./scripts/check_ota_trust_config.sh sdkconfig
+
       - name: Check OTA slot size (firmware)
         run: bash ./scripts/check_ota_slot_size.sh build partitions.csv
 

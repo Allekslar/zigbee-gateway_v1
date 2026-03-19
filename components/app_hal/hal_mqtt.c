@@ -10,6 +10,7 @@
 
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_tls_errors.h"
 #include "mqtt_client.h"
 
 #include "log_tags.h"
@@ -25,6 +26,14 @@
 
 #ifndef CONFIG_ZGW_MQTT_KEEPALIVE_SEC
 #define CONFIG_ZGW_MQTT_KEEPALIVE_SEC 60
+#endif
+
+#ifndef CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS
+#define CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS 15000
+#endif
+
+#ifndef CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS
+#define CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS 30000
 #endif
 
 typedef struct {
@@ -123,14 +132,26 @@ static void hal_mqtt_event_handler(void* handler_args, esp_event_base_t base, in
         case MQTT_EVENT_ERROR:
             g_hal_mqtt.connected = false;
             if (event != NULL && event->error_handle != NULL) {
+                const unsigned int last_esp_err = (unsigned int)event->error_handle->esp_tls_last_esp_err;
+                const unsigned int stack_err = (unsigned int)event->error_handle->esp_tls_stack_err;
+                const int sock_errno = event->error_handle->esp_transport_sock_errno;
+                if (event->error_handle->esp_tls_last_esp_err == ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT) {
+                    ESP_LOGW(
+                        kTag,
+                        "MQTT broker connect timeout uri=%s timeout_ms=%d reconnect_backoff_ms=%d esp_tls_stack_err=0x%x",
+                        hal_mqtt_configured_uri(),
+                        CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS,
+                        CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS,
+                        stack_err);
+                }
                 ESP_LOGE(
                     kTag,
                     "MQTT error uri=%s error_type=%d esp_tls_last_esp_err=0x%x esp_tls_stack_err=0x%x transport_sock_errno=%d",
                     hal_mqtt_configured_uri(),
                     (int)event->error_handle->error_type,
-                    (unsigned int)event->error_handle->esp_tls_last_esp_err,
-                    (unsigned int)event->error_handle->esp_tls_stack_err,
-                    event->error_handle->esp_transport_sock_errno);
+                    last_esp_err,
+                    stack_err,
+                    sock_errno);
             } else {
                 ESP_LOGE(kTag, "MQTT error uri=%s", hal_mqtt_configured_uri());
             }
@@ -187,14 +208,18 @@ hal_mqtt_status_t hal_mqtt_init(void) {
     }
 #endif
     config.session.keepalive = CONFIG_ZGW_MQTT_KEEPALIVE_SEC;
+    config.network.timeout_ms = CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS;
+    config.network.reconnect_timeout_ms = CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS;
     config.network.disable_auto_reconnect = false;
 
     ESP_LOGI(
         kTag,
-        "Initializing MQTT transport uri=%s client_id=%s keepalive_sec=%d username_present=%s",
+        "Initializing MQTT transport uri=%s client_id=%s keepalive_sec=%d timeout_ms=%d reconnect_backoff_ms=%d username_present=%s",
         hal_mqtt_configured_uri(),
         CONFIG_ZGW_MQTT_CLIENT_ID,
         CONFIG_ZGW_MQTT_KEEPALIVE_SEC,
+        CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS,
+        CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS,
         hal_mqtt_username_present());
 
     g_hal_mqtt.client = esp_mqtt_client_init(&config);

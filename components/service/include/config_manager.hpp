@@ -51,8 +51,27 @@ public:
         uint32_t occupancy_hold_ms{0};
     };
 
+    enum class LoadStatus : uint8_t {
+        kNotLoaded = 0,
+        kReady = 1,
+        kMigrated = 2,
+        kFreshInstall = 3,
+        kFailed = 4,
+    };
+
+    struct LoadReport {
+        LoadStatus status{LoadStatus::kNotLoaded};
+        uint32_t from_schema_version{0};
+        uint32_t to_schema_version{kCurrentSchemaVersion};
+        bool schema_key_missing{false};
+        bool schema_repair_persist_failed{false};
+    };
+
     bool load() noexcept;
     bool save() noexcept;
+    const LoadReport& load_report() const noexcept;
+    bool loaded_ok() const noexcept;
+    bool migration_performed() const noexcept;
     uint32_t schema_version() const noexcept;
     bool set_command_timeout_ms(uint32_t timeout_ms) noexcept;
     uint32_t command_timeout_ms() const noexcept;
@@ -90,6 +109,7 @@ private:
     std::array<ReportingProfile, kMaxReportingProfiles> reporting_profiles_{};
     std::array<ReportingPolicyDefault, kReportingDeviceClassCount> reporting_policy_defaults_{};
     bool dirty_{false};
+    LoadReport load_report_{};
 };
 
 }  // namespace service

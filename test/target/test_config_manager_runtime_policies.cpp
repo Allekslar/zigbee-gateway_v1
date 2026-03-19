@@ -31,6 +31,9 @@ extern "C" void test_config_manager_migrates_legacy_v1(void) {
     service::ConfigManager manager;
     TEST_ASSERT_TRUE(manager.load());
     TEST_ASSERT_EQUAL_UINT32(service::ConfigManager::kCurrentSchemaVersion, manager.schema_version());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(service::ConfigManager::LoadStatus::kMigrated),
+        static_cast<uint8_t>(manager.load_report().status));
     TEST_ASSERT_EQUAL_UINT32(9000U, manager.command_timeout_ms());
     TEST_ASSERT_EQUAL_UINT32(4U, manager.max_command_retries());
 
@@ -41,6 +44,27 @@ extern "C" void test_config_manager_migrates_legacy_v1(void) {
     TEST_ASSERT_EQUAL_UINT32(9000U, persisted);
     TEST_ASSERT_EQUAL_INT(HAL_NVS_STATUS_OK, hal_nvs_get_u32(kKeyMaxRetries, &persisted));
     TEST_ASSERT_EQUAL_UINT32(4U, persisted);
+}
+
+extern "C" void test_config_manager_repairs_zero_schema_with_current_keys(void) {
+    TEST_ASSERT_EQUAL_INT(HAL_NVS_STATUS_OK, hal_nvs_init());
+    TEST_ASSERT_EQUAL_INT(HAL_NVS_STATUS_OK, hal_nvs_set_u32(kKeySchemaVersion, 0U));
+    TEST_ASSERT_EQUAL_INT(HAL_NVS_STATUS_OK, hal_nvs_set_u32(kKeyTimeoutMs, 7000U));
+    TEST_ASSERT_EQUAL_INT(HAL_NVS_STATUS_OK, hal_nvs_set_u32(kKeyMaxRetries, 2U));
+
+    service::ConfigManager manager;
+    TEST_ASSERT_TRUE(manager.load());
+    TEST_ASSERT_EQUAL_UINT32(service::ConfigManager::kCurrentSchemaVersion, manager.schema_version());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(service::ConfigManager::LoadStatus::kReady),
+        static_cast<uint8_t>(manager.load_report().status));
+    TEST_ASSERT_EQUAL_UINT32(service::ConfigManager::kCurrentSchemaVersion, manager.load_report().from_schema_version);
+    TEST_ASSERT_EQUAL_UINT32(7000U, manager.command_timeout_ms());
+    TEST_ASSERT_EQUAL_UINT32(2U, manager.max_command_retries());
+
+    uint32_t persisted = 0U;
+    TEST_ASSERT_EQUAL_INT(HAL_NVS_STATUS_OK, hal_nvs_get_u32(kKeySchemaVersion, &persisted));
+    TEST_ASSERT_EQUAL_UINT32(service::ConfigManager::kCurrentSchemaVersion, persisted);
 }
 
 extern "C" void test_service_join_policy_deduplicates_candidates(void) {

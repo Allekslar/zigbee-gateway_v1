@@ -26,20 +26,27 @@ target_include_directories(core_integration
 zg_apply_component_compile_policy(core_integration)
 
 set(SERVICE_SOURCES
+    ../../components/service/bridge_snapshot_builder.cpp
     ../../components/service/command_manager.cpp
     ../../components/service/connectivity_manager.cpp
     ../../components/service/config_manager.cpp
     ../../components/service/device_manager.cpp
+    ../../components/service/devices_api_snapshot_builder.cpp
     ../../components/service/effect_executor.cpp
     ../../components/service/network_manager.cpp
     ../../components/service/network_policy_manager.cpp
+    ../../components/service/operation_result_store.cpp
     ../../components/service/ota_manager.cpp
+    ../../components/service/ota_manifest.cpp
     ../../components/service/ota_bootstrap.cpp
     ../../components/service/persistence_manager.cpp
+    ../../components/service/read_model_coordinator.cpp
     ../../components/service/reporting_manager.cpp
     ../../components/service/scan_manager.cpp
     ../../components/service/service_runtime.cpp
+    ../../components/service/state_persistence_coordinator.cpp
     ../../components/service/hal_event_adapter.cpp
+    ../../components/service/zigbee_lifecycle_coordinator.cpp
 )
 
 set(APP_HAL_SERVICE_SOURCES

@@ -100,9 +100,50 @@ bool is_valid_reporting_policy(const ConfigManager::ReportingPolicyDefault& poli
     return true;
 }
 
+bool has_u32_key(const char* key) noexcept {
+    if (key == nullptr || key[0] == '\0') {
+        return false;
+    }
+
+    uint32_t ignored = 0U;
+    return hal_nvs_get_u32(key, &ignored) == HAL_NVS_STATUS_OK;
+}
+
+bool has_current_reporting_profile_keys() noexcept {
+    if (has_u32_key(kKeyReportingProfileCount)) {
+        return true;
+    }
+
+    char key_slot[16]{};
+    return build_profile_nvs_key('k', 0U, key_slot, sizeof(key_slot)) && has_u32_key(key_slot);
+}
+
+bool has_current_scalar_keys() noexcept {
+    return has_u32_key(kKeyTimeoutMs) || has_u32_key(kKeyMaxRetries);
+}
+
+bool has_current_schema_keys() noexcept {
+    return has_current_scalar_keys() || has_current_reporting_profile_keys();
+}
+
+bool has_legacy_v2_keys() noexcept {
+    if (has_u32_key(kKeyTimeoutMs) || has_u32_key(kKeyMaxRetries) || has_u32_key(kLegacyV2KeyReportingProfileCount)) {
+        return true;
+    }
+
+    char key_slot[16]{};
+    return build_legacy_v2_profile_nvs_key('k', 0U, key_slot, sizeof(key_slot)) && has_u32_key(key_slot);
+}
+
+bool has_legacy_v1_keys() noexcept {
+    return has_u32_key(kLegacyKeyTimeoutMs) || has_u32_key(kLegacyKeyMaxRetries);
+}
+
 }  // namespace
 
 bool ConfigManager::load() noexcept {
+    load_report_ = LoadReport{};
+    load_report_.to_schema_version = kCurrentSchemaVersion;
     schema_version_ = kCurrentSchemaVersion;
     command_timeout_ms_ = kDefaultCommandTimeoutMs;
     max_command_retries_ = kDefaultMaxCommandRetries;
@@ -115,20 +156,57 @@ bool ConfigManager::load() noexcept {
         default_policy_for_class(ReportingDeviceClass::kContact);
     dirty_ = false;
 
-    uint32_t persisted_schema = 1;
+    bool schema_key_missing = false;
+    uint32_t persisted_schema = 0U;
     if (hal_nvs_get_u32(kKeySchemaVersion, &persisted_schema) != HAL_NVS_STATUS_OK) {
-        persisted_schema = 1;
+        schema_key_missing = true;
     }
 
+    const bool schema_needs_repair = schema_key_missing || persisted_schema == 0U;
+    if (schema_needs_repair) {
+        if (has_current_schema_keys()) {
+            persisted_schema = kCurrentSchemaVersion;
+        } else if (has_legacy_v2_keys()) {
+            persisted_schema = 2U;
+        } else if (has_legacy_v1_keys()) {
+            persisted_schema = 1U;
+        } else {
+            if (hal_nvs_set_u32(kKeySchemaVersion, kCurrentSchemaVersion) != HAL_NVS_STATUS_OK) {
+                load_report_.schema_repair_persist_failed = true;
+            }
+
+            load_report_.status = LoadStatus::kFreshInstall;
+            load_report_.schema_key_missing = true;
+            load_report_.from_schema_version = 0U;
+            load_report_.to_schema_version = kCurrentSchemaVersion;
+            schema_version_ = kCurrentSchemaVersion;
+            load_current_values();
+            load_reporting_profiles();
+            dirty_ = false;
+            return true;
+        }
+    }
+
+    load_report_.schema_key_missing = schema_key_missing;
+    load_report_.from_schema_version = persisted_schema;
+
     if (persisted_schema == 0 || persisted_schema > kCurrentSchemaVersion) {
+        load_report_.status = LoadStatus::kFailed;
         return false;
     }
 
     if (persisted_schema < kCurrentSchemaVersion) {
         if (!migrate_to_current(persisted_schema)) {
+            load_report_.status = LoadStatus::kFailed;
             return false;
         }
         persisted_schema = kCurrentSchemaVersion;
+        load_report_.status = LoadStatus::kMigrated;
+    } else {
+        if (schema_needs_repair && hal_nvs_set_u32(kKeySchemaVersion, persisted_schema) != HAL_NVS_STATUS_OK) {
+            load_report_.schema_repair_persist_failed = true;
+        }
+        load_report_.status = LoadStatus::kReady;
     }
 
     schema_version_ = persisted_schema;
@@ -156,6 +234,20 @@ bool ConfigManager::save() noexcept {
     schema_version_ = kCurrentSchemaVersion;
     dirty_ = false;
     return true;
+}
+
+const ConfigManager::LoadReport& ConfigManager::load_report() const noexcept {
+    return load_report_;
+}
+
+bool ConfigManager::loaded_ok() const noexcept {
+    return load_report_.status == LoadStatus::kReady ||
+           load_report_.status == LoadStatus::kMigrated ||
+           load_report_.status == LoadStatus::kFreshInstall;
+}
+
+bool ConfigManager::migration_performed() const noexcept {
+    return load_report_.status == LoadStatus::kMigrated;
 }
 
 uint32_t ConfigManager::schema_version() const noexcept {

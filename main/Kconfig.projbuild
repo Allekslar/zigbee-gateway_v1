@@ -24,10 +24,27 @@ config ZGW_OTA_BOOT_CONFIRM_TIMEOUT_MS
     range 1000 120000
     default 15000
 
-config ZGW_OTA_USE_CERT_BUNDLE
-    bool "Use ESP x509 certificate bundle for OTA HTTPS"
+choice ZGW_OTA_TLS_TRUST_MODE
+    prompt "OTA HTTPS trust mode"
     depends on ZGW_OTA_ENABLED
-    default y
+    default ZGW_OTA_TLS_TRUST_CERT_BUNDLE
+
+config ZGW_OTA_TLS_TRUST_CERT_BUNDLE
+    bool "Use ESP x509 certificate bundle"
+
+config ZGW_OTA_TLS_TRUST_PINNED_CA
+    bool "Use pinned root CA PEM embedded in firmware"
+
+endchoice
+
+config ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING
+    bool "Allow plaintext http:// OTA URLs for lab/testing only"
+    depends on ZGW_OTA_ENABLED
+    default n
+    help
+        Keep disabled for production. When enabled, OTA can download over
+        plaintext HTTP, which bypasses TLS trust checks and should be used
+        only for controlled lab/HIL scenarios.
 
 config ZGW_OTA_AUTO_REBOOT_ENABLED
     bool "Automatically reboot after successful OTA staging"
@@ -71,5 +88,23 @@ config ZGW_MQTT_KEEPALIVE_SEC
     depends on ZGW_MQTT_TRANSPORT_ENABLED
     range 15 300
     default 60
+
+config ZGW_MQTT_NETWORK_TIMEOUT_MS
+    int "MQTT network timeout (ms)"
+    depends on ZGW_MQTT_TRANSPORT_ENABLED
+    range 1000 60000
+    default 15000
+
+config ZGW_MQTT_RECONNECT_TIMEOUT_MS
+    int "MQTT reconnect backoff (ms)"
+    depends on ZGW_MQTT_TRANSPORT_ENABLED
+    range 1000 120000
+    default 30000
+
+config ZGW_MQTT_RESUME_AFTER_OTA_DELAY_MS
+    int "MQTT resume delay after OTA failure (ms)"
+    depends on ZGW_MQTT_TRANSPORT_ENABLED
+    range 0 30000
+    default 2000
 
 endmenu

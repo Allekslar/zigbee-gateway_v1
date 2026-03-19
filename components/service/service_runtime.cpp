@@ -4,6 +4,7 @@
 #include "service_runtime.hpp"
 
 #include <algorithm>
+#include <inttypes.h>
 #include <cstring>
 #include <chrono>
 
@@ -305,6 +306,7 @@ void ServiceRuntime::note_network_operation_poll_status(
 }
 
 void ServiceRuntime::note_ota_poll_status(uint32_t request_id, OtaPollStatus status) noexcept {
+    SR_LOGI("OTA poll status request_id=%" PRIu32 " status=%u", request_id, static_cast<unsigned>(status));
     operation_result_store_.note_ota_poll_status(request_id, status);
 }
 
@@ -428,7 +430,7 @@ bool ServiceRuntime::post_mqtt_status(const MqttStatusSnapshot& snapshot) noexce
     return true;
 }
 
-bool ServiceRuntime::post_ota_start(const OtaStartRequest& request) noexcept {
+OtaSubmitStatus ServiceRuntime::post_ota_start(const OtaStartRequest& request) noexcept {
     return ota_manager_.enqueue_request(*this, request);
 }
 
@@ -818,6 +820,14 @@ bool ServiceRuntime::zigbee_started() const noexcept {
 }
 
 bool ServiceRuntime::start() noexcept {
+    if (!config_manager_.loaded_ok()) {
+        SR_LOGW(
+            "Config bootstrap failed from schema=%" PRIu32 " to schema=%" PRIu32,
+            config_manager_.load_report().from_schema_version,
+            config_manager_.load_report().to_schema_version);
+        return false;
+    }
+
 #ifdef ESP_PLATFORM
     if (runtime_task_handle_ != nullptr) {
         return true;
@@ -1158,6 +1168,14 @@ ConfigManager& ServiceRuntime::config_manager() noexcept {
     return config_manager_;
 }
 
+const ConfigManager::LoadReport& ServiceRuntime::config_load_report() const noexcept {
+    return config_manager_.load_report();
+}
+
+bool ServiceRuntime::config_bootstrap_ok() const noexcept {
+    return config_manager_.loaded_ok();
+}
+
 bool ServiceRuntime::drain_command_results() noexcept {
     return command_manager_.drain_command_results(*this);
 }
@@ -1192,6 +1210,12 @@ bool ServiceRuntime::drain_ota_status_update() noexcept {
         return false;
     }
 
+    SR_LOGI(
+        "OTA status update kind=%u request_id=%" PRIu32 " bytes=%" PRIu32 " size=%" PRIu32,
+        static_cast<unsigned>(update.kind),
+        update.request_id,
+        update.downloaded_bytes,
+        update.image_size);
     return ota_manager_.apply_status_update(update);
 }
 

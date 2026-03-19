@@ -28,6 +28,7 @@ typedef enum {
 typedef struct {
     const char* url;
     const char* expected_version;
+    const char* expected_project_name;
 } hal_ota_https_request_t;
 
 typedef void (*hal_ota_progress_cb_t)(
@@ -43,6 +44,7 @@ typedef struct {
     uint32_t image_size;
     bool image_size_known;
     char discovered_version[32];
+    char discovered_project_name[32];
 } hal_ota_https_result_t;
 
 int hal_ota_perform_https_update(

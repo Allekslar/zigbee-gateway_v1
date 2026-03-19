@@ -8,12 +8,14 @@
 #include "effect_executor.hpp"
 #include "hal_ota.h"
 #include "service_runtime.hpp"
+#include "version.hpp"
 
 namespace {
 
 hal_ota_https_status_t g_next_status = HAL_OTA_HTTPS_STATUS_OK;
-char g_last_url[service::OtaStartRequest::kUrlMaxLen]{};
-char g_last_expected_version[service::OtaStartRequest::kVersionMaxLen]{};
+char g_last_url[service::kOtaManifestUrlMaxLen]{};
+char g_last_expected_version[service::kOtaManifestVersionMaxLen]{};
+char g_last_expected_project[service::kOtaManifestProjectMaxLen]{};
 
 extern "C" int hal_ota_platform_perform_https_update(
     const hal_ota_https_request_t* request,
@@ -25,9 +27,13 @@ extern "C" int hal_ota_platform_perform_https_update(
 
     std::memset(g_last_url, 0, sizeof(g_last_url));
     std::memset(g_last_expected_version, 0, sizeof(g_last_expected_version));
+    std::memset(g_last_expected_project, 0, sizeof(g_last_expected_project));
     std::strncpy(g_last_url, request->url, sizeof(g_last_url) - 1U);
     if (request->expected_version != nullptr) {
         std::strncpy(g_last_expected_version, request->expected_version, sizeof(g_last_expected_version) - 1U);
+    }
+    if (request->expected_project_name != nullptr) {
+        std::strncpy(g_last_expected_project, request->expected_project_name, sizeof(g_last_expected_project) - 1U);
     }
 
     std::memset(out_result, 0, sizeof(*out_result));
@@ -48,9 +54,9 @@ extern "C" int hal_ota_platform_perform_https_update(
 service::OtaStartRequest make_request(uint32_t request_id, const char* url, const char* version) {
     service::OtaStartRequest request{};
     request.request_id = request_id;
-    std::strncpy(request.url.data(), url, request.url.size() - 1U);
+    std::strncpy(request.manifest.url.data(), url, request.manifest.url.size() - 1U);
     if (version != nullptr) {
-        std::strncpy(request.target_version.data(), version, request.target_version.size() - 1U);
+        std::strncpy(request.manifest.version.data(), version, request.manifest.version.size() - 1U);
     }
     return request;
 }
@@ -69,13 +75,15 @@ int main() {
 
     const service::OtaStartRequest first_request =
         make_request(41U, "https://updates.local/gateway-v2.bin", "2.0.1");
-    assert(runtime.post_ota_start(first_request));
+    assert(runtime.post_ota_start(first_request) == service::OtaSubmitStatus::kAccepted);
     assert(runtime.get_ota_poll_status(first_request.request_id) == service::OtaPollStatus::kQueued);
-    assert(!runtime.post_ota_start(make_request(42U, "https://updates.local/other.bin", "2.0.2")));
+    assert(runtime.post_ota_start(make_request(42U, "https://updates.local/other.bin", "2.0.2")) ==
+           service::OtaSubmitStatus::kBusy);
 
     assert(runtime.process_pending() == 0U);
-    assert(std::strcmp(g_last_url, first_request.url.data()) == 0);
+    assert(std::strcmp(g_last_url, first_request.manifest.url.data()) == 0);
     assert(std::strcmp(g_last_expected_version, "2.0.1") == 0);
+    assert(std::strcmp(g_last_expected_project, common::kProjectName) == 0);
     assert(runtime.get_ota_poll_status(first_request.request_id) == service::OtaPollStatus::kReady);
 
     assert(runtime.build_ota_api_snapshot(&snapshot));
@@ -96,7 +104,7 @@ int main() {
     g_next_status = HAL_OTA_HTTPS_STATUS_DOWNLOAD_FAILED;
     const service::OtaStartRequest failed_request =
         make_request(43U, "https://updates.local/gateway-v3.bin", "");
-    assert(runtime.post_ota_start(failed_request));
+    assert(runtime.post_ota_start(failed_request) == service::OtaSubmitStatus::kAccepted);
     assert(runtime.process_pending() == 0U);
     assert(runtime.take_ota_result(failed_request.request_id, &result));
     assert(result.status == service::OtaOperationStatus::kDownloadFailed);

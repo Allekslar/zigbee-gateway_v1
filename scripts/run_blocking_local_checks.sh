@@ -9,8 +9,9 @@ Runs the blocking local verification bundle for architecture-sensitive changes:
 1. Architecture invariants
 2. Host unit tests
 3. Required migration smoke
-4. Target HAL test firmware build
-5. OTA slot size guard for target HAL test firmware
+4. OTA trust config validation
+5. Target HAL test firmware build
+6. OTA slot size guard for target HAL test firmware
 
 Options:
   --strict       Treat low-severity architecture findings as blocking too.
@@ -110,6 +111,9 @@ run_step "Run host test suite" \
 
 run_step "Run migration smoke" \
   ctest --test-dir "${BUILD_HOST_DIR}" --output-on-failure -R test_config_manager_migration
+
+run_step "Validate OTA trust config" \
+  bash ./scripts/check_ota_trust_config.sh
 
 if [[ "${skip_target}" -eq 0 ]]; then
   ensure_idf_env

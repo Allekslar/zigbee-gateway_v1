@@ -81,7 +81,7 @@ public:
         bool save_credentials) noexcept override;
     bool post_network_credentials_status(uint32_t request_id) noexcept override;
     bool post_mqtt_status(const MqttStatusSnapshot& snapshot) noexcept override;
-    bool post_ota_start(const OtaStartRequest& request) noexcept override;
+    OtaSubmitStatus post_ota_start(const OtaStartRequest& request) noexcept override;
     bool post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept override;
     bool post_zigbee_join_candidate(uint16_t short_addr) noexcept;
     bool post_zigbee_interview_result(
@@ -141,6 +141,8 @@ public:
     std::size_t tick(uint32_t now_ms) noexcept;
 
     ConfigManager& config_manager() noexcept;
+    const ConfigManager::LoadReport& config_load_report() const noexcept;
+    bool config_bootstrap_ok() const noexcept;
 
 private:
     friend class CommandManager;

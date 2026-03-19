@@ -12,6 +12,7 @@
 #include "effect_executor.hpp"
 #include "hal_ota.h"
 #include "service_runtime.hpp"
+#include "version.hpp"
 #include "web_handler_common.hpp"
 
 #ifndef ESP_PLATFORM
@@ -104,6 +105,8 @@ extern "C" int hal_ota_platform_perform_https_update(
     hal_ota_https_result_t* out_result) {
     assert(request != nullptr);
     assert(out_result != nullptr);
+    assert(request->expected_project_name != nullptr);
+    assert(std::strcmp(request->expected_project_name, common::kProjectName) == 0);
     std::memset(out_result, 0, sizeof(*out_result));
     out_result->status = HAL_OTA_HTTPS_STATUS_OK;
     out_result->reboot_required = true;
@@ -189,6 +192,16 @@ int main() {
     assert(g_last_response.find("\"ok\":true") != std::string::npos);
     assert(g_last_response.find("\"reboot_required\":true") != std::string::npos);
     assert(g_last_response.find("\"target_version\":\"1.2.3\"") != std::string::npos);
+
+    g_request_body =
+        "{\"url\":\"https://updates.local/gateway.bin\",\"project\":\"foreign-project\"}";
+    assert(g_request_body.size() <= static_cast<std::size_t>(std::numeric_limits<int>::max()));
+    req.content_len = static_cast<int>(g_request_body.size());
+    g_last_response.clear();
+    g_last_status.clear();
+    assert(web_ui::ota_post_handler(&req) == ESP_OK);
+    assert(g_last_status == "409 Conflict");
+    assert(g_last_response.find("\"error\":\"project_mismatch\"") != std::string::npos);
 
     g_register_call_count = 0;
     assert(web_ui::register_ota_routes(reinterpret_cast<void*>(1), &route_ctx));

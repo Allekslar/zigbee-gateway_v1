@@ -22,6 +22,7 @@ Optional environment:
   OTA_HTTP_PORT         Local HTTP server port when OTA_BIN_PATH is used (default: 8787)
   OTA_POLL_TIMEOUT_SEC  OTA result poll timeout (default: 180)
   REBOOT_TIMEOUT_SEC    Wait time for post-OTA reboot/recovery (default: 120)
+  ALLOW_INSECURE_HTTP   Set to yes only for lab firmware builds that explicitly allow plaintext OTA
 EOF
 }
 
@@ -40,6 +41,7 @@ ESPPORT="${ESPPORT:-/dev/ttyACM0}"
 OTA_HTTP_PORT="${OTA_HTTP_PORT:-8787}"
 OTA_POLL_TIMEOUT_SEC="${OTA_POLL_TIMEOUT_SEC:-180}"
 REBOOT_TIMEOUT_SEC="${REBOOT_TIMEOUT_SEC:-120}"
+ALLOW_INSECURE_HTTP="${ALLOW_INSECURE_HTTP:-no}"
 
 json_get() {
   local payload="$1"
@@ -115,6 +117,17 @@ fi
 
 echo "Gateway base URL: ${GATEWAY_BASE_URL}"
 echo "OTA URL: ${OTA_URL}"
+
+if [[ "${OTA_URL}" == http://* ]]; then
+  if [[ "${ALLOW_INSECURE_HTTP}" != "yes" ]]; then
+    echo "Refusing plaintext OTA URL without ALLOW_INSECURE_HTTP=yes: ${OTA_URL}" >&2
+    exit 2
+  fi
+  echo "WARNING: proceeding with plaintext OTA URL for lab/testing only"
+elif [[ "${OTA_URL}" != https://* ]]; then
+  echo "Unsupported OTA URL scheme: ${OTA_URL}" >&2
+  exit 2
+fi
 
 snapshot="$(json_get_http "${GATEWAY_BASE_URL}/api/ota")"
 echo "Initial OTA snapshot: ${snapshot}"

@@ -15,7 +15,7 @@ class ServiceRuntime;
 
 class OtaManager {
 public:
-    bool enqueue_request(ServiceRuntime& runtime, const OtaStartRequest& request) noexcept;
+    OtaSubmitStatus enqueue_request(ServiceRuntime& runtime, const OtaStartRequest& request) noexcept;
     bool build_api_snapshot(OtaApiSnapshot* out) const noexcept;
     std::size_t pending_ingress_count() const noexcept;
     bool has_pending_or_busy() const noexcept;
@@ -57,6 +57,7 @@ private:
         uint32_t request_id{0};
     };
 
+    static OtaOperationStatus operation_status_from_submit_status(OtaSubmitStatus status) noexcept;
     bool pop_request(OtaStartRequest* out) noexcept;
     bool process_request(ServiceRuntime& runtime, const OtaStartRequest& request) noexcept;
     void publish_status_queued(const OtaStartRequest& request) noexcept;

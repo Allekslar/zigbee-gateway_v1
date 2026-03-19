@@ -16,6 +16,7 @@
 #include "device_manager.hpp"
 #include "matter_runtime_api.hpp"
 #include "network_manager.hpp"
+#include "ota_manifest.hpp"
 
 namespace service {
 
@@ -154,6 +155,18 @@ enum class OtaPollStatus : uint8_t {
     kReady = 3,
 };
 
+enum class OtaSubmitStatus : uint8_t {
+    kAccepted = 0,
+    kBusy = 1,
+    kInvalidRequest = 2,
+    kInvalidManifest = 3,
+    kProjectMismatch = 4,
+    kBoardMismatch = 5,
+    kChipTargetMismatch = 6,
+    kSchemaMismatch = 7,
+    kDowngradeRejected = 8,
+};
+
 enum class OtaOperationStatus : uint8_t {
     kOk = 0,
     kInvalidArgument = 1,
@@ -162,19 +175,21 @@ enum class OtaOperationStatus : uint8_t {
     kVerifyFailed = 4,
     kApplyFailed = 5,
     kInternalError = 6,
+    kManifestInvalid = 7,
+    kProjectMismatch = 8,
+    kBoardMismatch = 9,
+    kChipTargetMismatch = 10,
+    kSchemaMismatch = 11,
+    kDowngradeRejected = 12,
 };
 
 struct OtaStartRequest {
-    static constexpr std::size_t kUrlMaxLen = 192U;
-    static constexpr std::size_t kVersionMaxLen = 32U;
-
     uint32_t request_id{0};
-    std::array<char, kUrlMaxLen> url{};
-    std::array<char, kVersionMaxLen> target_version{};
+    OtaManifest manifest{};
 };
 
 struct OtaApiSnapshot {
-    static constexpr std::size_t kVersionMaxLen = OtaStartRequest::kVersionMaxLen;
+    static constexpr std::size_t kVersionMaxLen = kOtaManifestVersionMaxLen;
 
     uint32_t active_request_id{0};
     bool busy{false};
@@ -188,7 +203,7 @@ struct OtaApiSnapshot {
 };
 
 struct OtaResult {
-    static constexpr std::size_t kVersionMaxLen = OtaStartRequest::kVersionMaxLen;
+    static constexpr std::size_t kVersionMaxLen = kOtaManifestVersionMaxLen;
 
     uint32_t request_id{0};
     OtaOperationStatus status{OtaOperationStatus::kInternalError};
@@ -276,7 +291,7 @@ public:
         bool save_credentials) noexcept = 0;
     virtual bool post_network_credentials_status(uint32_t request_id) noexcept = 0;
     virtual bool post_mqtt_status(const NetworkApiSnapshot::MqttStatusSnapshot& snapshot) noexcept = 0;
-    virtual bool post_ota_start(const OtaStartRequest& request) noexcept = 0;
+    virtual OtaSubmitStatus post_ota_start(const OtaStartRequest& request) noexcept = 0;
     virtual bool post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept = 0;
     virtual bool post_remove_device(
         uint32_t request_id,

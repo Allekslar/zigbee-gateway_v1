@@ -15,6 +15,8 @@ idf_component_register(
         "hal_spiffs.c"
         "hal_rcp.c"
         "hal_led.c"
+    EMBED_TXTFILES
+        "ota_server_root_ca.pem"
     INCLUDE_DIRS "include"
     REQUIRES
         common

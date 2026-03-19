@@ -37,6 +37,7 @@ set(SERVICE_SOURCES
     ../../components/service/network_manager.cpp
     ../../components/service/network_policy_manager.cpp
     ../../components/service/ota_manager.cpp
+    ../../components/service/ota_manifest.cpp
     ../../components/service/ota_bootstrap.cpp
     ../../components/service/operation_result_store.cpp
     ../../components/service/persistence_manager.cpp
@@ -106,6 +107,11 @@ add_executable(test_config_manager_migration test_config_manager_migration.cpp)
 target_link_libraries(test_config_manager_migration PRIVATE service_host)
 zg_apply_component_compile_policy(test_config_manager_migration)
 add_test(NAME test_config_manager_migration COMMAND test_config_manager_migration)
+
+add_executable(test_service_config_bootstrap test_service_config_bootstrap.cpp)
+target_link_libraries(test_service_config_bootstrap PRIVATE service_host)
+zg_apply_component_compile_policy(test_service_config_bootstrap)
+add_test(NAME test_service_config_bootstrap COMMAND test_service_config_bootstrap)
 
 add_executable(test_hal_wifi_scan test_hal_wifi_scan.cpp)
 target_link_libraries(test_hal_wifi_scan PRIVATE service_host)
@@ -186,6 +192,11 @@ add_executable(test_ota_bootstrap test_ota_bootstrap.cpp)
 target_link_libraries(test_ota_bootstrap PRIVATE service_host)
 zg_apply_component_compile_policy(test_ota_bootstrap)
 add_test(NAME test_ota_bootstrap COMMAND test_ota_bootstrap)
+
+add_executable(test_ota_manifest test_ota_manifest.cpp)
+target_link_libraries(test_ota_manifest PRIVATE service_host)
+zg_apply_component_compile_policy(test_ota_manifest)
+add_test(NAME test_ota_manifest COMMAND test_ota_manifest)
 
 add_executable(test_service_saved_credentials_zigbee_start test_service_saved_credentials_zigbee_start.cpp)
 target_link_libraries(test_service_saved_credentials_zigbee_start PRIVATE service_host)

@@ -114,7 +114,7 @@ int main() {
     service::ServiceRuntime runtime(registry, effect_executor);
 
     reset_counters();
-    web_ui::WebServer server(registry, runtime);
+    web_ui::WebServer server(runtime);
     assert(server.start());
     assert(server.started());
     assert(g_httpd_start_calls == 1);
@@ -136,7 +136,7 @@ int main() {
 
     reset_counters();
     g_httpd_start_status = ESP_FAIL;
-    web_ui::WebServer server_start_fail(registry, runtime);
+    web_ui::WebServer server_start_fail(runtime);
     assert(!server_start_fail.start());
     assert(!server_start_fail.started());
     assert(g_httpd_start_calls == 1);
@@ -145,7 +145,7 @@ int main() {
 
     reset_counters();
     g_register_routes_ok = false;
-    web_ui::WebServer server_routes_fail(registry, runtime);
+    web_ui::WebServer server_routes_fail(runtime);
     assert(!server_routes_fail.start());
     assert(!server_routes_fail.started());
     assert(g_httpd_start_calls == 1);
