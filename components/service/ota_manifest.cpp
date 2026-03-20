@@ -4,7 +4,11 @@
 #include "ota_manifest.hpp"
 
 #include <cctype>
+#include <cstdio>
 #include <cstring>
+#include <inttypes.h>
+
+#include "hal_ota.h"
 
 namespace service {
 
@@ -56,6 +60,22 @@ bool is_valid_sha256_hex(const char* value) noexcept {
         }
     }
     return true;
+}
+
+bool is_empty_cstr(const char* value) noexcept {
+    return value == nullptr || *value == '\0';
+}
+
+bool has_any_signature_material(const OtaManifest& manifest) noexcept {
+    return !is_empty_cstr(manifest.signature_algo.data()) ||
+           !is_empty_cstr(manifest.signature_key_id.data()) ||
+           !is_empty_cstr(manifest.signature.data());
+}
+
+bool has_complete_signature_material(const OtaManifest& manifest) noexcept {
+    return !is_empty_cstr(manifest.signature_algo.data()) &&
+           !is_empty_cstr(manifest.signature_key_id.data()) &&
+           !is_empty_cstr(manifest.signature.data());
 }
 
 bool parse_dotted_numeric_version(const char* value, uint32_t* out_parts, std::size_t part_capacity, std::size_t* out_count) noexcept {
@@ -138,6 +158,37 @@ void apply_ota_manifest_defaults(const OtaManifestContext& context, OtaManifest*
     }
 }
 
+bool build_ota_manifest_signing_payload(
+    const OtaManifest& manifest,
+    char* out,
+    std::size_t out_capacity) noexcept {
+    if (out == nullptr || out_capacity == 0U) {
+        return false;
+    }
+
+    const int written = std::snprintf(
+        out,
+        out_capacity,
+        "version=%s\n"
+        "url=%s\n"
+        "sha256=%s\n"
+        "project=%s\n"
+        "board=%s\n"
+        "chip_target=%s\n"
+        "min_schema=%" PRIu32 "\n"
+        "allow_downgrade=%s\n",
+        manifest.version.data(),
+        manifest.url.data(),
+        manifest.sha256.data(),
+        manifest.project.data(),
+        manifest.board.data(),
+        manifest.chip_target.data(),
+        manifest.min_schema,
+        manifest.allow_downgrade ? "true" : "false");
+
+    return written > 0 && static_cast<std::size_t>(written) < out_capacity;
+}
+
 OtaManifestValidationStatus validate_ota_manifest(
     const OtaManifest& manifest,
     const OtaManifestContext& context) noexcept {
@@ -178,6 +229,23 @@ OtaManifestValidationStatus validate_ota_manifest(
     if (!manifest.allow_downgrade && manifest.version[0] != '\0' && context.current_version[0] != '\0' &&
         is_downgrade(manifest.version.data(), context.current_version.data())) {
         return OtaManifestValidationStatus::kDowngradeRejected;
+    }
+
+    if (has_any_signature_material(manifest)) {
+        if (!has_complete_signature_material(manifest)) {
+            return OtaManifestValidationStatus::kMissingSignature;
+        }
+
+        char payload[kOtaManifestSigningPayloadMaxLen]{};
+        if (!build_ota_manifest_signing_payload(manifest, payload, sizeof(payload)) ||
+            !hal_ota_verify_manifest_signature(
+                payload,
+                std::strlen(payload),
+                manifest.signature_algo.data(),
+                manifest.signature_key_id.data(),
+                manifest.signature.data())) {
+            return OtaManifestValidationStatus::kInvalidSignature;
+        }
     }
 
     return OtaManifestValidationStatus::kOk;

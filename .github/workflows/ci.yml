@@ -41,6 +41,33 @@ jobs:
       - name: Check OTA slot size (firmware)
         run: bash ./scripts/check_ota_slot_size.sh build partitions.csv
 
+  ota-staging-bundle:
+    name: OTA Staging Bundle
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build firmware
+        run: . /opt/esp/idf/export.sh && idf.py build
+
+      - name: Package staging OTA bundle
+        run: |
+          python3 ./scripts/package_ota_release.py \
+            --build-dir build \
+            --output-dir dist/ota \
+            --artifact-base-url https://staging.example.invalid/ota \
+            --channel staging
+
+      - name: Upload OTA staging bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ota-staging-bundle
+          path: dist/ota/staging
+
   host-tests:
     name: Host Unit Tests (Core)
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}

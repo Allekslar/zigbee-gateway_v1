@@ -5,7 +5,7 @@
 
 namespace common {
 
-inline constexpr const char* kProjectName = "zigbee-gateway";
+inline constexpr const char* kProjectName = "zigbee_gateway";
 inline constexpr const char* kVersion = "0.1.0";
 inline constexpr const char* kBoardId = "zigbee-gateway-esp32c6";
 

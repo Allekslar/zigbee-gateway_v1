@@ -17,6 +17,7 @@ idf_component_register(
         "hal_led.c"
     EMBED_TXTFILES
         "ota_server_root_ca.pem"
+        "ota_release_manifest_pub.pem"
     INCLUDE_DIRS "include"
     REQUIRES
         common
