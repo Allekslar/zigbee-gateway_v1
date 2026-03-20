@@ -24,6 +24,7 @@ namespace web_ui {
 namespace {
 
 constexpr const char* kTag = LOG_TAG_WEB_NETWORK;
+constexpr std::size_t kMaxOtaRequestBodyBytes = 1024U;
 
 const char* ota_stage_token(service::OtaStage stage) noexcept {
     switch (stage) {
@@ -69,6 +70,10 @@ const char* ota_status_token(service::OtaOperationStatus status) noexcept {
             return "schema_mismatch";
         case service::OtaOperationStatus::kDowngradeRejected:
             return "downgrade_rejected";
+        case service::OtaOperationStatus::kMissingSignature:
+            return "signature_required";
+        case service::OtaOperationStatus::kInvalidSignature:
+            return "invalid_signature";
         case service::OtaOperationStatus::kInternalError:
         default:
             return "internal_error";
@@ -86,6 +91,24 @@ const char* ota_poll_status_token(service::OtaPollStatus status) noexcept {
         case service::OtaPollStatus::kNotReady:
         default:
             return "not_ready";
+    }
+}
+
+const char* ota_failure_stage_token(uint8_t stage) noexcept {
+    switch (stage) {
+        case 1:
+            return "begin";
+        case 2:
+            return "get_img_desc";
+        case 3:
+            return "perform";
+        case 4:
+            return "complete_data";
+        case 5:
+            return "finish";
+        case 0:
+        default:
+            return "none";
     }
 }
 
@@ -164,6 +187,10 @@ const char* ota_submit_error_message(service::OtaSubmitStatus status) noexcept {
             return "schema_mismatch";
         case service::OtaSubmitStatus::kDowngradeRejected:
             return "downgrade_rejected";
+        case service::OtaSubmitStatus::kMissingSignature:
+            return "signature_required";
+        case service::OtaSubmitStatus::kInvalidSignature:
+            return "invalid_signature";
         case service::OtaSubmitStatus::kAccepted:
         default:
             return "ota_error";
@@ -179,6 +206,8 @@ const char* ota_submit_http_status(service::OtaSubmitStatus status) noexcept {
         case service::OtaSubmitStatus::kChipTargetMismatch:
         case service::OtaSubmitStatus::kSchemaMismatch:
         case service::OtaSubmitStatus::kDowngradeRejected:
+        case service::OtaSubmitStatus::kMissingSignature:
+        case service::OtaSubmitStatus::kInvalidSignature:
             return "409 Conflict";
         case service::OtaSubmitStatus::kInvalidRequest:
         case service::OtaSubmitStatus::kInvalidManifest:
@@ -201,8 +230,10 @@ esp_err_t ota_get_handler(httpd_req_t* req) {
 
     char current_version[service::OtaApiSnapshot::kVersionMaxLen * 2U]{};
     char target_version[service::OtaApiSnapshot::kVersionMaxLen * 2U]{};
+    char debug_breadcrumb[service::OtaApiSnapshot::kDebugBreadcrumbMaxLen * 2U]{};
     if (!escape_json_string(snapshot.current_version.data(), current_version, sizeof(current_version)) ||
-        !escape_json_string(snapshot.target_version.data(), target_version, sizeof(target_version))) {
+        !escape_json_string(snapshot.target_version.data(), target_version, sizeof(target_version)) ||
+        !escape_json_string(snapshot.debug_breadcrumb.data(), debug_breadcrumb, sizeof(debug_breadcrumb))) {
         return ESP_FAIL;
     }
 
@@ -213,13 +244,18 @@ esp_err_t ota_get_handler(httpd_req_t* req) {
         progress_percent = static_cast<unsigned long>(percent > 100U ? 100U : percent);
     }
 
-    char response[512]{};
+    char response[896]{};
     const int written = std::snprintf(
         response,
         sizeof(response),
         "{\"active_request_id\":%" PRIu32 ",\"busy\":%s,\"stage\":\"%s\",\"last_error\":\"%s\","
         "\"downloaded_bytes\":%" PRIu32 ",\"image_size\":%" PRIu32 ",\"image_size_known\":%s,"
-        "\"progress_percent\":%lu,\"current_version\":\"%s\",\"target_version\":\"%s\"}",
+        "\"progress_percent\":%lu,\"transport_last_esp_err\":%" PRIu32 ","
+        "\"transport_last_tls_error\":%" PRIu32 ",\"transport_tls_error_code\":%" PRId32 ","
+        "\"transport_tls_flags\":%" PRId32 ",\"transport_socket_errno\":%" PRId32 ","
+        "\"transport_http_status_code\":%" PRId32 ",\"transport_failure_stage\":\"%s\","
+        "\"debug_request_id\":%" PRIu32 ",\"debug_breadcrumb\":\"%s\","
+        "\"current_version\":\"%s\",\"target_version\":\"%s\"}",
         snapshot.active_request_id,
         snapshot.busy ? "true" : "false",
         ota_stage_token(snapshot.stage),
@@ -228,6 +264,15 @@ esp_err_t ota_get_handler(httpd_req_t* req) {
         snapshot.image_size,
         snapshot.image_size_known ? "true" : "false",
         progress_percent,
+        snapshot.transport_last_esp_err,
+        snapshot.transport_last_tls_error,
+        snapshot.transport_tls_error_code,
+        snapshot.transport_tls_flags,
+        snapshot.transport_socket_errno,
+        snapshot.transport_http_status_code,
+        ota_failure_stage_token(snapshot.transport_failure_stage),
+        snapshot.debug_request_id,
+        debug_breadcrumb,
         current_version,
         target_version);
     if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
@@ -243,7 +288,7 @@ esp_err_t ota_post_handler(httpd_req_t* req) {
         return ESP_FAIL;
     }
 
-    char body[kMaxRequestBodyBytes]{};
+    char body[kMaxOtaRequestBodyBytes]{};
     if (!read_request_body(req, body, sizeof(body))) {
         return send_json_error(req, "400 Bad Request", "invalid_body");
     }
@@ -258,6 +303,11 @@ esp_err_t ota_post_handler(httpd_req_t* req) {
     (void)find_json_string_field(body, "board", request.manifest.board.data(), request.manifest.board.size());
     (void)find_json_string_field(body, "chip_target", request.manifest.chip_target.data(), request.manifest.chip_target.size());
     (void)find_json_string_field(body, "sha256", request.manifest.sha256.data(), request.manifest.sha256.size());
+    (void)find_json_string_field(
+        body, "signature_algo", request.manifest.signature_algo.data(), request.manifest.signature_algo.size());
+    (void)find_json_string_field(
+        body, "signature_key_id", request.manifest.signature_key_id.data(), request.manifest.signature_key_id.size());
+    (void)find_json_string_field(body, "signature", request.manifest.signature.data(), request.manifest.signature.size());
     (void)find_json_u32_field(body, "min_schema", &request.manifest.min_schema);
     (void)find_json_bool_field(body, "allow_downgrade", &request.manifest.allow_downgrade);
 
@@ -315,13 +365,17 @@ esp_err_t ota_result_get_handler(httpd_req_t* req) {
         return ESP_FAIL;
     }
 
-    char response[320]{};
+    char response[640]{};
     const int written = std::snprintf(
         response,
         sizeof(response),
         "{\"ready\":true,\"ok\":%s,\"request_id\":%" PRIu32 ",\"status\":%u,\"error\":\"%s\","
         "\"reboot_required\":%s,\"downloaded_bytes\":%" PRIu32 ",\"image_size\":%" PRIu32 ","
-        "\"image_size_known\":%s,\"target_version\":\"%s\"}",
+        "\"image_size_known\":%s,\"transport_last_esp_err\":%" PRIu32 ","
+        "\"transport_last_tls_error\":%" PRIu32 ",\"transport_tls_error_code\":%" PRId32 ","
+        "\"transport_tls_flags\":%" PRId32 ",\"transport_socket_errno\":%" PRId32 ","
+        "\"transport_http_status_code\":%" PRId32 ",\"transport_failure_stage\":\"%s\","
+        "\"target_version\":\"%s\"}",
         result.status == service::OtaOperationStatus::kOk ? "true" : "false",
         result.request_id,
         static_cast<unsigned>(result.status),
@@ -330,6 +384,13 @@ esp_err_t ota_result_get_handler(httpd_req_t* req) {
         result.downloaded_bytes,
         result.image_size,
         result.image_size_known ? "true" : "false",
+        result.transport_last_esp_err,
+        result.transport_last_tls_error,
+        result.transport_tls_error_code,
+        result.transport_tls_flags,
+        result.transport_socket_errno,
+        result.transport_http_status_code,
+        ota_failure_stage_token(result.transport_failure_stage),
         target_version);
     if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
         return ESP_FAIL;

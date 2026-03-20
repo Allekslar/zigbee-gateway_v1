@@ -41,6 +41,13 @@ extern "C" int hal_ota_platform_perform_https_update(
     out_result->bytes_read = 1024U;
     out_result->image_size = 2048U;
     out_result->image_size_known = true;
+    out_result->last_esp_err = 0x9001U;
+    out_result->last_tls_error = 0x8006U;
+    out_result->esp_tls_error_code = 0x7100;
+    out_result->esp_tls_flags = 0;
+    out_result->socket_errno = 11;
+    out_result->http_status_code = 200;
+    out_result->failure_stage = 3U;
     std::strncpy(out_result->discovered_version, "2.0.1", sizeof(out_result->discovered_version) - 1U);
     if (progress_cb != nullptr) {
         progress_cb(512U, 2048U, true, user_ctx);
@@ -72,6 +79,7 @@ int main() {
     assert(runtime.build_ota_api_snapshot(&snapshot));
     assert(std::strcmp(snapshot.current_version.data(), "host-test") == 0);
     assert(snapshot.stage == service::OtaStage::kIdle);
+    assert(snapshot.debug_request_id == 0U);
 
     const service::OtaStartRequest first_request =
         make_request(41U, "https://updates.local/gateway-v2.bin", "2.0.1");
@@ -91,6 +99,7 @@ int main() {
     assert(!snapshot.busy);
     assert(snapshot.downloaded_bytes == 1024U);
     assert(snapshot.image_size == 2048U);
+    assert(snapshot.debug_request_id == first_request.request_id);
     assert(std::strcmp(snapshot.target_version.data(), "2.0.1") == 0);
 
     service::OtaResult result{};
@@ -98,6 +107,7 @@ int main() {
     assert(result.status == service::OtaOperationStatus::kOk);
     assert(result.reboot_required);
     assert(result.image_size_known);
+    assert(result.transport_last_esp_err == 0x9001U);
     assert(std::strcmp(result.target_version.data(), "2.0.1") == 0);
     assert(runtime.get_ota_poll_status(first_request.request_id) == service::OtaPollStatus::kNotReady);
 
@@ -108,11 +118,14 @@ int main() {
     assert(runtime.process_pending() == 0U);
     assert(runtime.take_ota_result(failed_request.request_id, &result));
     assert(result.status == service::OtaOperationStatus::kDownloadFailed);
+    assert(result.transport_tls_error_code == 0x7100);
+    assert(result.transport_socket_errno == 11);
     assert(std::strcmp(result.target_version.data(), "2.0.1") == 0);
 
     assert(runtime.build_ota_api_snapshot(&snapshot));
     assert(snapshot.stage == service::OtaStage::kFailed);
     assert(snapshot.last_error == service::OtaOperationStatus::kDownloadFailed);
+    assert(snapshot.transport_failure_stage == 3U);
     assert(std::strcmp(snapshot.target_version.data(), "2.0.1") == 0);
 
     return 0;

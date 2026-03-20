@@ -47,10 +47,12 @@ int main() {
     service::OtaResult ota_result{};
     ota_result.request_id = 9U;
     ota_result.status = service::OtaOperationStatus::kOk;
+    ota_result.transport_socket_errno = 11;
     assert(store.publish_ota_result(ota_result));
     assert(store.get_ota_poll_status(9U) == service::OtaPollStatus::kReady);
     assert(store.take_ota_result(9U, &ota_out));
     assert(ota_out.status == service::OtaOperationStatus::kOk);
+    assert(ota_out.transport_socket_errno == 11);
     assert(store.get_ota_poll_status(9U) == service::OtaPollStatus::kNotReady);
     assert(!store.take_ota_result(9U, &ota_out));
 

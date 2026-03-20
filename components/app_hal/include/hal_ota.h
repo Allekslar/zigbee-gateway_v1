@@ -15,6 +15,12 @@ int hal_ota_mark_running_partition_valid(void);
 bool hal_ota_running_partition_pending_verify(void);
 int hal_ota_schedule_restart(uint32_t delay_ms);
 bool hal_ota_get_running_version(char* out, size_t out_len);
+bool hal_ota_verify_manifest_signature(
+    const char* payload,
+    size_t payload_len,
+    const char* signature_algo,
+    const char* signature_key_id,
+    const char* signature_hex);
 
 typedef enum {
     HAL_OTA_HTTPS_STATUS_OK = 0,
@@ -43,6 +49,13 @@ typedef struct {
     uint32_t bytes_read;
     uint32_t image_size;
     bool image_size_known;
+    uint32_t last_esp_err;
+    uint32_t last_tls_error;
+    int32_t esp_tls_error_code;
+    int32_t esp_tls_flags;
+    int32_t socket_errno;
+    int32_t http_status_code;
+    uint8_t failure_stage;
     char discovered_version[32];
     char discovered_project_name[32];
 } hal_ota_https_result_t;

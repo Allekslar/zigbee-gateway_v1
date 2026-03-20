@@ -165,6 +165,8 @@ enum class OtaSubmitStatus : uint8_t {
     kChipTargetMismatch = 6,
     kSchemaMismatch = 7,
     kDowngradeRejected = 8,
+    kMissingSignature = 9,
+    kInvalidSignature = 10,
 };
 
 enum class OtaOperationStatus : uint8_t {
@@ -181,6 +183,8 @@ enum class OtaOperationStatus : uint8_t {
     kChipTargetMismatch = 10,
     kSchemaMismatch = 11,
     kDowngradeRejected = 12,
+    kMissingSignature = 13,
+    kInvalidSignature = 14,
 };
 
 struct OtaStartRequest {
@@ -190,6 +194,7 @@ struct OtaStartRequest {
 
 struct OtaApiSnapshot {
     static constexpr std::size_t kVersionMaxLen = kOtaManifestVersionMaxLen;
+    static constexpr std::size_t kDebugBreadcrumbMaxLen = 48U;
 
     uint32_t active_request_id{0};
     bool busy{false};
@@ -198,6 +203,15 @@ struct OtaApiSnapshot {
     uint32_t downloaded_bytes{0};
     uint32_t image_size{0};
     bool image_size_known{false};
+    uint32_t transport_last_esp_err{0};
+    uint32_t transport_last_tls_error{0};
+    int32_t transport_tls_error_code{0};
+    int32_t transport_tls_flags{0};
+    int32_t transport_socket_errno{0};
+    int32_t transport_http_status_code{0};
+    uint8_t transport_failure_stage{0};
+    uint32_t debug_request_id{0};
+    std::array<char, kDebugBreadcrumbMaxLen> debug_breadcrumb{};
     std::array<char, kVersionMaxLen> current_version{};
     std::array<char, kVersionMaxLen> target_version{};
 };
@@ -211,6 +225,13 @@ struct OtaResult {
     uint32_t downloaded_bytes{0};
     uint32_t image_size{0};
     bool image_size_known{false};
+    uint32_t transport_last_esp_err{0};
+    uint32_t transport_last_tls_error{0};
+    int32_t transport_tls_error_code{0};
+    int32_t transport_tls_flags{0};
+    int32_t transport_socket_errno{0};
+    int32_t transport_http_status_code{0};
+    uint8_t transport_failure_stage{0};
     std::array<char, kVersionMaxLen> target_version{};
 };
 

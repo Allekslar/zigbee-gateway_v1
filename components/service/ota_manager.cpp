@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "hal_mqtt.h"
+#include "hal_nvs.h"
 #include "hal_ota.h"
 #include "log_tags.h"
 #include "service_runtime.hpp"
@@ -38,6 +39,9 @@ constexpr TickType_t kOtaWorkerMqttResumeDelayTicks = pdMS_TO_TICKS(CONFIG_ZGW_M
 #define OTA_LOGI(...) ((void)0)
 #define OTA_LOGW(...) ((void)0)
 #endif
+
+constexpr const char* kOtaDebugRequestIdKey = "ota_dbg_req";
+constexpr const char* kOtaDebugBreadcrumbKey = "ota_dbg_step";
 
 template <std::size_t N>
 void clear_chars(std::array<char, N>& value) noexcept {
@@ -97,6 +101,29 @@ std::array<char, OtaApiSnapshot::kVersionMaxLen> manifest_version_or_empty(const
     return value;
 }
 
+void persist_ota_debug_breadcrumb(uint32_t request_id, const char* breadcrumb) noexcept {
+    if (request_id != 0U) {
+        (void)hal_nvs_set_u32(kOtaDebugRequestIdKey, request_id);
+    }
+    if (breadcrumb != nullptr && breadcrumb[0] != '\0') {
+        (void)hal_nvs_set_str(kOtaDebugBreadcrumbKey, breadcrumb);
+    }
+}
+
+void load_ota_debug_breadcrumb(OtaApiSnapshot* out) noexcept {
+    if (out == nullptr) {
+        return;
+    }
+
+    out->debug_request_id = 0U;
+    clear_chars(out->debug_breadcrumb);
+    (void)hal_nvs_get_u32(kOtaDebugRequestIdKey, &out->debug_request_id);
+    (void)hal_nvs_get_str(
+        kOtaDebugBreadcrumbKey,
+        out->debug_breadcrumb.data(),
+        static_cast<uint32_t>(out->debug_breadcrumb.size()));
+}
+
 void apply_manifest_defaults_to_request(const OtaManifestContext& context, OtaStartRequest* request) noexcept {
     if (request == nullptr) {
         return;
@@ -121,6 +148,10 @@ OtaSubmitStatus map_manifest_status(OtaManifestValidationStatus status) noexcept
             return OtaSubmitStatus::kSchemaMismatch;
         case OtaManifestValidationStatus::kDowngradeRejected:
             return OtaSubmitStatus::kDowngradeRejected;
+        case OtaManifestValidationStatus::kMissingSignature:
+            return OtaSubmitStatus::kMissingSignature;
+        case OtaManifestValidationStatus::kInvalidSignature:
+            return OtaSubmitStatus::kInvalidSignature;
         default:
             return OtaSubmitStatus::kInvalidManifest;
     }
@@ -148,6 +179,10 @@ OtaOperationStatus OtaManager::operation_status_from_submit_status(OtaSubmitStat
             return OtaOperationStatus::kSchemaMismatch;
         case OtaSubmitStatus::kDowngradeRejected:
             return OtaOperationStatus::kDowngradeRejected;
+        case OtaSubmitStatus::kMissingSignature:
+            return OtaOperationStatus::kMissingSignature;
+        case OtaSubmitStatus::kInvalidSignature:
+            return OtaOperationStatus::kInvalidSignature;
         default:
             return OtaOperationStatus::kInternalError;
     }
@@ -193,6 +228,7 @@ OtaSubmitStatus OtaManager::enqueue_request(ServiceRuntime& runtime, const OtaSt
         normalized_request.request_id,
         normalized_request.manifest.version[0] != '\0' ? normalized_request.manifest.version.data() : "<auto>",
         normalized_request.manifest.url.data());
+    persist_ota_debug_breadcrumb(normalized_request.request_id, "accepted");
     runtime.note_ota_poll_status(normalized_request.request_id, OtaPollStatus::kQueued);
     publish_status_queued(normalized_request);
     return OtaSubmitStatus::kAccepted;
@@ -210,6 +246,7 @@ bool OtaManager::build_api_snapshot(OtaApiSnapshot* out) const noexcept {
 
     clear_chars(out->current_version);
     (void)hal_ota_get_running_version(out->current_version.data(), out->current_version.size());
+    load_ota_debug_breadcrumb(out);
     return true;
 }
 
@@ -234,6 +271,7 @@ bool OtaManager::pop_request(OtaStartRequest* out) noexcept {
     busy_.store(true, std::memory_order_release);
     active_request_id_.store(out->request_id, std::memory_order_release);
     OTA_LOGI("OTA worker popped request_id=%" PRIu32, out->request_id);
+    persist_ota_debug_breadcrumb(out->request_id, "worker_popped");
     return true;
 }
 
@@ -276,6 +314,13 @@ void OtaManager::publish_status_finished(const OtaResult& result) noexcept {
     pending_status_update_.downloaded_bytes = result.downloaded_bytes;
     pending_status_update_.image_size = result.image_size;
     pending_status_update_.image_size_known = result.image_size_known;
+    pending_status_update_.transport_last_esp_err = result.transport_last_esp_err;
+    pending_status_update_.transport_last_tls_error = result.transport_last_tls_error;
+    pending_status_update_.transport_tls_error_code = result.transport_tls_error_code;
+    pending_status_update_.transport_tls_flags = result.transport_tls_flags;
+    pending_status_update_.transport_socket_errno = result.transport_socket_errno;
+    pending_status_update_.transport_http_status_code = result.transport_http_status_code;
+    pending_status_update_.transport_failure_stage = result.transport_failure_stage;
     pending_status_update_.target_version = result.target_version;
 }
 
@@ -313,6 +358,13 @@ bool OtaManager::apply_status_update(const StatusUpdate& update) noexcept {
             snapshot_.downloaded_bytes = 0U;
             snapshot_.image_size = 0U;
             snapshot_.image_size_known = false;
+            snapshot_.transport_last_esp_err = 0U;
+            snapshot_.transport_last_tls_error = 0U;
+            snapshot_.transport_tls_error_code = 0;
+            snapshot_.transport_tls_flags = 0;
+            snapshot_.transport_socket_errno = 0;
+            snapshot_.transport_http_status_code = 0;
+            snapshot_.transport_failure_stage = 0U;
             snapshot_.target_version = update.target_version;
             return true;
         case StatusUpdateKind::kStarted:
@@ -322,6 +374,13 @@ bool OtaManager::apply_status_update(const StatusUpdate& update) noexcept {
             snapshot_.downloaded_bytes = 0U;
             snapshot_.image_size = 0U;
             snapshot_.image_size_known = false;
+            snapshot_.transport_last_esp_err = 0U;
+            snapshot_.transport_last_tls_error = 0U;
+            snapshot_.transport_tls_error_code = 0;
+            snapshot_.transport_tls_flags = 0;
+            snapshot_.transport_socket_errno = 0;
+            snapshot_.transport_http_status_code = 0;
+            snapshot_.transport_failure_stage = 0U;
             snapshot_.target_version = update.target_version;
             return true;
         case StatusUpdateKind::kProgress:
@@ -338,6 +397,13 @@ bool OtaManager::apply_status_update(const StatusUpdate& update) noexcept {
             snapshot_.downloaded_bytes = update.downloaded_bytes;
             snapshot_.image_size = update.image_size;
             snapshot_.image_size_known = update.image_size_known;
+            snapshot_.transport_last_esp_err = update.transport_last_esp_err;
+            snapshot_.transport_last_tls_error = update.transport_last_tls_error;
+            snapshot_.transport_tls_error_code = update.transport_tls_error_code;
+            snapshot_.transport_tls_flags = update.transport_tls_flags;
+            snapshot_.transport_socket_errno = update.transport_socket_errno;
+            snapshot_.transport_http_status_code = update.transport_http_status_code;
+            snapshot_.transport_failure_stage = update.transport_failure_stage;
             snapshot_.target_version = update.target_version;
             return true;
         case StatusUpdateKind::kRebootPending:
@@ -366,6 +432,7 @@ void OtaManager::progress_callback(
 
 bool OtaManager::process_request(ServiceRuntime& runtime, const OtaStartRequest& request) noexcept {
     OTA_LOGI("OTA worker starting request_id=%" PRIu32, request.request_id);
+    persist_ota_debug_breadcrumb(request.request_id, "worker_started");
     publish_status_started(request);
     runtime.note_ota_poll_status(request.request_id, OtaPollStatus::kDownloading);
 
@@ -390,17 +457,20 @@ bool OtaManager::process_request(ServiceRuntime& runtime, const OtaStartRequest&
             static_cast<int>(mqtt_stop_status));
         if (mqtt_stop_status == HAL_MQTT_STATUS_OK) {
             mqtt_paused_for_ota = true;
+            persist_ota_debug_breadcrumb(request.request_id, "mqtt_paused");
             vTaskDelay(kOtaWorkerPreflightDelayTicks);
         }
     }
 #endif
 
     OTA_LOGI("OTA worker invoking hal_ota request_id=%" PRIu32, request.request_id);
+    persist_ota_debug_breadcrumb(request.request_id, "before_hal");
     const int hal_rc = hal_ota_perform_https_update(
         &hal_request,
         &OtaManager::progress_callback,
         &progress_context,
         &hal_result);
+    persist_ota_debug_breadcrumb(request.request_id, "after_hal");
     OTA_LOGI(
         "OTA worker hal_ota finished request_id=%" PRIu32 " hal_rc=%d hal_status=%d bytes=%" PRIu32 " size=%" PRIu32,
         request.request_id,
@@ -416,6 +486,13 @@ bool OtaManager::process_request(ServiceRuntime& runtime, const OtaStartRequest&
     result.downloaded_bytes = hal_result.bytes_read;
     result.image_size = hal_result.image_size;
     result.image_size_known = hal_result.image_size_known;
+    result.transport_last_esp_err = hal_result.last_esp_err;
+    result.transport_last_tls_error = hal_result.last_tls_error;
+    result.transport_tls_error_code = hal_result.esp_tls_error_code;
+    result.transport_tls_flags = hal_result.esp_tls_flags;
+    result.transport_socket_errno = hal_result.socket_errno;
+    result.transport_http_status_code = hal_result.http_status_code;
+    result.transport_failure_stage = hal_result.failure_stage;
     result.target_version = manifest_version_or_empty(request.manifest);
 
     if (result.target_version[0] == '\0' && hal_result.discovered_version[0] != '\0') {
@@ -448,6 +525,7 @@ bool OtaManager::process_request(ServiceRuntime& runtime, const OtaStartRequest&
     active_request_id_.store(0U, std::memory_order_release);
 
     const bool queued = runtime.queue_ota_result(result);
+    persist_ota_debug_breadcrumb(request.request_id, queued ? "result_queued" : "result_drop");
     OTA_LOGI(
         "OTA worker completed request_id=%" PRIu32 " result_status=%u queued=%d reboot_required=%d",
         request.request_id,
@@ -460,6 +538,7 @@ bool OtaManager::process_request(ServiceRuntime& runtime, const OtaStartRequest&
     if (result.status == OtaOperationStatus::kOk && result.reboot_required) {
         publish_status_reboot_pending(result.request_id);
         OTA_LOGI("OTA worker scheduling reboot request_id=%" PRIu32, result.request_id);
+        persist_ota_debug_breadcrumb(request.request_id, "reboot_scheduled");
         (void)hal_ota_schedule_restart(static_cast<uint32_t>(CONFIG_ZGW_OTA_REBOOT_DELAY_MS));
     }
 #endif

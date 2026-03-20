@@ -49,6 +49,13 @@ private:
         uint32_t downloaded_bytes{0};
         uint32_t image_size{0};
         bool image_size_known{false};
+        uint32_t transport_last_esp_err{0};
+        uint32_t transport_last_tls_error{0};
+        int32_t transport_tls_error_code{0};
+        int32_t transport_tls_flags{0};
+        int32_t transport_socket_errno{0};
+        int32_t transport_http_status_code{0};
+        uint8_t transport_failure_stage{0};
         std::array<char, OtaResult::kVersionMaxLen> target_version{};
     };
 

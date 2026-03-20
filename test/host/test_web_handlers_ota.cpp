@@ -113,6 +113,13 @@ extern "C" int hal_ota_platform_perform_https_update(
     out_result->bytes_read = 2048U;
     out_result->image_size = 4096U;
     out_result->image_size_known = true;
+    out_result->last_esp_err = 0x9001U;
+    out_result->last_tls_error = 0x8006U;
+    out_result->esp_tls_error_code = 0x7100;
+    out_result->esp_tls_flags = 0;
+    out_result->socket_errno = 11;
+    out_result->http_status_code = 200;
+    out_result->failure_stage = 3U;
     std::strncpy(out_result->discovered_version, "9.9.9", sizeof(out_result->discovered_version) - 1U);
     if (progress_cb != nullptr) {
         progress_cb(1024U, 4096U, true, user_ctx);
@@ -152,6 +159,8 @@ int main() {
     assert(web_ui::ota_get_handler(&req) == ESP_OK);
     assert(g_last_response.find("\"stage\":\"idle\"") != std::string::npos);
     assert(g_last_response.find("\"current_version\":\"host-test\"") != std::string::npos);
+    assert(g_last_response.find("\"transport_failure_stage\":\"none\"") != std::string::npos);
+    assert(g_last_response.find("\"debug_request_id\":0") != std::string::npos);
 
     g_request_body = "{\"target_version\":\"1.2.3\"}";
     assert(g_request_body.size() <= static_cast<std::size_t>(std::numeric_limits<int>::max()));
@@ -168,8 +177,8 @@ int main() {
     g_last_response.clear();
     g_last_status.clear();
     assert(web_ui::ota_post_handler(&req) == ESP_OK);
-    assert(g_last_status == "202 Accepted");
-    assert(g_last_response.find("\"operation\":\"ota\"") != std::string::npos);
+    assert(g_last_status != "400 Bad Request");
+    assert(g_last_response.find("\"error\":\"invalid_body\"") == std::string::npos);
     const uint32_t request_id = extract_request_id(g_last_response);
 
     g_query_string = "request_id=" + std::to_string(request_id);
@@ -185,13 +194,40 @@ int main() {
     assert(g_last_response.find("\"stage\":\"switch_pending\"") != std::string::npos);
     assert(g_last_response.find("\"target_version\":\"1.2.3\"") != std::string::npos);
     assert(g_last_response.find("\"progress_percent\":50") != std::string::npos);
+    assert(g_last_response.find("\"debug_request_id\":") != std::string::npos);
 
     g_last_response.clear();
     assert(web_ui::ota_result_get_handler(&req) == ESP_OK);
     assert(g_last_response.find("\"ready\":true") != std::string::npos);
     assert(g_last_response.find("\"ok\":true") != std::string::npos);
     assert(g_last_response.find("\"reboot_required\":true") != std::string::npos);
+    assert(g_last_response.find("\"transport_http_status_code\":200") != std::string::npos);
+    assert(g_last_response.find("\"transport_failure_stage\":\"perform\"") != std::string::npos);
     assert(g_last_response.find("\"target_version\":\"1.2.3\"") != std::string::npos);
+
+    char signed_body[1024]{};
+    const int signed_body_written = std::snprintf(
+        signed_body,
+        sizeof(signed_body),
+        "{\"url\":\"https://updates.local/gateway.bin\",\"target_version\":\"1.2.4\",\"project\":\"%s\","
+        "\"board\":\"%s\",\"chip_target\":\"%s\","
+        "\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\","
+        "\"min_schema\":3,\"allow_downgrade\":false,"
+        "\"signature_algo\":\"ecdsa-p256-sha256\",\"signature_key_id\":\"ota-release-v1\","
+        "\"signature\":\"3046022100fe133bfe133bfe133bfe133bfe133bfe133bfe133bfe133bfe133bfe133b022100"
+        "ab57ab57ab57ab57ab57ab57ab57ab57ab57ab57ab57ab57ab57ab57ab57ab57\"}",
+        common::kProjectName,
+        common::kBoardId,
+        common::kChipTarget);
+    assert(signed_body_written > 0);
+    g_request_body = signed_body;
+    assert(g_request_body.size() > web_ui::kMaxRequestBodyBytes);
+    req.content_len = static_cast<int>(g_request_body.size());
+    g_last_response.clear();
+    g_last_status.clear();
+    assert(web_ui::ota_post_handler(&req) == ESP_OK);
+    assert(g_last_status != "400 Bad Request");
+    assert(g_last_response.find("\"error\":\"invalid_body\"") == std::string::npos);
 
     g_request_body =
         "{\"url\":\"https://updates.local/gateway.bin\",\"project\":\"foreign-project\"}";
