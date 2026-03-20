@@ -42,6 +42,8 @@ __pycache__/
 *.log
 *.log.*
 *.tmp
+certs/
+dist/
 Fix.md
 Plan.md
 arh/
