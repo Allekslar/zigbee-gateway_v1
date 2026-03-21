@@ -33,10 +33,11 @@ int main() {
     assert(!coordinator.get_join_window_status(&seconds_left));
     assert(seconds_left == 0U);
 
+    const std::size_t initial_pending_events = runtime.pending_events();
     assert(coordinator.handle_join_candidate(runtime, 0x4411U, 1000U));
-    assert(runtime.pending_events() == 1U);
+    assert(runtime.pending_events() == (initial_pending_events + 1U));
     assert(coordinator.handle_join_candidate(runtime, 0x4411U, 1001U));
-    assert(runtime.pending_events() == 1U);
+    assert(runtime.pending_events() == (initial_pending_events + 1U));
 
     runtime.mark_wifi_credentials_available();
     assert(runtime.ensure_zigbee_started());
@@ -55,6 +56,6 @@ int main() {
 
     const uint32_t now_ms = service::ServiceRuntimeTestAccess::monotonic_now_ms(runtime);
     assert(coordinator.process_force_remove_timeouts(runtime, now_ms + 1100U) == 1U);
-    assert(runtime.pending_events() == 2U);
+    assert(runtime.pending_events() == (initial_pending_events + 2U));
     return 0;
 }
