@@ -24,8 +24,8 @@ service::MqttBridgeSnapshot make_single_device_snapshot(
     snapshot.devices[0].power_on = power_on;
     snapshot.devices[0].has_temperature = true;
     snapshot.devices[0].temperature_centi_c = 2150;
-    snapshot.devices[0].occupancy_state = core::CoreOccupancyState::kOccupied;
-    snapshot.devices[0].contact_state = core::CoreContactState::kClosed;
+    snapshot.devices[0].occupancy_state = service::DeviceOccupancyState::kOccupied;
+    snapshot.devices[0].contact_state = service::DeviceContactState::kClosed;
     snapshot.devices[0].contact_tamper = false;
     snapshot.devices[0].contact_battery_low = false;
     snapshot.devices[0].has_battery = true;
