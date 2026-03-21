@@ -18,6 +18,7 @@ idf_component_register(
     EMBED_TXTFILES
         "ota_server_root_ca.pem"
         "ota_release_manifest_pub.pem"
+        "ota_release_manifest_pub_next.pem"
     INCLUDE_DIRS "include"
     REQUIRES
         common

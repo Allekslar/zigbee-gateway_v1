@@ -127,5 +127,14 @@ int main() {
     assert(service::validate_ota_manifest(invalid_signature, context) ==
            service::OtaManifestValidationStatus::kInvalidSignature);
 
+    service::OtaManifest rotated_key_manifest = defaults;
+    std::strncpy(rotated_key_manifest.version.data(), "2.4.2", rotated_key_manifest.version.size() - 1U);
+    std::strncpy(rotated_key_manifest.signature_algo.data(), "ecdsa-p256-sha256", rotated_key_manifest.signature_algo.size() - 1U);
+    std::strncpy(rotated_key_manifest.signature_key_id.data(), "ota-release-v2", rotated_key_manifest.signature_key_id.size() - 1U);
+    std::strncpy(rotated_key_manifest.signature.data(), "next-key-signature", rotated_key_manifest.signature.size() - 1U);
+    std::strncpy(g_expected_signature_key_id, "ota-release-v2", sizeof(g_expected_signature_key_id) - 1U);
+    std::strncpy(g_expected_signature, "next-key-signature", sizeof(g_expected_signature) - 1U);
+    assert(service::validate_ota_manifest(rotated_key_manifest, context) == service::OtaManifestValidationStatus::kOk);
+
     return 0;
 }

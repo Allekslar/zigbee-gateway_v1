@@ -35,10 +35,29 @@ extern const char ota_server_root_ca_pem_end[] asm("_binary_ota_server_root_ca_p
 #endif
 extern const char ota_release_manifest_pub_pem_start[] asm("_binary_ota_release_manifest_pub_pem_start");
 extern const char ota_release_manifest_pub_pem_end[] asm("_binary_ota_release_manifest_pub_pem_end");
+extern const char ota_release_manifest_pub_next_pem_start[] asm("_binary_ota_release_manifest_pub_next_pem_start");
+extern const char ota_release_manifest_pub_next_pem_end[] asm("_binary_ota_release_manifest_pub_next_pem_end");
 
 static const char* kOtaTag = "hal_ota";
 static const char* kManifestSignatureAlgo = "ecdsa-p256-sha256";
-static const char* kManifestSignatureKeyId = "ota-release-v1";
+typedef struct {
+    const char* key_id;
+    const char* pem_start;
+    const char* pem_end;
+} manifest_public_key_entry_t;
+
+static const manifest_public_key_entry_t kManifestPublicKeys[] = {
+    {
+        .key_id = "ota-release-v1",
+        .pem_start = ota_release_manifest_pub_pem_start,
+        .pem_end = ota_release_manifest_pub_pem_end,
+    },
+    {
+        .key_id = "ota-release-v2",
+        .pem_start = ota_release_manifest_pub_next_pem_start,
+        .pem_end = ota_release_manifest_pub_next_pem_end,
+    },
+};
 #endif
 
 static bool copy_version_string(const char* source, char* out, size_t out_len) {
@@ -70,6 +89,20 @@ static bool strings_equal(const char* lhs, const char* rhs) {
         return false;
     }
     return strcmp(lhs, rhs) == 0;
+}
+
+static const manifest_public_key_entry_t* find_manifest_public_key(const char* signature_key_id) {
+    if (signature_key_id == NULL) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i < (sizeof(kManifestPublicKeys) / sizeof(kManifestPublicKeys[0])); ++i) {
+        if (strings_equal(signature_key_id, kManifestPublicKeys[i].key_id)) {
+            return &kManifestPublicKeys[i];
+        }
+    }
+
+    return NULL;
 }
 
 static int hex_nibble(char value) {
@@ -287,27 +320,37 @@ bool __attribute__((weak)) hal_ota_platform_verify_manifest_signature(
         return false;
     }
 
-    if (!strings_equal(signature_algo, kManifestSignatureAlgo) || !strings_equal(signature_key_id, kManifestSignatureKeyId)) {
+    if (!strings_equal(signature_algo, kManifestSignatureAlgo)) {
         ESP_LOGW(
             kOtaTag,
-            "Manifest signature metadata rejected algo=%s key_id=%s",
+            "Manifest signature algorithm rejected algo=%s key_id=%s",
             signature_algo,
             signature_key_id);
         return false;
     }
 
-    const size_t pub_len = (size_t)(ota_release_manifest_pub_pem_end - ota_release_manifest_pub_pem_start);
+    const manifest_public_key_entry_t* key_entry = find_manifest_public_key(signature_key_id);
+    if (key_entry == NULL) {
+        ESP_LOGW(kOtaTag, "Manifest signature key rejected key_id=%s", signature_key_id);
+        return false;
+    }
+
+    const size_t pub_len = (size_t)(key_entry->pem_end - key_entry->pem_start);
     if (pub_len <= 1U) {
-        ESP_LOGE(kOtaTag, "Manifest public key PEM is missing or empty");
+        ESP_LOGE(kOtaTag, "Manifest public key PEM is missing or empty key_id=%s", signature_key_id);
         return false;
     }
 
     unsigned char public_key_pem[256] = {0};
     if (pub_len >= sizeof(public_key_pem)) {
-        ESP_LOGE(kOtaTag, "Manifest public key PEM too large len=%u", (unsigned int)pub_len);
+        ESP_LOGE(
+            kOtaTag,
+            "Manifest public key PEM too large key_id=%s len=%u",
+            signature_key_id,
+            (unsigned int)pub_len);
         return false;
     }
-    memcpy(public_key_pem, ota_release_manifest_pub_pem_start, pub_len);
+    memcpy(public_key_pem, key_entry->pem_start, pub_len);
 
     unsigned char signature_bytes[96] = {0};
     size_t signature_len = 0U;
