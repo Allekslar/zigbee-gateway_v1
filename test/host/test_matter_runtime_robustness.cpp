@@ -10,9 +10,9 @@ namespace {
 service::MatterBridgeSnapshot make_full_snapshot(uint32_t revision, uint16_t short_addr_base) {
     service::MatterBridgeSnapshot snapshot{};
     snapshot.revision = revision;
-    snapshot.device_count = static_cast<uint16_t>(core::kMaxDevices);
+    snapshot.device_count = static_cast<uint16_t>(service::kServiceMaxDevices);
 
-    for (std::size_t i = 0; i < core::kMaxDevices; ++i) {
+    for (std::size_t i = 0; i < service::kServiceMaxDevices; ++i) {
         auto& device = snapshot.devices[i];
         device.short_addr = static_cast<uint16_t>(short_addr_base + static_cast<uint16_t>(i));
         device.online = true;
