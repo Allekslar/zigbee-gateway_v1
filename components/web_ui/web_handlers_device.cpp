@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdio>
 
-#include "core_events.hpp"
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -321,7 +320,7 @@ esp_err_t device_remove_post_handler(httpd_req_t* req) {
 
     uint32_t short_addr_raw = 0;
     if (!find_json_u32_field(body, "short_addr", &short_addr_raw) || short_addr_raw > 0xFFFFU ||
-        short_addr_raw == core::kUnknownDeviceShortAddr) {
+        short_addr_raw == service::kUnknownShortAddr) {
         return send_json_error(req, "400 Bad Request", "invalid_payload");
     }
 

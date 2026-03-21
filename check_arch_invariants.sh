@@ -575,6 +575,9 @@ run_checks() {
     check_present "INV-M030" "medium" "components/service/include/service_runtime_api.hpp" \
         'struct[[:space:]]+DevicesApiDeviceSnapshot' \
         "service facade must define a service-owned device DTO for /api/devices"
+    check_absent "INV-M030" "medium" "components/web_ui" \
+        '#include[[:space:]]+"core_[^"]+\.hpp"|core::' \
+        "web UI adapters must not depend on core headers or core symbols directly"
 
     check_present "INV-M031" "medium" "components/service/include/devices_api_snapshot_builder.hpp" \
         'class[[:space:]]+DevicesApiSnapshotBuilder' \

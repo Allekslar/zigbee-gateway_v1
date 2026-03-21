@@ -7,7 +7,6 @@
 #include <cstdio>
 
 #include "application_command_mapper.hpp"
-#include "core_events.hpp"
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
 #endif

@@ -10,8 +10,6 @@
 #include <cstring>
 #include <limits>
 
-#include "core_events.hpp"
-#include "core_state.hpp"
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
 #include "esp_log.h"
