@@ -633,6 +633,82 @@ bool ServiceRuntime::post_zigbee_read_attribute_result(
     return true;
 }
 
+bool ServiceRuntime::try_tuya_translate(const ZigbeeRawAttributeReport& report, uint32_t now_ms) noexcept {
+    TuyaPayloadView view{};
+    view.short_addr = report.short_addr;
+    view.endpoint = report.endpoint;
+    view.cluster_id = report.cluster_id;
+    view.data = report.payload;
+    view.data_len = report.payload_len;
+
+    TuyaFingerprint fingerprint{};
+    const DeviceIdentityEntry* identity = device_identity_store_.find(report.short_addr);
+    if (identity != nullptr && identity->status == DeviceIdentityStatus::kResolved) {
+        fingerprint.manufacturer = identity->manufacturer.data();
+        fingerprint.model = identity->model.data();
+    }
+    fingerprint.endpoint = report.endpoint;
+
+    TuyaTranslateResult tr = tuya_translator_.translate(view, fingerprint);
+    if (!tr.routed) {
+        return false;
+    }
+
+    if (!tr.plugin_found || !tr.plugin_result.handled) {
+        SR_LOGI(
+            "Tuya 0xEF00 unhandled short_addr=0x%04x parsed=%d plugin=%d",
+            static_cast<unsigned>(report.short_addr),
+            tr.parsed ? 1 : 0,
+            tr.plugin_found ? 1 : 0);
+        return true;
+    }
+
+    for (uint8_t i = 0; i < tr.plugin_result.output_count; ++i) {
+        const TuyaNormalizedOutput& out = tr.plugin_result.outputs[i];
+        core::CoreEvent event{};
+        event.type = core::CoreEventType::kDeviceTelemetryUpdated;
+        event.device_short_addr = report.short_addr;
+        event.value_u32 = now_ms;
+        event.telemetry_valid = out.valid;
+
+        switch (out.kind) {
+            case TuyaNormalizedKind::kTemperatureCentiC:
+                event.telemetry_kind = core::CoreTelemetryKind::kTemperatureCentiC;
+                event.telemetry_i32 = out.value;
+                break;
+            case TuyaNormalizedKind::kContactOpen:
+                event.telemetry_kind = core::CoreTelemetryKind::kContactIasZoneStatus;
+                /* IAS zone status bit 0 = alarm1 = contact open. */
+                event.telemetry_i32 = out.value ? 1 : 0;
+                break;
+            case TuyaNormalizedKind::kOccupancy:
+                event.telemetry_kind = core::CoreTelemetryKind::kOccupancy;
+                event.telemetry_i32 = out.value;
+                break;
+            case TuyaNormalizedKind::kBatteryPercent:
+                event.telemetry_kind = core::CoreTelemetryKind::kBatteryPercent;
+                event.telemetry_i32 = out.value;
+                break;
+            case TuyaNormalizedKind::kPowerOn:
+                event.type = core::CoreEventType::kAttributeReported;
+                event.cluster_id = 0x0006U;
+                event.attribute_id = 0x0000U;
+                event.value_u32 = out.value ? 1U : 0U;
+                event.value_bool = (out.value != 0);
+                break;
+            case TuyaNormalizedKind::kNone:
+            default:
+                continue;
+        }
+
+        if (!push_event(event)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeReport& report) noexcept {
     if (report.short_addr == core::kUnknownDeviceShortAddr || report.short_addr == 0x0000U) {
         return false;
@@ -663,6 +739,10 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeRe
         if (!push_event(rssi_event)) {
             return false;
         }
+    }
+
+    if (report.cluster_id == kTuyaPrivateClusterId) {
+        return try_tuya_translate(report, now_ms);
     }
 
     if (report.cluster_id == 0x0402U && report.attribute_id == 0x0000U) {

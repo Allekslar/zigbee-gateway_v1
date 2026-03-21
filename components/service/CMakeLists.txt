@@ -32,6 +32,10 @@ idf_component_register(
         "zigbee_lifecycle_coordinator.cpp"
         "device_identity_store.cpp"
         "tuya_fingerprint.cpp"
+        "tuya_dp_parser.cpp"
+        "tuya_contact_sensor_plugin.cpp"
+        "tuya_plugin_registry.cpp"
+        "tuya_translator.cpp"
         "hal_event_adapter.cpp"
     EMBED_TXTFILES
         "../app_hal/ota_release_manifest_pub.pem"

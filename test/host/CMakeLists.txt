@@ -53,6 +53,10 @@ set(SERVICE_SOURCES
     ../../components/service/zigbee_lifecycle_coordinator.cpp
     ../../components/service/device_identity_store.cpp
     ../../components/service/tuya_fingerprint.cpp
+    ../../components/service/tuya_dp_parser.cpp
+    ../../components/service/tuya_contact_sensor_plugin.cpp
+    ../../components/service/tuya_plugin_registry.cpp
+    ../../components/service/tuya_translator.cpp
     ../../components/service/hal_event_adapter.cpp
 )
 
@@ -540,3 +544,18 @@ add_executable(test_tuya_fingerprint test_tuya_fingerprint.cpp)
 target_link_libraries(test_tuya_fingerprint PRIVATE service_host)
 zg_apply_component_compile_policy(test_tuya_fingerprint)
 add_test(NAME test_tuya_fingerprint COMMAND test_tuya_fingerprint)
+
+add_executable(test_tuya_dp_parser test_tuya_dp_parser.cpp)
+target_link_libraries(test_tuya_dp_parser PRIVATE service_host)
+zg_apply_component_compile_policy(test_tuya_dp_parser)
+add_test(NAME test_tuya_dp_parser COMMAND test_tuya_dp_parser)
+
+add_executable(test_tuya_contact_sensor_plugin test_tuya_contact_sensor_plugin.cpp)
+target_link_libraries(test_tuya_contact_sensor_plugin PRIVATE service_host)
+zg_apply_component_compile_policy(test_tuya_contact_sensor_plugin)
+add_test(NAME test_tuya_contact_sensor_plugin COMMAND test_tuya_contact_sensor_plugin)
+
+add_executable(test_tuya_translator test_tuya_translator.cpp)
+target_link_libraries(test_tuya_translator PRIVATE service_host)
+zg_apply_component_compile_policy(test_tuya_translator)
+add_test(NAME test_tuya_translator COMMAND test_tuya_translator)

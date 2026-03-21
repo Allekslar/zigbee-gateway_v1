@@ -15,6 +15,7 @@
 #include "core_registry.hpp"
 #include "device_identity_store.hpp"
 #include "device_manager.hpp"
+#include "tuya_translator.hpp"
 #include "effect_executor.hpp"
 #include "connectivity_manager.hpp"
 #include "network_manager.hpp"
@@ -201,6 +202,7 @@ private:
     void process_zigbee_network_policy(uint32_t now_ms) noexcept;
     void set_join_window_cache(bool open, uint16_t seconds_left) noexcept;
     void request_device_identity_read(uint16_t short_addr) noexcept;
+    bool try_tuya_translate(const ZigbeeRawAttributeReport& report, uint32_t now_ms) noexcept;
     void note_dropped_event() noexcept;
     bool persist_current_core_state() noexcept;
     bool restore_persisted_core_state() noexcept;
@@ -269,6 +271,7 @@ private:
     StatePersistenceCoordinator state_persistence_coordinator_;
     ZigbeeLifecycleCoordinator zigbee_lifecycle_coordinator_;
     DeviceIdentityStore device_identity_store_{};
+    TuyaTranslator tuya_translator_{};
 
     std::atomic<uint32_t> config_timeout_ms_cache_{5000};
     std::atomic<uint32_t> config_max_retries_cache_{1};
