@@ -31,4 +31,18 @@ TuyaTranslateResult TuyaTranslator::translate(
     return result;
 }
 
+TuyaCommandEncodeResult TuyaTranslator::encode_command(
+    const TuyaFingerprint& fingerprint,
+    const TuyaCommandRequest& request) const noexcept {
+    TuyaCommandEncodeResult result{};
+
+    const TuyaPlugin* plugin = registry_.resolve(fingerprint);
+    if (plugin == nullptr) {
+        return result;
+    }
+    result.plugin_found = true;
+    result.dp_command = plugin->encode_command(fingerprint, request);
+    return result;
+}
+
 }  // namespace service

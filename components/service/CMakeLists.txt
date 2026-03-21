@@ -34,6 +34,7 @@ idf_component_register(
         "tuya_fingerprint.cpp"
         "tuya_dp_parser.cpp"
         "tuya_contact_sensor_plugin.cpp"
+        "tuya_switch_plugin.cpp"
         "tuya_plugin_registry.cpp"
         "tuya_translator.cpp"
         "hal_event_adapter.cpp"

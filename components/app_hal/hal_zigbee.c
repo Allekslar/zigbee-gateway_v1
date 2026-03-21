@@ -1109,6 +1109,59 @@ hal_zigbee_status_t hal_zigbee_send_on_off(uint32_t correlation_id, uint16_t sho
 #endif
 }
 
+hal_zigbee_status_t hal_zigbee_send_tuya_dp(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    uint8_t endpoint,
+    uint8_t dp_id,
+    uint8_t dp_type,
+    const uint8_t* dp_value,
+    uint8_t dp_value_len) {
+    if (correlation_id == 0U || short_addr == 0xFFFFU || short_addr == 0x0000U) {
+        return HAL_ZIGBEE_STATUS_INVALID_ARG;
+    }
+    if (dp_value == NULL || dp_value_len == 0U || dp_value_len > 32U) {
+        return HAL_ZIGBEE_STATUS_INVALID_ARG;
+    }
+
+#ifdef ESP_PLATFORM
+#if HAL_ZIGBEE_HAS_ESP_ZB_SDK
+    /* TODO: implement Tuya 0xEF00 cluster command send via ESP Zigbee SDK.
+     * Frame: seq(2) + dp_id(1) + dp_type(1) + dp_len(2 BE) + dp_value(dp_len)
+     * Command: cluster 0xEF00, command_id 0x00 (set DP), client-to-server */
+    ESP_LOGW(kTag, "hal_zigbee_send_tuya_dp not yet implemented for ESP target");
+    (void)endpoint;
+    (void)dp_id;
+    (void)dp_type;
+    (void)dp_value;
+    (void)dp_value_len;
+    (void)correlation_id;
+    (void)short_addr;
+    return HAL_ZIGBEE_STATUS_ERR;
+#else
+    (void)correlation_id;
+    (void)short_addr;
+    (void)endpoint;
+    (void)dp_id;
+    (void)dp_type;
+    (void)dp_value;
+    (void)dp_value_len;
+    return HAL_ZIGBEE_STATUS_NOT_LINKED;
+#endif
+#else
+    // TEMP MOCK PATH (!ESP_PLATFORM):
+    // Host-only behavior for tests; enqueue succeeds, completion is still async.
+    (void)correlation_id;
+    (void)short_addr;
+    (void)endpoint;
+    (void)dp_id;
+    (void)dp_type;
+    (void)dp_value;
+    (void)dp_value_len;
+    return HAL_ZIGBEE_STATUS_OK;
+#endif
+}
+
 hal_zigbee_status_t hal_zigbee_request_interview(uint32_t correlation_id, uint16_t short_addr) {
     if (correlation_id == 0U || short_addr == 0xFFFFU || short_addr == 0x0000U) {
         return HAL_ZIGBEE_STATUS_INVALID_ARG;

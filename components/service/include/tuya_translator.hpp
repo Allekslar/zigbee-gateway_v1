@@ -18,11 +18,20 @@ struct TuyaTranslateResult {
     TuyaPluginResult plugin_result{};
 };
 
+struct TuyaCommandEncodeResult {
+    bool plugin_found{false};
+    TuyaDpCommand dp_command{};
+};
+
 class TuyaTranslator {
 public:
     TuyaTranslateResult translate(
         const TuyaPayloadView& view,
         const TuyaFingerprint& fingerprint) const noexcept;
+
+    TuyaCommandEncodeResult encode_command(
+        const TuyaFingerprint& fingerprint,
+        const TuyaCommandRequest& request) const noexcept;
 
 private:
     TuyaDpParser parser_{};

@@ -4,15 +4,18 @@
 #include "tuya_plugin_registry.hpp"
 
 #include "tuya_contact_sensor_plugin.hpp"
+#include "tuya_switch_plugin.hpp"
 
 namespace service {
 
 namespace {
 
 const TuyaContactSensorPlugin kContactSensorPlugin{};
+const TuyaSwitchPlugin kSwitchPlugin{};
 
 const TuyaPlugin* const kAllPlugins[] = {
     &kContactSensorPlugin,
+    &kSwitchPlugin,
 };
 
 constexpr std::size_t kPluginCount = sizeof(kAllPlugins) / sizeof(kAllPlugins[0]);

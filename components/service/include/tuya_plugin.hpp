@@ -12,6 +12,7 @@
 namespace service {
 
 inline constexpr std::size_t kTuyaPluginMaxOutputs = 4U;
+inline constexpr std::size_t kTuyaDpCommandValueMaxLen = 4U;
 
 enum class TuyaNormalizedKind : uint8_t {
     kNone = 0,
@@ -45,6 +46,20 @@ struct TuyaPluginResult {
     }
 };
 
+struct TuyaCommandRequest {
+    TuyaNormalizedKind kind{TuyaNormalizedKind::kNone};
+    int32_t value{0};
+};
+
+struct TuyaDpCommand {
+    bool supported{false};
+    uint8_t dp_id{0};
+    TuyaDpType dp_type{TuyaDpType::kRaw};
+    uint8_t value[kTuyaDpCommandValueMaxLen]{};
+    uint8_t value_len{0};
+    uint8_t endpoint{1};
+};
+
 class TuyaPlugin {
 public:
     virtual ~TuyaPlugin() = default;
@@ -54,6 +69,14 @@ public:
     virtual TuyaPluginResult translate(
         const TuyaFingerprint& fingerprint,
         const TuyaDpParseResult& dp_result) const noexcept = 0;
+
+    virtual TuyaDpCommand encode_command(
+        const TuyaFingerprint& fingerprint,
+        const TuyaCommandRequest& request) const noexcept {
+        (void)fingerprint;
+        (void)request;
+        return TuyaDpCommand{};
+    }
 };
 
 }  // namespace service

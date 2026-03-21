@@ -709,6 +709,39 @@ bool ServiceRuntime::try_tuya_translate(const ZigbeeRawAttributeReport& report, 
     return true;
 }
 
+bool ServiceRuntime::try_execute_tuya_on_off(const core::CoreEffect& effect, bool* routed) noexcept {
+    *routed = false;
+
+    const DeviceIdentityEntry* identity = device_identity_store_.find(effect.device_short_addr);
+    if (identity == nullptr || identity->status != DeviceIdentityStatus::kResolved) {
+        return false;
+    }
+
+    TuyaFingerprint fp{};
+    fp.manufacturer = identity->manufacturer.data();
+    fp.model = identity->model.data();
+    fp.endpoint = 1;
+
+    TuyaCommandRequest request{};
+    request.kind = TuyaNormalizedKind::kPowerOn;
+    request.value = effect.arg_bool ? 1 : 0;
+
+    TuyaCommandEncodeResult encode = tuya_translator_.encode_command(fp, request);
+    if (!encode.plugin_found || !encode.dp_command.supported) {
+        return false;
+    }
+    *routed = true;
+
+    return hal_zigbee_send_tuya_dp(
+               effect.correlation_id,
+               effect.device_short_addr,
+               encode.dp_command.endpoint,
+               encode.dp_command.dp_id,
+               static_cast<uint8_t>(encode.dp_command.dp_type),
+               encode.dp_command.value,
+               encode.dp_command.value_len) == HAL_ZIGBEE_STATUS_OK;
+}
+
 bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeReport& report) noexcept {
     if (report.short_addr == core::kUnknownDeviceShortAddr || report.short_addr == 0x0000U) {
         return false;
@@ -1193,7 +1226,18 @@ void ServiceRuntime::apply_managers(const core::CoreEvent& event) noexcept {
 void ServiceRuntime::execute_effects(const core::CoreEffectList& effects) noexcept {
     for (uint8_t i = 0; i < effects.count; ++i) {
         const core::CoreEffect& effect = effects.items[i];
-        const bool ok = effect_executor_->execute(effect);
+
+        bool ok = false;
+        if (effect.type == core::CoreEffectType::kSendZigbeeOnOff) {
+            bool routed = false;
+            ok = try_execute_tuya_on_off(effect, &routed);
+            if (!routed) {
+                ok = effect_executor_->execute(effect);
+            }
+        } else {
+            ok = effect_executor_->execute(effect);
+        }
+
         (void)stats_.executed_effects.fetch_add(1, std::memory_order_relaxed);
         if (!ok) {
             (void)stats_.failed_effects.fetch_add(1, std::memory_order_relaxed);

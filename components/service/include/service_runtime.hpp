@@ -203,6 +203,7 @@ private:
     void set_join_window_cache(bool open, uint16_t seconds_left) noexcept;
     void request_device_identity_read(uint16_t short_addr) noexcept;
     bool try_tuya_translate(const ZigbeeRawAttributeReport& report, uint32_t now_ms) noexcept;
+    bool try_execute_tuya_on_off(const core::CoreEffect& effect, bool* routed) noexcept;
     void note_dropped_event() noexcept;
     bool persist_current_core_state() noexcept;
     bool restore_persisted_core_state() noexcept;

@@ -55,6 +55,7 @@ set(SERVICE_SOURCES
     ../../components/service/tuya_fingerprint.cpp
     ../../components/service/tuya_dp_parser.cpp
     ../../components/service/tuya_contact_sensor_plugin.cpp
+    ../../components/service/tuya_switch_plugin.cpp
     ../../components/service/tuya_plugin_registry.cpp
     ../../components/service/tuya_translator.cpp
     ../../components/service/hal_event_adapter.cpp
@@ -559,3 +560,13 @@ add_executable(test_tuya_translator test_tuya_translator.cpp)
 target_link_libraries(test_tuya_translator PRIVATE service_host)
 zg_apply_component_compile_policy(test_tuya_translator)
 add_test(NAME test_tuya_translator COMMAND test_tuya_translator)
+
+add_executable(test_tuya_switch_plugin test_tuya_switch_plugin.cpp)
+target_link_libraries(test_tuya_switch_plugin PRIVATE service_host)
+zg_apply_component_compile_policy(test_tuya_switch_plugin)
+add_test(NAME test_tuya_switch_plugin COMMAND test_tuya_switch_plugin)
+
+add_executable(test_tuya_command_encode test_tuya_command_encode.cpp)
+target_link_libraries(test_tuya_command_encode PRIVATE service_host)
+zg_apply_component_compile_policy(test_tuya_command_encode)
+add_test(NAME test_tuya_command_encode COMMAND test_tuya_command_encode)
