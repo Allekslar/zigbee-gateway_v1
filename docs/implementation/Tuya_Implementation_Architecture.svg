@@ -1,0 +1,441 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1520 1620" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#444"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563EB"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#D97706"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#059669"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#DC2626"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    <linearGradient id="phase-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#DBEAFE"/>
+      <stop offset="100%" stop-color="#1E40AF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1520" height="1620" fill="#FAFBFC" rx="12"/>
+
+  <!-- ===== TITLE ===== -->
+  <text x="760" y="36" text-anchor="middle" font-size="24" font-weight="700" fill="#1E293B">Tuya Implementation Architecture — zigbee-gateway_v1</text>
+  <text x="760" y="60" text-anchor="middle" font-size="13" fill="#64748B">Service-owned compatibility subsystem · Core closed-schema · compiled-in plugins · bounded hot path</text>
+
+  <!-- ================================================================ -->
+  <!-- COLUMN 1: EXISTING GATEWAY LAYERS                                -->
+  <!-- ================================================================ -->
+  <rect x="20" y="80" width="370" height="960" rx="10" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="205" y="103" text-anchor="middle" font-size="14" font-weight="700" fill="#334155">Existing Gateway Layers</text>
+
+  <!-- HAL -->
+  <rect x="45" y="120" width="320" height="95" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="205" y="143" text-anchor="middle" font-size="13" font-weight="700" fill="#92400E">HAL / Zigbee Stack</text>
+  <text x="205" y="162" text-anchor="middle" font-size="11" fill="#78350F">raw frame ingress · ZCL callbacks</text>
+  <text x="205" y="178" text-anchor="middle" font-size="11" fill="#78350F">hal_zigbee.c · hal_tuya_transport.c (new)</text>
+  <text x="205" y="196" text-anchor="middle" font-size="10" fill="#A16207">post_zigbee_attribute_report_raw()</text>
+
+  <!-- Arrow HAL → Service -->
+  <line x1="205" y1="215" x2="205" y2="240" stroke="#444" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Service layer -->
+  <rect x="45" y="245" width="320" height="165" rx="8" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="205" y="268" text-anchor="middle" font-size="13" font-weight="700" fill="#1E3A8A">Service Layer</text>
+  <text x="205" y="287" text-anchor="middle" font-size="11" fill="#1E40AF">routing · validation · orchestration</text>
+  <line x1="65" y1="297" x2="345" y2="297" stroke="#93C5FD" stroke-width="0.8"/>
+  <text x="70" y="315" font-size="10" fill="#1E40AF">• standard/Tuya/hybrid path detection</text>
+  <text x="70" y="331" font-size="10" fill="#1E40AF">• ReportingManager throttle/debounce</text>
+  <text x="70" y="347" font-size="10" fill="#1E40AF">• ServiceRuntime: Core-event construction</text>
+  <text x="70" y="363" font-size="10" fill="#1E40AF">• command validation &amp; routing</text>
+  <text x="70" y="379" font-size="10" fill="#1E40AF">• DevicesApiSnapshot (+ manufacturer/model)</text>
+  <text x="70" y="395" font-size="10" fill="#1E40AF">• identity DTO publish to read-model seam</text>
+
+  <!-- Arrow Service → Core -->
+  <line x1="205" y1="410" x2="205" y2="438" stroke="#444" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="212" y="430" font-size="9" fill="#64748B">normalized Core events only</text>
+
+  <!-- Core -->
+  <rect x="45" y="443" width="320" height="105" rx="8" fill="#EDE9FE" stroke="#7C3AED" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="45" y="443" width="320" height="105" rx="8" fill="none" stroke="#7C3AED" stroke-width="2" stroke-dasharray="0"/>
+  <text x="205" y="468" text-anchor="middle" font-size="13" font-weight="700" fill="#5B21B6">Core (CLOSED SCHEMA)</text>
+  <text x="205" y="487" text-anchor="middle" font-size="11" fill="#6D28D9">immutable state · deterministic reduce</text>
+  <text x="205" y="503" text-anchor="middle" font-size="11" fill="#6D28D9">fixed event schema · CoreDeviceRecord</text>
+  <text x="205" y="522" text-anchor="middle" font-size="10" fill="#7C3AED">core_events.hpp · core_reducer.cpp</text>
+  <text x="205" y="538" text-anchor="middle" font-size="10" font-weight="600" fill="#DC2626">NO vendor state · NO DP parsing · NO quirks</text>
+
+  <!-- Arrow Core → Downstream -->
+  <line x1="205" y1="548" x2="205" y2="573" stroke="#444" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Downstream consumers -->
+  <rect x="45" y="578" width="320" height="85" rx="8" fill="#D1FAE5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="205" y="601" text-anchor="middle" font-size="13" font-weight="700" fill="#065F46">Downstream Consumers</text>
+  <text x="205" y="620" text-anchor="middle" font-size="11" fill="#047857">MQTT bridge · Matter bridge · Web API</text>
+  <text x="205" y="636" text-anchor="middle" font-size="11" fill="#047857">stable snapshot contracts</text>
+  <text x="205" y="652" text-anchor="middle" font-size="10" fill="#059669">unchanged — consume normalized Core snapshots</text>
+
+  <!-- Identity seam note -->
+  <rect x="45" y="685" width="320" height="75" rx="8" fill="#FFF7ED" stroke="#EA580C" stroke-width="1" stroke-dasharray="4,3" filter="url(#shadow)"/>
+  <text x="205" y="708" text-anchor="middle" font-size="12" font-weight="600" fill="#C2410C">Device Identity Seam (Phase 0)</text>
+  <text x="205" y="726" text-anchor="middle" font-size="10" fill="#9A3412">Basic cluster: manufacturer (0x0004) + model (0x0005)</text>
+  <text x="205" y="742" text-anchor="middle" font-size="10" fill="#9A3412">interview extension or post-interview query</text>
+
+  <!-- Reporting Manager detail -->
+  <rect x="45" y="780" width="320" height="65" rx="8" fill="#F0F9FF" stroke="#0284C7" stroke-width="1" filter="url(#shadow)"/>
+  <text x="205" y="803" text-anchor="middle" font-size="12" font-weight="600" fill="#0C4A6E">Anti-Flood Policy</text>
+  <text x="205" y="821" text-anchor="middle" font-size="10" fill="#075985">TuyaTranslator: semantic dedup/coalescing</text>
+  <text x="205" y="835" text-anchor="middle" font-size="10" fill="#075985">ReportingManager: generic device-agnostic throttle</text>
+
+  <!-- Existing telemetry -->
+  <rect x="45" y="865" width="320" height="75" rx="8" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="1" filter="url(#shadow)"/>
+  <text x="205" y="888" text-anchor="middle" font-size="12" font-weight="600" fill="#5B21B6">MVP-Compatible Core Telemetry</text>
+  <text x="70" y="907" font-size="10" fill="#6D28D9">temperature · occupancy · contact</text>
+  <text x="70" y="922" font-size="10" fill="#6D28D9">battery percent · battery voltage</text>
+  <text x="70" y="937" font-size="10" fill="#7C3AED">Tuya DPs map into these existing kinds</text>
+
+  <!-- ================================================================ -->
+  <!-- COLUMN 2: TUYA COMPATIBILITY SUBSYSTEM                          -->
+  <!-- ================================================================ -->
+  <rect x="410" y="80" width="480" height="960" rx="10" fill="none" stroke="#EA580C" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="650" y="103" text-anchor="middle" font-size="14" font-weight="700" fill="#9A3412">Tuya Compatibility Subsystem (components/service/)</text>
+
+  <!-- Fingerprint Resolver -->
+  <rect x="435" y="120" width="430" height="100" rx="8" fill="#FFF7ED" stroke="#EA580C" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="650" y="143" text-anchor="middle" font-size="13" font-weight="700" fill="#C2410C">TuyaFingerprintResolver</text>
+  <text x="650" y="162" text-anchor="middle" font-size="11" fill="#9A3412">matches device using manufacturer + model + clusters</text>
+  <line x1="455" y1="172" x2="845" y2="172" stroke="#FDBA74" stroke-width="0.8"/>
+  <text x="455" y="190" font-size="10" fill="#9A3412">Input: manufacturer, model, endpoints, cluster list, DP hints</text>
+  <text x="455" y="206" font-size="10" fill="#9A3412">Output: resolved fingerprint → plugin selection</text>
+
+  <!-- Arrow Fingerprint → Parser -->
+  <line x1="650" y1="220" x2="650" y2="248" stroke="#D97706" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+
+  <!-- Bounded Payload / DpParser -->
+  <rect x="435" y="253" width="430" height="115" rx="8" fill="#FFF7ED" stroke="#EA580C" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="650" y="276" text-anchor="middle" font-size="13" font-weight="700" fill="#C2410C">TuyaDpParser</text>
+  <text x="650" y="295" text-anchor="middle" font-size="11" fill="#9A3412">bounded 0xEF00 payload parsing</text>
+  <line x1="455" y1="305" x2="845" y2="305" stroke="#FDBA74" stroke-width="0.8"/>
+  <text x="455" y="322" font-size="10" fill="#9A3412">TuyaPayloadView: pointer + length + endpoint + cluster + mfr_code</text>
+  <text x="455" y="338" font-size="10" fill="#9A3412">Lifetime: valid only within HAL callback scope</text>
+  <text x="455" y="354" font-size="10" fill="#9A3412">Output: TuyaDpParseResult (typed DP items, bounded count)</text>
+
+  <!-- Arrow Parser → Translator -->
+  <line x1="650" y1="368" x2="650" y2="396" stroke="#D97706" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+
+  <!-- Translator -->
+  <rect x="435" y="401" width="430" height="130" rx="8" fill="#FFF7ED" stroke="#EA580C" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="650" y="424" text-anchor="middle" font-size="13" font-weight="700" fill="#C2410C">TuyaTranslator (thin orchestrator)</text>
+  <text x="650" y="443" text-anchor="middle" font-size="11" fill="#9A3412">calls selected plugin · converts output to Service-level DTOs</text>
+  <line x1="455" y1="453" x2="845" y2="453" stroke="#FDBA74" stroke-width="0.8"/>
+  <text x="455" y="470" font-size="10" fill="#9A3412">1. Receives DpParseResult + PluginContext</text>
+  <text x="455" y="486" font-size="10" fill="#9A3412">2. Calls plugin.translate() → TuyaPluginResult</text>
+  <text x="455" y="502" font-size="10" fill="#9A3412">3. Converts to Service-level normalized updates</text>
+  <text x="455" y="518" font-size="10" fill="#9A3412">4. Applies semantic dedup/coalescing per plugin hints</text>
+
+  <!-- Arrow Translator → ServiceRuntime (back to left column) -->
+  <path d="M 435 470 L 370 470 L 370 350" stroke="#2563EB" stroke-width="1.8" fill="none" marker-end="url(#arrow-blue)" stroke-dasharray="6,3"/>
+  <text x="373" y="415" font-size="9" fill="#2563EB" transform="rotate(-90, 373, 415)">Service-level output</text>
+
+  <!-- Init Coordinator -->
+  <rect x="435" y="555" width="430" height="110" rx="8" fill="#FFF7ED" stroke="#EA580C" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="650" y="578" text-anchor="middle" font-size="13" font-weight="700" fill="#C2410C">TuyaInitCoordinator (Phase 3)</text>
+  <text x="650" y="597" text-anchor="middle" font-size="11" fill="#9A3412">vendor-specific init state machine — outside Core</text>
+  <line x1="455" y1="607" x2="845" y2="607" stroke="#FDBA74" stroke-width="0.8"/>
+  <text x="455" y="623" font-size="10" fill="#9A3412">States: NotStarted → FingerprintResolved → InitPending →</text>
+  <text x="455" y="638" font-size="10" fill="#9A3412">WaitingAck → Ready | Degraded | Failed</text>
+  <text x="455" y="654" font-size="10" fill="#9A3412">Actions: time sync · manufacturer handshake · retry/ack</text>
+
+  <!-- Data Path summary -->
+  <rect x="435" y="690" width="430" height="135" rx="8" fill="#FFFBEB" stroke="#D97706" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="650" y="713" text-anchor="middle" font-size="13" font-weight="700" fill="#92400E">MVP Data Path</text>
+  <line x1="455" y1="722" x2="845" y2="722" stroke="#FCD34D" stroke-width="0.8"/>
+  <text x="455" y="739" font-size="10" fill="#78350F">1. HAL → raw Zigbee payload</text>
+  <text x="455" y="754" font-size="10" fill="#78350F">2. Service detects: standard / 0xEF00 / hybrid</text>
+  <text x="455" y="769" font-size="10" fill="#78350F">3. FingerprintResolver → plugin selection</text>
+  <text x="455" y="784" font-size="10" fill="#78350F">4. DpParser → bounded TuyaDpParseResult</text>
+  <text x="455" y="799" font-size="10" fill="#78350F">5. Translator + Plugin → Service-level output</text>
+  <text x="455" y="814" font-size="10" fill="#78350F">6. ServiceRuntime → Core events (existing code)</text>
+
+  <!-- Control Path summary -->
+  <rect x="435" y="845" width="430" height="95" rx="8" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="650" y="868" text-anchor="middle" font-size="13" font-weight="700" fill="#1E3A8A">MVP Control Path</text>
+  <line x1="455" y1="877" x2="845" y2="877" stroke="#93C5FD" stroke-width="0.8"/>
+  <text x="455" y="894" font-size="10" fill="#1E40AF">1. Adapter → service command request</text>
+  <text x="455" y="909" font-size="10" fill="#1E40AF">2. Service validates: fingerprint + command + path</text>
+  <text x="455" y="924" font-size="10" fill="#1E40AF">3. HAL adapter: ZCL encode OR Tuya DP encode/send</text>
+
+  <!-- ================================================================ -->
+  <!-- COLUMN 3: PLUGIN MODEL & CONTRACTS                              -->
+  <!-- ================================================================ -->
+  <rect x="910" y="80" width="590" height="640" rx="10" fill="none" stroke="#059669" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="1205" y="103" text-anchor="middle" font-size="14" font-weight="700" fill="#065F46">Plugin Model &amp; Contracts</text>
+
+  <!-- TuyaPlugin -->
+  <rect x="935" y="120" width="260" height="185" rx="8" fill="#D1FAE5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="1065" y="143" text-anchor="middle" font-size="13" font-weight="700" fill="#065F46">TuyaPlugin</text>
+  <text x="1065" y="160" text-anchor="middle" font-size="10" fill="#047857">model-specific strategy</text>
+  <line x1="950" y1="168" x2="1180" y2="168" stroke="#6EE7B7" stroke-width="0.8"/>
+  <text x="950" y="184" font-size="10" font-weight="600" fill="#065F46">Can:</text>
+  <text x="950" y="198" font-size="10" fill="#047857">• match fingerprint</text>
+  <text x="950" y="212" font-size="10" fill="#047857">• interpret DP semantics</text>
+  <text x="950" y="226" font-size="10" fill="#047857">• provide init steps</text>
+  <text x="950" y="240" font-size="10" fill="#047857">• map commands</text>
+  <text x="950" y="254" font-size="10" fill="#047857">• provide dedup hints</text>
+  <text x="950" y="272" font-size="10" font-weight="600" fill="#DC2626">Cannot:</text>
+  <text x="950" y="286" font-size="10" fill="#B91C1C">• include core_*.hpp</text>
+  <text x="950" y="298" font-size="10" fill="#B91C1C">• mutate Core / publish MQTT</text>
+
+  <!-- TuyaPluginRegistry -->
+  <rect x="1215" y="120" width="260" height="120" rx="8" fill="#D1FAE5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="1345" y="143" text-anchor="middle" font-size="13" font-weight="700" fill="#065F46">TuyaPluginRegistry</text>
+  <text x="1345" y="160" text-anchor="middle" font-size="10" fill="#047857">fingerprint → plugin lookup</text>
+  <line x1="1230" y1="168" x2="1460" y2="168" stroke="#6EE7B7" stroke-width="0.8"/>
+  <text x="1230" y="184" font-size="10" fill="#047857">resolve_plugin(fp) → TuyaPlugin*</text>
+  <text x="1230" y="200" font-size="10" fill="#047857">find_quirk_data(fp) → TuyaQuirkData*</text>
+  <line x1="1230" y1="210" x2="1460" y2="210" stroke="#6EE7B7" stroke-width="0.8"/>
+  <text x="1230" y="226" font-size="10" font-weight="600" fill="#065F46">Stage 1: explicit table</text>
+  <text x="1230" y="236" font-size="9" fill="#047857">const TuyaPlugin* kAllPlugins[] = {...};</text>
+
+  <!-- Arrow Registry → Plugin -->
+  <line x1="1215" y1="175" x2="1200" y2="175" stroke="#059669" stroke-width="1.2" marker-end="url(#arrow-green)"/>
+
+  <!-- TuyaPluginContext -->
+  <rect x="935" y="325" width="260" height="110" rx="8" fill="#ECFDF5" stroke="#059669" stroke-width="1.2" filter="url(#shadow)"/>
+  <text x="1065" y="348" text-anchor="middle" font-size="13" font-weight="700" fill="#065F46">TuyaPluginContext</text>
+  <text x="1065" y="365" text-anchor="middle" font-size="10" fill="#047857">bounded runtime input</text>
+  <line x1="950" y1="373" x2="1180" y2="373" stroke="#6EE7B7" stroke-width="0.8"/>
+  <text x="950" y="389" font-size="10" fill="#047857">• resolved fingerprint</text>
+  <text x="950" y="403" font-size="10" fill="#047857">• endpoint / cluster info</text>
+  <text x="950" y="417" font-size="10" fill="#047857">• manufacturer / model</text>
+  <text x="950" y="431" font-size="10" fill="#047857">• bounded payload view</text>
+
+  <!-- TuyaPluginResult -->
+  <rect x="1215" y="325" width="260" height="110" rx="8" fill="#ECFDF5" stroke="#059669" stroke-width="1.2" filter="url(#shadow)"/>
+  <text x="1345" y="348" text-anchor="middle" font-size="13" font-weight="700" fill="#065F46">TuyaPluginResult</text>
+  <text x="1345" y="365" text-anchor="middle" font-size="10" fill="#047857">Service-level output only</text>
+  <line x1="1230" y1="373" x2="1460" y2="373" stroke="#6EE7B7" stroke-width="0.8"/>
+  <text x="1230" y="389" font-size="10" fill="#047857">• normalized domain-intent updates</text>
+  <text x="1230" y="403" font-size="10" fill="#047857">• init actions to schedule</text>
+  <text x="1230" y="417" font-size="10" fill="#047857">• command encode requests</text>
+  <text x="1230" y="431" font-size="10" fill="#047857">• dedup/coalescing metadata</text>
+
+  <!-- Arrow Context → Plugin → Result -->
+  <line x1="1065" y1="305" x2="1065" y2="320" stroke="#059669" stroke-width="1.2" marker-end="url(#arrow-green)"/>
+  <line x1="1195" y1="230" x2="1215" y2="230" stroke="#059669" stroke-width="1" stroke-dasharray="3,2"/>
+  <path d="M 1195 280 L 1205 280 L 1205 380 L 1215 380" stroke="#059669" stroke-width="1.2" fill="none" marker-end="url(#arrow-green)"/>
+
+  <!-- Arrow Plugin ↔ Translator (center column) -->
+  <path d="M 935 250 L 870 250 L 870 480" stroke="#D97706" stroke-width="1.5" fill="none" marker-end="url(#arrow-orange)" stroke-dasharray="6,3"/>
+  <text x="878" y="370" font-size="9" fill="#D97706" transform="rotate(-90, 878, 370)">plugin.translate()</text>
+
+  <!-- Quirk Data -->
+  <rect x="935" y="455" width="540" height="90" rx="8" fill="#F0FDF4" stroke="#059669" stroke-width="1.2" filter="url(#shadow)"/>
+  <text x="1205" y="478" text-anchor="middle" font-size="13" font-weight="700" fill="#065F46">TuyaQuirkData (per-model declarative data)</text>
+  <line x1="950" y1="488" x2="1460" y2="488" stroke="#6EE7B7" stroke-width="0.8"/>
+  <text x="950" y="505" font-size="10" fill="#047857">plugin = behavior module / strategy   |   quirk data = per-model declarative data used by that behavior</text>
+  <text x="950" y="521" font-size="10" fill="#047857">Stage 1: compiled-in constexpr tables   |   Stage 2: FS/NVS-backed · codegen from YAML/JSON at build time</text>
+  <text x="950" y="537" font-size="10" fill="#047857">Parser, translator, and plugin engine must not know where quirk data is physically stored</text>
+
+  <!-- Stage 1 Plugins -->
+  <rect x="935" y="565" width="540" height="85" rx="8" fill="#F0FDF4" stroke="#16A34A" stroke-width="1.2" filter="url(#shadow)"/>
+  <text x="1205" y="588" text-anchor="middle" font-size="13" font-weight="700" fill="#065F46">Stage 1: Compiled-In Plugin Examples</text>
+  <line x1="950" y1="597" x2="1460" y2="597" stroke="#6EE7B7" stroke-width="0.8"/>
+  <rect x="955" y="607" width="165" height="28" rx="5" fill="#D1FAE5" stroke="#059669" stroke-width="1"/>
+  <text x="1037" y="626" text-anchor="middle" font-size="10" font-weight="600" fill="#065F46">tuya_ts011f_plugin.cpp</text>
+  <rect x="1130" y="607" width="205" height="28" rx="5" fill="#D1FAE5" stroke="#059669" stroke-width="1"/>
+  <text x="1232" y="626" text-anchor="middle" font-size="10" font-weight="600" fill="#065F46">tuya_ts0601_presence_plugin.cpp</text>
+  <rect x="1345" y="607" width="180" height="28" rx="5" fill="#D1FAE5" stroke="#059669" stroke-width="1"/>
+  <text x="1435" y="626" text-anchor="middle" font-size="10" font-weight="600" fill="#065F46">tuya_generic_switch_plugin.cpp</text>
+
+  <!-- Stage 2 note -->
+  <rect x="935" y="665" width="540" height="50" rx="8" fill="#F0FDF4" stroke="#059669" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="1205" y="688" text-anchor="middle" font-size="12" font-weight="600" fill="#065F46">Stage 2 (deferred): Data-Driven Plugins</text>
+  <text x="1205" y="706" text-anchor="middle" font-size="10" fill="#047857">codegen: YAML/JSON → constexpr C++ tables at build time · execution engine in code · complex models keep custom hooks</text>
+
+  <!-- ================================================================ -->
+  <!-- HYBRID DEVICE RULE                                               -->
+  <!-- ================================================================ -->
+  <rect x="910" y="740" width="590" height="60" rx="8" fill="#FEF9C3" stroke="#CA8A04" stroke-width="1.2" filter="url(#shadow)"/>
+  <text x="1205" y="763" text-anchor="middle" font-size="13" font-weight="700" fill="#713F12">Hybrid Device Rule</text>
+  <text x="1205" y="783" text-anchor="middle" font-size="11" fill="#854D0E">One device may use both standard ZCL path + Tuya 0xEF00 path · fingerprinting enables capability composition</text>
+
+  <!-- ================================================================ -->
+  <!-- ARCHITECTURE GUARDRAILS                                          -->
+  <!-- ================================================================ -->
+  <rect x="910" y="820" width="590" height="220" rx="8" fill="#FEF2F2" stroke="#DC2626" stroke-width="2" filter="url(#shadow)"/>
+  <text x="1205" y="845" text-anchor="middle" font-size="14" font-weight="700" fill="#991B1B">Architecture Guardrails</text>
+  <line x1="930" y1="855" x2="1480" y2="855" stroke="#FCA5A5" stroke-width="0.8"/>
+
+  <text x="935" y="877" font-size="11" font-weight="600" fill="#991B1B">Tuya subsystem MUST NOT:</text>
+  <text x="955" y="895" font-size="10" fill="#B91C1C">✗ include core_*.hpp directly (plugins, translator, parser)</text>
+  <text x="955" y="911" font-size="10" fill="#B91C1C">✗ mutate Core state directly</text>
+  <text x="955" y="927" font-size="10" fill="#B91C1C">✗ publish to MQTT / Matter / Web directly</text>
+  <text x="955" y="943" font-size="10" fill="#B91C1C">✗ send Zigbee frames bypassing HAL adapter</text>
+  <text x="955" y="959" font-size="10" fill="#B91C1C">✗ perform uncontrolled heap allocation</text>
+
+  <text x="935" y="982" font-size="11" font-weight="600" fill="#065F46">Enforcement:</text>
+  <text x="955" y="1000" font-size="10" fill="#047857">• Type system: plugin API accepts/returns only permitted types</text>
+  <text x="955" y="1016" font-size="10" fill="#047857">• check_arch_invariants.sh: tuya_* files must not include core_*.hpp, hal_*.h, mqtt_*.hpp</text>
+  <text x="955" y="1032" font-size="10" fill="#047857">• ServiceRuntime owns final Core-event construction boundary</text>
+
+  <!-- ================================================================ -->
+  <!-- PHASE PROGRESSION                                                -->
+  <!-- ================================================================ -->
+  <rect x="20" y="1065" width="1480" height="215" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="760" y="1090" text-anchor="middle" font-size="16" font-weight="700" fill="#1E293B">MVP Phase Progression</text>
+
+  <!-- Phase 0 -->
+  <rect x="40" y="1105" width="340" height="160" rx="8" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="210" y="1128" text-anchor="middle" font-size="13" font-weight="700" fill="#1E3A8A">Phase 0 — Identity Seam</text>
+  <text x="210" y="1143" text-anchor="middle" font-size="10" fill="#2563EB">prerequisite for all Tuya work</text>
+  <line x1="55" y1="1151" x2="365" y2="1151" stroke="#93C5FD" stroke-width="0.8"/>
+  <text x="55" y="1168" font-size="10" fill="#1E40AF">1. Basic-cluster identity acquisition</text>
+  <text x="55" y="1183" font-size="10" fill="#1E40AF">2. Service-visible identity DTO</text>
+  <text x="55" y="1198" font-size="10" fill="#1E40AF">3. Persist to read-model seam</text>
+  <text x="55" y="1213" font-size="10" fill="#1E40AF">4. Fingerprint infra (stub registry)</text>
+  <text x="55" y="1228" font-size="10" fill="#1E40AF">5. Diagnostics for candidate devices</text>
+  <text x="55" y="1250" font-size="9" font-weight="600" fill="#1E3A8A">Accept: no Core change, host tests pass</text>
+
+  <!-- Arrow Phase 0 → 1 -->
+  <line x1="380" y1="1185" x2="405" y2="1185" stroke="#444" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Phase 1 -->
+  <rect x="410" y="1105" width="340" height="160" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="580" y="1128" text-anchor="middle" font-size="13" font-weight="700" fill="#92400E">Phase 1 — First Model</text>
+  <text x="580" y="1143" text-anchor="middle" font-size="10" fill="#D97706">one concrete Tuya device</text>
+  <line x1="425" y1="1151" x2="735" y2="1151" stroke="#FCD34D" stroke-width="0.8"/>
+  <text x="425" y="1168" font-size="10" fill="#78350F">1. Choose one device/family</text>
+  <text x="425" y="1183" font-size="10" fill="#78350F">2. Add fingerprint rule</text>
+  <text x="425" y="1198" font-size="10" fill="#78350F">3. Add bounded 0xEF00 parser</text>
+  <text x="425" y="1213" font-size="10" fill="#78350F">4. Add DP → domain-event translator</text>
+  <text x="425" y="1228" font-size="10" fill="#78350F">5. Add one compiled-in plugin + quirk data</text>
+  <text x="425" y="1250" font-size="9" font-weight="600" fill="#92400E">Accept: MQTT/Matter/Web unchanged</text>
+
+  <!-- Arrow Phase 1 → 2 -->
+  <line x1="750" y1="1185" x2="775" y2="1185" stroke="#444" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Phase 2 -->
+  <rect x="780" y="1105" width="320" height="160" rx="8" fill="#D1FAE5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="940" y="1128" text-anchor="middle" font-size="13" font-weight="700" fill="#065F46">Phase 2 — Control Path</text>
+  <text x="940" y="1143" text-anchor="middle" font-size="10" fill="#059669">controllable devices</text>
+  <line x1="795" y1="1151" x2="1085" y2="1151" stroke="#6EE7B7" stroke-width="0.8"/>
+  <text x="795" y="1168" font-size="10" fill="#047857">1. Service-side command routing</text>
+  <text x="795" y="1183" font-size="10" fill="#047857">2. HAL Tuya DP encode/send</text>
+  <text x="795" y="1198" font-size="10" fill="#047857">   (hal_tuya_transport.c)</text>
+  <text x="795" y="1213" font-size="10" fill="#047857">3. Hybrid-device tests</text>
+  <text x="795" y="1250" font-size="9" font-weight="600" fill="#065F46">Accept: standard + Tuya coexist</text>
+
+  <!-- Arrow Phase 2 → 3 -->
+  <line x1="1100" y1="1185" x2="1125" y2="1185" stroke="#444" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Phase 3 -->
+  <rect x="1130" y="1105" width="350" height="160" rx="8" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="1305" y="1128" text-anchor="middle" font-size="13" font-weight="700" fill="#5B21B6">Phase 3 — Vendor Init</text>
+  <text x="1305" y="1143" text-anchor="middle" font-size="10" fill="#7C3AED">devices needing init handshake</text>
+  <line x1="1145" y1="1151" x2="1465" y2="1151" stroke="#C4B5FD" stroke-width="0.8"/>
+  <text x="1145" y="1168" font-size="10" fill="#6D28D9">1. TuyaInitCoordinator</text>
+  <text x="1145" y="1183" font-size="10" fill="#6D28D9">2. Timeout / retry / ack tracking</text>
+  <text x="1145" y="1198" font-size="10" fill="#6D28D9">3. Time sync + mfr handshake</text>
+  <text x="1145" y="1213" font-size="10" fill="#6D28D9">4. Per-device init state machine</text>
+  <text x="1145" y="1250" font-size="9" font-weight="600" fill="#5B21B6">Accept: init state outside Core snapshot</text>
+
+  <!-- ================================================================ -->
+  <!-- FILE LAYOUT                                                      -->
+  <!-- ================================================================ -->
+  <rect x="20" y="1300" width="730" height="190" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="385" y="1325" text-anchor="middle" font-size="14" font-weight="700" fill="#1E293B">Implementation File Layout (components/service/)</text>
+
+  <text x="50" y="1350" font-size="11" font-weight="600" fill="#334155">Headers (include/):</text>
+  <text x="50" y="1368" font-size="10" fill="#475569" font-family="'Consolas', 'Monaco', monospace">tuya_fingerprint.hpp    tuya_payload_view.hpp    tuya_dp_parser.hpp</text>
+  <text x="50" y="1384" font-size="10" fill="#475569" font-family="'Consolas', 'Monaco', monospace">tuya_plugin.hpp         tuya_plugin_registry.hpp tuya_quirk_data.hpp</text>
+  <text x="50" y="1400" font-size="10" fill="#475569" font-family="'Consolas', 'Monaco', monospace">tuya_translator.hpp     tuya_init_coordinator.hpp</text>
+
+  <text x="50" y="1425" font-size="11" font-weight="600" fill="#334155">Implementation:</text>
+  <text x="50" y="1443" font-size="10" fill="#475569" font-family="'Consolas', 'Monaco', monospace">tuya_fingerprint.cpp    tuya_dp_parser.cpp       tuya_plugin_registry.cpp</text>
+  <text x="50" y="1459" font-size="10" fill="#475569" font-family="'Consolas', 'Monaco', monospace">tuya_quirk_data.cpp     tuya_translator.cpp      tuya_init_coordinator.cpp</text>
+
+  <text x="50" y="1480" font-size="11" font-weight="600" fill="#334155">Per-model plugins:</text>
+  <text x="50" y="1478" font-size="10" fill="#475569" font-family="'Consolas', 'Monaco', monospace"></text>
+  <rect x="50" y="1482" width="155" height="22" rx="4" fill="#D1FAE5" stroke="#059669" stroke-width="0.8"/>
+  <text x="127" y="1497" text-anchor="middle" font-size="9" fill="#065F46" font-family="'Consolas', 'Monaco', monospace">tuya_ts011f_plugin.cpp</text>
+  <rect x="215" y="1482" width="200" height="22" rx="4" fill="#D1FAE5" stroke="#059669" stroke-width="0.8"/>
+  <text x="315" y="1497" text-anchor="middle" font-size="9" fill="#065F46" font-family="'Consolas', 'Monaco', monospace">tuya_ts0601_presence_plugin.cpp</text>
+  <rect x="425" y="1482" width="185" height="22" rx="4" fill="#D1FAE5" stroke="#059669" stroke-width="0.8"/>
+  <text x="517" y="1497" text-anchor="middle" font-size="9" fill="#065F46" font-family="'Consolas', 'Monaco', monospace">tuya_generic_switch_plugin.cpp</text>
+
+  <!-- ================================================================ -->
+  <!-- NON-GOALS & ACCEPTANCE                                           -->
+  <!-- ================================================================ -->
+  <rect x="770" y="1300" width="350" height="190" rx="10" fill="#FEF2F2" stroke="#EF4444" stroke-width="1.2"/>
+  <text x="945" y="1325" text-anchor="middle" font-size="14" font-weight="700" fill="#991B1B">Non-Goals for MVP</text>
+  <line x1="790" y1="1335" x2="1100" y2="1335" stroke="#FCA5A5" stroke-width="0.8"/>
+  <text x="800" y="1358" font-size="11" fill="#B91C1C">✗ generic attribute bag in Core</text>
+  <text x="800" y="1378" font-size="11" fill="#B91C1C">✗ dynamic reducer schema</text>
+  <text x="800" y="1398" font-size="11" fill="#B91C1C">✗ user-editable quirk definitions</text>
+  <text x="800" y="1418" font-size="11" fill="#B91C1C">✗ universal Tuya support</text>
+  <text x="800" y="1438" font-size="11" fill="#B91C1C">✗ runtime-loaded plugins</text>
+  <text x="800" y="1458" font-size="11" fill="#B91C1C">✗ JSON/YAML parsing on device</text>
+  <text x="800" y="1478" font-size="11" fill="#B91C1C">✗ Core schema changes</text>
+
+  <rect x="1140" y="1300" width="360" height="190" rx="10" fill="#F0FDF4" stroke="#059669" stroke-width="1.2"/>
+  <text x="1320" y="1325" text-anchor="middle" font-size="14" font-weight="700" fill="#065F46">Acceptance Criteria</text>
+  <line x1="1160" y1="1335" x2="1480" y2="1335" stroke="#6EE7B7" stroke-width="0.8"/>
+  <text x="1160" y="1358" font-size="10" fill="#047857">✓ one Tuya model fingerprinted correctly</text>
+  <text x="1160" y="1376" font-size="10" fill="#047857">✓ 0xEF00 parsed without unbounded alloc</text>
+  <text x="1160" y="1394" font-size="10" fill="#047857">✓ parsed DPs map into existing domain events</text>
+  <text x="1160" y="1412" font-size="10" fill="#047857">✓ plugin selection is deterministic</text>
+  <text x="1160" y="1430" font-size="10" fill="#047857">✓ MQTT/Matter/Web unchanged</text>
+  <text x="1160" y="1448" font-size="10" fill="#047857">✓ no Core schema changes</text>
+  <text x="1160" y="1466" font-size="10" fill="#047857">✓ host tests: parser, translator, plugin, quirk</text>
+  <text x="1160" y="1484" font-size="10" fill="#047857">✓ integration: standard + hybrid no regress</text>
+
+  <!-- ================================================================ -->
+  <!-- LEGEND                                                           -->
+  <!-- ================================================================ -->
+  <rect x="20" y="1520" width="1480" height="80" rx="8" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="50" y="1545" font-size="12" font-weight="700" fill="#334155">Legend:</text>
+
+  <rect x="120" y="1533" width="18" height="14" rx="3" fill="#FEF3C7" stroke="#D97706" stroke-width="1"/>
+  <text x="145" y="1545" font-size="10" fill="#475569">HAL layer</text>
+
+  <rect x="230" y="1533" width="18" height="14" rx="3" fill="#DBEAFE" stroke="#2563EB" stroke-width="1"/>
+  <text x="255" y="1545" font-size="10" fill="#475569">Service layer</text>
+
+  <rect x="360" y="1533" width="18" height="14" rx="3" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1"/>
+  <text x="385" y="1545" font-size="10" fill="#475569">Core (closed)</text>
+
+  <rect x="485" y="1533" width="18" height="14" rx="3" fill="#D1FAE5" stroke="#059669" stroke-width="1"/>
+  <text x="510" y="1545" font-size="10" fill="#475569">Downstream</text>
+
+  <rect x="610" y="1533" width="18" height="14" rx="3" fill="#FFF7ED" stroke="#EA580C" stroke-width="1"/>
+  <text x="635" y="1545" font-size="10" fill="#475569">Tuya subsystem</text>
+
+  <rect x="770" y="1533" width="18" height="14" rx="3" fill="#D1FAE5" stroke="#059669" stroke-width="1"/>
+  <text x="795" y="1545" font-size="10" fill="#475569">Plugin model</text>
+
+  <rect x="900" y="1533" width="18" height="14" rx="3" fill="#FEF2F2" stroke="#DC2626" stroke-width="1"/>
+  <text x="925" y="1545" font-size="10" fill="#475569">Guardrails / forbidden</text>
+
+  <line x1="120" y1="1575" x2="160" y2="1575" stroke="#D97706" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+  <text x="170" y="1579" font-size="10" fill="#475569">Tuya data flow</text>
+
+  <line x1="310" y1="1575" x2="350" y2="1575" stroke="#2563EB" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arrow-blue)"/>
+  <text x="360" y="1579" font-size="10" fill="#475569">Service-level output</text>
+
+  <line x1="530" y1="1575" x2="570" y2="1575" stroke="#059669" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="580" y="1579" font-size="10" fill="#475569">Plugin interaction</text>
+
+  <line x1="730" y1="1575" x2="770" y2="1575" stroke="#444" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="780" y="1579" font-size="10" fill="#475569">Standard flow</text>
+
+  <!-- Footer -->
+  <text x="760" y="1612" text-anchor="middle" font-size="10" fill="#94A3B8">Tuya Implementation Architecture · zigbee-gateway_v1 · Core closed-schema · Service-owned compatibility subsystem</text>
+</svg>
