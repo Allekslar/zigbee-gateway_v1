@@ -25,7 +25,35 @@ extern const char ota_server_root_ca_pem_end[] asm("_binary_ota_server_root_ca_p
 #endif
 #endif
 
-// Weak hooks for a platform-specific RCP updater implementation.
+// Weak hooks for an optional platform-specific external RCP updater.
+// On the current ESP32-C6-DevKitC target, Zigbee uses the native 15.4 radio
+// and these hooks are expected to remain unconfigured.
+bool __attribute__((weak)) hal_rcp_stack_backend_available(void) {
+#ifdef ESP_PLATFORM
+    return false;
+#else
+    return true;
+#endif
+}
+
+bool __attribute__((weak)) hal_rcp_stack_get_backend_name(char* out, size_t out_len) {
+    if (out == NULL || out_len == 0U) {
+        return false;
+    }
+#ifdef ESP_PLATFORM
+    if (out_len < 13U) {
+        return false;
+    }
+    memcpy(out, "unconfigured", 13U);
+#else
+    if (out_len < 10U) {
+        return false;
+    }
+    memcpy(out, "host-mock", 10U);
+#endif
+    return true;
+}
+
 bool __attribute__((weak)) hal_rcp_stack_get_running_version(char* out, size_t out_len) {
 #ifdef ESP_PLATFORM
     (void)out;
@@ -138,6 +166,14 @@ static bool hal_rcp_sha256_matches_hex(const unsigned char* digest, size_t diges
     return true;
 }
 #endif
+
+bool hal_rcp_backend_available(void) {
+    return hal_rcp_stack_backend_available();
+}
+
+bool hal_rcp_get_backend_name(char* out, size_t out_len) {
+    return hal_rcp_stack_get_backend_name(out, out_len);
+}
 
 bool hal_rcp_get_running_version(char* out, size_t out_len) {
     return hal_rcp_stack_get_running_version(out, out_len);

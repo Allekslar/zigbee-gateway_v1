@@ -59,6 +59,93 @@ config ZGW_OTA_REBOOT_DELAY_MS
 
 endmenu
 
+menu "RCP Update"
+
+comment "Current ESP32-C6-DevKitC builds use the native 802.15.4 radio; external RCP backends are future optional hardware support"
+
+choice ZGW_RCP_TARGET_BACKEND
+    prompt "RCP target backend"
+    default ZGW_RCP_TARGET_BACKEND_NONE
+    help
+        Keep this set to "No target backend" for the current ESP32-C6-DevKitC
+        board. Enable an external RCP backend only for a different hardware
+        target that actually contains a separate radio co-processor and the
+        required UART/BOOT/RESET wiring.
+
+config ZGW_RCP_TARGET_BACKEND_NONE
+    bool "No target backend"
+    help
+        Default and correct option for the current ESP32-C6-DevKitC target.
+        Zigbee runs on the native ESP32-C6 802.15.4 radio, so there is no
+        external RCP to flash or recover.
+
+config ZGW_RCP_TARGET_BACKEND_UART
+    bool "UART maintenance backend"
+    help
+        Optional groundwork for a future board with a separate external RCP.
+        This is not part of the active production path for the current
+        ESP32-C6-DevKitC target.
+
+endchoice
+
+config ZGW_RCP_UART_PORT
+    int "RCP UART port number"
+    depends on ZGW_RCP_TARGET_BACKEND_UART
+    default 1
+    help
+        UART port used only by an external RCP maintenance path on future
+        hardware. Not used on the current ESP32-C6-DevKitC board.
+
+config ZGW_RCP_UART_TX_GPIO
+    int "RCP UART TX GPIO"
+    depends on ZGW_RCP_TARGET_BACKEND_UART
+    default -1
+
+config ZGW_RCP_UART_RX_GPIO
+    int "RCP UART RX GPIO"
+    depends on ZGW_RCP_TARGET_BACKEND_UART
+    default -1
+
+config ZGW_RCP_UART_BAUDRATE
+    int "RCP UART baudrate"
+    depends on ZGW_RCP_TARGET_BACKEND_UART
+    range 9600 5000000
+    default 460800
+
+config ZGW_RCP_UART_BOOT_GPIO
+    int "RCP BOOT mode GPIO (-1 to disable)"
+    depends on ZGW_RCP_TARGET_BACKEND_UART
+    default -1
+
+config ZGW_RCP_UART_RESET_GPIO
+    int "RCP RESET GPIO (-1 to disable)"
+    depends on ZGW_RCP_TARGET_BACKEND_UART
+    default -1
+
+config ZGW_RCP_UART_BOOT_ACTIVE_HIGH
+    bool "BOOT GPIO active high"
+    depends on ZGW_RCP_TARGET_BACKEND_UART
+    default n
+
+config ZGW_RCP_UART_RESET_ACTIVE_HIGH
+    bool "RESET GPIO active high"
+    depends on ZGW_RCP_TARGET_BACKEND_UART
+    default n
+
+config ZGW_RCP_UART_ENTER_UPDATE_DELAY_MS
+    int "Delay after entering update mode (ms)"
+    depends on ZGW_RCP_TARGET_BACKEND_UART
+    range 0 1000
+    default 50
+
+config ZGW_RCP_UART_RESET_PULSE_MS
+    int "Reset pulse width (ms)"
+    depends on ZGW_RCP_TARGET_BACKEND_UART
+    range 1 1000
+    default 20
+
+endmenu
+
 config ZGW_MQTT_TRANSPORT_ENABLED
     bool "Enable MQTT transport adapter"
     default n
