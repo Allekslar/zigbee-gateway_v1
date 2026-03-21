@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 
+#include "application_requests.hpp"
 #include "service_public_types.hpp"
 
 namespace service {
@@ -51,11 +52,7 @@ public:
     virtual ~MatterRuntimeApi() = default;
 
     virtual uint32_t next_operation_request_id() noexcept = 0;
-    virtual CommandSubmitStatus post_device_power_request(
-        uint32_t correlation_id,
-        uint16_t short_addr,
-        bool desired_power_on,
-        uint32_t issued_at_ms) noexcept = 0;
+    virtual CommandSubmitStatus post_device_power_request(const DevicePowerCommandRequest& request) noexcept = 0;
     virtual bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept = 0;
 };
 

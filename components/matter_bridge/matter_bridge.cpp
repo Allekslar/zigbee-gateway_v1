@@ -181,7 +181,12 @@ service::CommandSubmitStatus MatterBridge::post_power_command(uint16_t short_add
         *correlation_id_out = correlation_id;
     }
 
-    return runtime_->post_device_power_request(correlation_id, short_addr, desired_power_on, issued_at_ms);
+    service::DevicePowerCommandRequest request{};
+    request.correlation_id = correlation_id;
+    request.short_addr = short_addr;
+    request.desired_power_on = desired_power_on;
+    request.issued_at_ms = issued_at_ms;
+    return runtime_->post_device_power_request(request);
 }
 
 std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& snapshot) noexcept {

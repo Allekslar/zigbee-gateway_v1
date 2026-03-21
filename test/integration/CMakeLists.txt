@@ -26,6 +26,7 @@ target_include_directories(core_integration
 zg_apply_component_compile_policy(core_integration)
 
 set(SERVICE_SOURCES
+    ../../components/service/application_command_mapper.cpp
     ../../components/service/bridge_snapshot_builder.cpp
     ../../components/service/command_manager.cpp
     ../../components/service/connectivity_manager.cpp

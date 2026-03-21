@@ -339,17 +339,13 @@ void ServiceRuntime::note_rcp_update_poll_status(uint32_t request_id, RcpUpdateP
     operation_result_store_.note_rcp_update_poll_status(request_id, status);
 }
 
-CommandSubmitStatus ServiceRuntime::post_device_power_request(
-    uint32_t correlation_id,
-    uint16_t short_addr,
-    bool desired_power_on,
-    uint32_t issued_at_ms) noexcept {
+CommandSubmitStatus ServiceRuntime::post_device_power_request(const DevicePowerCommandRequest& request) noexcept {
     core::CoreCommand command{};
     command.type = core::CoreCommandType::kSetDevicePower;
-    command.correlation_id = correlation_id;
-    command.device_short_addr = short_addr;
-    command.desired_power_on = desired_power_on;
-    command.issued_at_ms = issued_at_ms;
+    command.correlation_id = request.correlation_id;
+    command.device_short_addr = request.short_addr;
+    command.desired_power_on = request.desired_power_on;
+    command.issued_at_ms = request.issued_at_ms;
     return map_core_submit_status(post_command(command));
 }
 

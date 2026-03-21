@@ -13,6 +13,7 @@
 #ifdef ESP_PLATFORM
 #include "hal_mqtt.h"
 #endif
+#include "application_command_mapper.hpp"
 #include "log_tags.h"
 #include "mqtt_discovery.hpp"
 #include "service_runtime_api.hpp"
@@ -44,59 +45,6 @@ uint32_t monotonic_now_ms() noexcept {
     return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
 }
 
-bool parse_u32_strict(const char* text, uint32_t* out) noexcept {
-    if (text == nullptr || out == nullptr || text[0] == '\0') {
-        return false;
-    }
-    errno = 0;
-    char* end = nullptr;
-    const unsigned long value = std::strtoul(text, &end, 10);
-    if (errno != 0 || end == text || *end != '\0' || value > UINT_MAX) {
-        return false;
-    }
-    *out = static_cast<uint32_t>(value);
-    return true;
-}
-
-bool extract_device_short_addr_from_topic(
-    const char* topic,
-    const char* suffix,
-    uint16_t* out_short_addr) noexcept {
-    if (topic == nullptr || suffix == nullptr || out_short_addr == nullptr) {
-        return false;
-    }
-
-    constexpr const char* kPrefix = "zigbee-gateway/devices/";
-    const std::size_t prefix_len = std::strlen(kPrefix);
-    const std::size_t suffix_len = std::strlen(suffix);
-    const std::size_t topic_len = std::strlen(topic);
-    if (topic_len <= prefix_len + suffix_len) {
-        return false;
-    }
-    if (std::strncmp(topic, kPrefix, prefix_len) != 0) {
-        return false;
-    }
-    if (std::strcmp(topic + topic_len - suffix_len, suffix) != 0) {
-        return false;
-    }
-
-    const std::size_t short_len = topic_len - prefix_len - suffix_len;
-    if (short_len == 0U || short_len >= 8U) {
-        return false;
-    }
-    char short_buf[8] = {0};
-    std::memcpy(short_buf, topic + prefix_len, short_len);
-    short_buf[short_len] = '\0';
-
-    uint32_t short_raw = 0;
-    if (!parse_u32_strict(short_buf, &short_raw) || short_raw == 0U || short_raw > 0xFFFFU) {
-        return false;
-    }
-
-    *out_short_addr = static_cast<uint16_t>(short_raw);
-    return true;
-}
-
 const service::MqttBridgeDeviceSnapshot* find_cached_device_by_short(
     const service::MqttBridgeDeviceSnapshot* devices,
     const uint16_t count,
@@ -110,149 +58,6 @@ const service::MqttBridgeDeviceSnapshot* find_cached_device_by_short(
         }
     }
     return nullptr;
-}
-
-bool topic_has_suffix(const char* topic, const char* suffix) noexcept {
-    if (topic == nullptr || suffix == nullptr) {
-        return false;
-    }
-
-    const std::size_t topic_len = std::strlen(topic);
-    const std::size_t suffix_len = std::strlen(suffix);
-    if (topic_len < suffix_len) {
-        return false;
-    }
-
-    return std::strcmp(topic + topic_len - suffix_len, suffix) == 0;
-}
-
-bool find_json_u32_field(const char* body, const char* key, uint32_t* out_value) noexcept {
-    if (body == nullptr || key == nullptr || out_value == nullptr) {
-        return false;
-    }
-
-    char pattern[64]{};
-    const int pattern_written = std::snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-    if (pattern_written <= 0 || static_cast<std::size_t>(pattern_written) >= sizeof(pattern)) {
-        return false;
-    }
-
-    const char* key_pos = std::strstr(body, pattern);
-    if (key_pos == nullptr) {
-        return false;
-    }
-
-    const char* colon = std::strchr(key_pos + pattern_written, ':');
-    if (colon == nullptr) {
-        return false;
-    }
-
-    const char* value = colon + 1;
-    while (*value == ' ' || *value == '\t' || *value == '\n' || *value == '\r') {
-        ++value;
-    }
-
-    char number_buf[16]{};
-    std::size_t idx = 0;
-    while (value[idx] >= '0' && value[idx] <= '9' && idx + 1U < sizeof(number_buf)) {
-        number_buf[idx] = value[idx];
-        ++idx;
-    }
-    number_buf[idx] = '\0';
-
-    if (idx == 0U) {
-        return false;
-    }
-
-    return parse_u32_strict(number_buf, out_value);
-}
-
-bool find_json_bool_field(const char* body, const char* key, bool* out_value) noexcept {
-    if (body == nullptr || key == nullptr || out_value == nullptr) {
-        return false;
-    }
-
-    char pattern[64]{};
-    const int pattern_written = std::snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-    if (pattern_written <= 0 || static_cast<std::size_t>(pattern_written) >= sizeof(pattern)) {
-        return false;
-    }
-
-    const char* key_pos = std::strstr(body, pattern);
-    if (key_pos == nullptr) {
-        return false;
-    }
-
-    const char* colon = std::strchr(key_pos + pattern_written, ':');
-    if (colon == nullptr) {
-        return false;
-    }
-
-    const char* value = colon + 1;
-    while (*value == ' ' || *value == '\t' || *value == '\n' || *value == '\r') {
-        ++value;
-    }
-
-    if (std::strncmp(value, "true", 4) == 0) {
-        *out_value = true;
-        return true;
-    }
-    if (std::strncmp(value, "false", 5) == 0) {
-        *out_value = false;
-        return true;
-    }
-
-    return false;
-}
-
-bool parse_reporting_config_payload(
-    const char* payload,
-    uint16_t short_addr,
-    service::ConfigManager::ReportingProfile* out_profile) noexcept {
-    if (payload == nullptr || out_profile == nullptr) {
-        return false;
-    }
-
-    uint32_t endpoint = 0;
-    uint32_t cluster_id = 0;
-    uint32_t min_interval = 0;
-    uint32_t max_interval = 0;
-    if (!find_json_u32_field(payload, "endpoint", &endpoint) ||
-        !find_json_u32_field(payload, "cluster_id", &cluster_id) ||
-        !find_json_u32_field(payload, "min_interval_seconds", &min_interval) ||
-        !find_json_u32_field(payload, "max_interval_seconds", &max_interval)) {
-        return false;
-    }
-
-    if (endpoint == 0U || endpoint > 0xFFU ||
-        cluster_id == 0U || cluster_id > 0xFFFFU ||
-        min_interval > 0xFFFFU || max_interval > 0xFFFFU) {
-        return false;
-    }
-    if (max_interval == 0U || min_interval > max_interval) {
-        return false;
-    }
-
-    uint32_t reportable_change = 0;
-    (void)find_json_u32_field(payload, "reportable_change", &reportable_change);
-
-    out_profile->in_use = true;
-    out_profile->key.short_addr = short_addr;
-    out_profile->key.endpoint = static_cast<uint8_t>(endpoint);
-    out_profile->key.cluster_id = static_cast<uint16_t>(cluster_id);
-    out_profile->min_interval_seconds = static_cast<uint16_t>(min_interval);
-    out_profile->max_interval_seconds = static_cast<uint16_t>(max_interval);
-    out_profile->reportable_change = reportable_change;
-    out_profile->capability_flags = 0U;
-
-    uint32_t capability_flags = 0;
-    if (find_json_u32_field(payload, "capability_flags", &capability_flags)) {
-        if (capability_flags > 0xFFU) {
-            return false;
-        }
-        out_profile->capability_flags = static_cast<uint8_t>(capability_flags);
-    }
-    return true;
 }
 
 }  // namespace
@@ -304,10 +109,10 @@ bool MqttBridge::handle_command_message(const char* topic, const char* payload, 
         return false;
     }
 
-    if (topic_has_suffix(topic, "/config")) {
+    if (service::mqtt_topic_has_suffix(topic, "/config")) {
         return handle_config_command(topic, payload, correlation_id);
     }
-    if (topic_has_suffix(topic, "/power/set")) {
+    if (service::mqtt_topic_has_suffix(topic, "/power/set")) {
         return handle_power_command(topic, payload, correlation_id);
     }
 
@@ -319,13 +124,9 @@ bool MqttBridge::handle_config_command(const char* topic, const char* payload, u
         return false;
     }
 
-    uint16_t short_addr = core::kUnknownDeviceShortAddr;
-    if (!extract_device_short_addr_from_topic(topic, "/config", &short_addr)) {
-        return false;
-    }
-
     service::ConfigManager::ReportingProfile profile{};
-    if (!parse_reporting_config_payload(payload, short_addr, &profile)) {
+    if (service::parse_mqtt_reporting_profile_request(topic, payload, &profile) !=
+        service::ApplicationCommandParseStatus::kOk) {
         return false;
     }
 
@@ -337,27 +138,22 @@ bool MqttBridge::handle_power_command(const char* topic, const char* payload, ui
         return false;
     }
 
-    uint16_t short_addr = core::kUnknownDeviceShortAddr;
-    if (!extract_device_short_addr_from_topic(topic, "/power/set", &short_addr) ||
-        short_addr == 0U ||
-        short_addr == core::kUnknownDeviceShortAddr) {
+    service::DevicePowerCommandRequest request{};
+    if (service::parse_mqtt_device_power_request(topic, payload, &request) !=
+        service::ApplicationCommandParseStatus::kOk) {
         return false;
     }
 
-    bool desired_power = false;
-    if (!find_json_bool_field(payload, "power_on", &desired_power)) {
-        return false;
-    }
-
-    if (runtime_->post_device_power_request(correlation_id, short_addr, desired_power, monotonic_now_ms()) !=
-        service::CommandSubmitStatus::kAccepted) {
+    request.correlation_id = correlation_id;
+    request.issued_at_ms = monotonic_now_ms();
+    if (runtime_->post_device_power_request(request) != service::CommandSubmitStatus::kAccepted) {
         return false;
     }
 
     {
         service::RuntimeLockGuard guard(state_lock_);
-        set_power_override(short_addr, desired_power);
-        sync_device_state(short_addr, desired_power);
+        set_power_override(request.short_addr, request.desired_power_on);
+        sync_device_state(request.short_addr, request.desired_power_on);
     }
     return true;
 }

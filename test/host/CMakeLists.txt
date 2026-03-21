@@ -26,6 +26,7 @@ target_include_directories(core_host
 zg_apply_component_compile_policy(core_host)
 
 set(SERVICE_SOURCES
+    ../../components/service/application_command_mapper.cpp
     ../../components/service/bridge_snapshot_builder.cpp
     ../../components/service/command_manager.cpp
     ../../components/service/connectivity_manager.cpp
@@ -204,6 +205,11 @@ add_executable(test_service_rcp test_service_rcp.cpp)
 target_link_libraries(test_service_rcp PRIVATE service_host)
 zg_apply_component_compile_policy(test_service_rcp)
 add_test(NAME test_service_rcp COMMAND test_service_rcp)
+
+add_executable(test_application_command_mapper test_application_command_mapper.cpp)
+target_link_libraries(test_application_command_mapper PRIVATE service_host)
+zg_apply_component_compile_policy(test_application_command_mapper)
+add_test(NAME test_application_command_mapper COMMAND test_application_command_mapper)
 
 add_executable(test_service_saved_credentials_zigbee_start test_service_saved_credentials_zigbee_start.cpp)
 target_link_libraries(test_service_saved_credentials_zigbee_start PRIVATE service_host)

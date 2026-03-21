@@ -5,6 +5,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/ProjectCompileOptions.cmake")
 
 idf_component_register(
     SRCS
+        "application_command_mapper.cpp"
         "bridge_snapshot_builder.cpp"
         "command_manager.cpp"
         "connectivity_manager.cpp"

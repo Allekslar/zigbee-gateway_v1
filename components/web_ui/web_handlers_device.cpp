@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #endif
+#include "application_command_mapper.hpp"
 #include "log_tags.h"
 #include "service_runtime_api.hpp"
 #include "web_handler_common.hpp"
@@ -227,20 +228,17 @@ esp_err_t device_power_post_handler(httpd_req_t* req) {
         return send_json_error(req, "400 Bad Request", "invalid_body");
     }
 
-    uint32_t short_addr_raw = 0;
-    bool desired_power = false;
-    if (!find_json_u32_field(body, "short_addr", &short_addr_raw) ||
-        !find_json_bool_field(body, "power_on", &desired_power) ||
-        short_addr_raw > 0xFFFFU) {
-        return send_json_error(req, "400 Bad Request", "invalid_payload");
+    service::DevicePowerCommandRequest request{};
+    const service::ApplicationCommandParseStatus parse_status =
+        service::parse_web_device_power_request(body, &request);
+    if (parse_status != service::ApplicationCommandParseStatus::kOk) {
+        return send_json_error(req, "400 Bad Request", service::application_command_parse_error(parse_status));
     }
 
     const uint32_t correlation_id = allocate_correlation_id(context);
-    const service::CommandSubmitStatus submit_result = context->runtime->post_device_power_request(
-        correlation_id,
-        static_cast<uint16_t>(short_addr_raw),
-        desired_power,
-        static_cast<uint32_t>(esp_timer_get_time() / 1000ULL));
+    request.correlation_id = correlation_id;
+    request.issued_at_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+    const service::CommandSubmitStatus submit_result = context->runtime->post_device_power_request(request);
     if (submit_result != service::CommandSubmitStatus::kAccepted) {
         if (submit_result == service::CommandSubmitStatus::kInvalidArgument) {
             return send_json_error(req, "400 Bad Request", "invalid_command");

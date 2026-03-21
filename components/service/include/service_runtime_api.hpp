@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "application_requests.hpp"
 #include "config_manager.hpp"
 #include "connectivity_manager.hpp"
 #include "matter_runtime_api.hpp"
@@ -359,10 +360,7 @@ public:
 
     virtual uint32_t next_operation_request_id() noexcept override = 0;
     virtual CommandSubmitStatus post_device_power_request(
-        uint32_t correlation_id,
-        uint16_t short_addr,
-        bool desired_power_on,
-        uint32_t issued_at_ms) noexcept override = 0;
+        const DevicePowerCommandRequest& request) noexcept override = 0;
     virtual CommandSubmitStatus post_network_refresh_request(
         uint32_t correlation_id,
         uint32_t issued_at_ms) noexcept = 0;

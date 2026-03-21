@@ -6,6 +6,7 @@
 #include <inttypes.h>
 #include <cstdio>
 
+#include "application_command_mapper.hpp"
 #include "core_events.hpp"
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
@@ -16,68 +17,6 @@
 namespace web_ui {
 
 namespace {
-
-bool parse_reporting_profile_request(
-    const char* body,
-    service::ConfigManager::ReportingProfile* out_profile,
-    const char** out_error) noexcept {
-    if (body == nullptr || out_profile == nullptr || out_error == nullptr) {
-        return false;
-    }
-
-    *out_error = "invalid_payload";
-    service::ConfigManager::ReportingProfile profile{};
-    profile.in_use = true;
-
-    uint32_t short_addr_raw = 0;
-    uint32_t endpoint_raw = 0;
-    uint32_t cluster_id_raw = 0;
-    uint32_t min_interval_raw = 0;
-    uint32_t max_interval_raw = 0;
-    if (!find_json_u32_field(body, "short_addr", &short_addr_raw) ||
-        !find_json_u32_field(body, "endpoint", &endpoint_raw) ||
-        !find_json_u32_field(body, "cluster_id", &cluster_id_raw) ||
-        !find_json_u32_field(body, "min_interval_seconds", &min_interval_raw) ||
-        !find_json_u32_field(body, "max_interval_seconds", &max_interval_raw)) {
-        return false;
-    }
-
-    if (short_addr_raw == 0U || short_addr_raw > 0xFFFFU ||
-        short_addr_raw == static_cast<uint32_t>(core::kUnknownDeviceShortAddr) ||
-        endpoint_raw == 0U || endpoint_raw > 0xFFU || cluster_id_raw == 0U ||
-        cluster_id_raw > 0xFFFFU || min_interval_raw > 0xFFFFU ||
-        max_interval_raw > 0xFFFFU) {
-        *out_error = "invalid_profile_key";
-        return false;
-    }
-
-    if (max_interval_raw == 0U || min_interval_raw > max_interval_raw) {
-        *out_error = "invalid_profile_bounds";
-        return false;
-    }
-
-    uint32_t reportable_change_raw = 0;
-    (void)find_json_u32_field(body, "reportable_change", &reportable_change_raw);
-
-    uint32_t capability_flags_raw = 0;
-    if (find_json_u32_field(body, "capability_flags", &capability_flags_raw)) {
-        if (capability_flags_raw > 0xFFU) {
-            *out_error = "invalid_capability_flags";
-            return false;
-        }
-        profile.capability_flags = static_cast<uint8_t>(capability_flags_raw);
-    }
-
-    profile.key.short_addr = static_cast<uint16_t>(short_addr_raw);
-    profile.key.endpoint = static_cast<uint8_t>(endpoint_raw);
-    profile.key.cluster_id = static_cast<uint16_t>(cluster_id_raw);
-    profile.min_interval_seconds = static_cast<uint16_t>(min_interval_raw);
-    profile.max_interval_seconds = static_cast<uint16_t>(max_interval_raw);
-    profile.reportable_change = reportable_change_raw;
-
-    *out_profile = profile;
-    return true;
-}
 
 esp_err_t config_get_handler(httpd_req_t* req) {
     if (req == nullptr || req->user_ctx == nullptr) {
@@ -168,9 +107,10 @@ esp_err_t config_reporting_post_handler(httpd_req_t* req) {
     }
 
     service::ConfigManager::ReportingProfile profile{};
-    const char* parse_error = "invalid_payload";
-    if (!parse_reporting_profile_request(body, &profile, &parse_error)) {
-        return send_json_error(req, "400 Bad Request", parse_error);
+    const service::ApplicationCommandParseStatus parse_status =
+        service::parse_web_reporting_profile_request(body, &profile);
+    if (parse_status != service::ApplicationCommandParseStatus::kOk) {
+        return send_json_error(req, "400 Bad Request", service::application_command_parse_error(parse_status));
     }
 
     if (!context->runtime->post_reporting_profile_write(profile)) {
