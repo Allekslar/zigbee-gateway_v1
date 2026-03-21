@@ -7,9 +7,7 @@
 #include <cstddef>
 #include <cstdio>
 
-#include "core_commands.hpp"
 #include "core_events.hpp"
-#include "core_errors.hpp"
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -237,16 +235,14 @@ esp_err_t device_power_post_handler(httpd_req_t* req) {
         return send_json_error(req, "400 Bad Request", "invalid_payload");
     }
 
-    core::CoreCommand command{};
-    command.type = core::CoreCommandType::kSetDevicePower;
-    command.correlation_id = allocate_correlation_id(context);
-    command.device_short_addr = static_cast<uint16_t>(short_addr_raw);
-    command.desired_power_on = desired_power;
-    command.issued_at_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-
-    const core::CoreError submit_result = context->runtime->post_command(command);
-    if (submit_result != core::CoreError::kOk) {
-        if (submit_result == core::CoreError::kInvalidArgument) {
+    const uint32_t correlation_id = allocate_correlation_id(context);
+    const service::CommandSubmitStatus submit_result = context->runtime->post_device_power_request(
+        correlation_id,
+        static_cast<uint16_t>(short_addr_raw),
+        desired_power,
+        static_cast<uint32_t>(esp_timer_get_time() / 1000ULL));
+    if (submit_result != service::CommandSubmitStatus::kAccepted) {
+        if (submit_result == service::CommandSubmitStatus::kInvalidArgument) {
             return send_json_error(req, "400 Bad Request", "invalid_command");
         }
         return send_json_error(req, "503 Service Unavailable", "command_rejected");
@@ -257,7 +253,7 @@ esp_err_t device_power_post_handler(httpd_req_t* req) {
         response,
         sizeof(response),
         "{\"accepted\":true,\"correlation_id\":%" PRIu32 "}",
-        command.correlation_id);
+        correlation_id);
     if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
         return ESP_FAIL;
     }

@@ -54,6 +54,24 @@ constexpr uint32_t kRcpWorkerTaskStackSize = 4096U;
 constexpr UBaseType_t kRcpWorkerTaskPriority = 5U;
 #endif
 
+CommandSubmitStatus map_core_submit_status(core::CoreError error) noexcept {
+    switch (error) {
+        case core::CoreError::kOk:
+            return CommandSubmitStatus::kAccepted;
+        case core::CoreError::kInvalidArgument:
+            return CommandSubmitStatus::kInvalidArgument;
+        case core::CoreError::kBusy:
+            return CommandSubmitStatus::kBusy;
+        case core::CoreError::kNoCapacity:
+            return CommandSubmitStatus::kNoCapacity;
+        case core::CoreError::kNotFound:
+        case core::CoreError::kTimeout:
+        case core::CoreError::kInternal:
+        default:
+            return CommandSubmitStatus::kInternal;
+    }
+}
+
 uint32_t clamp_force_remove_timeout(uint32_t timeout_ms) noexcept {
     if (timeout_ms < kForceRemoveMinTimeoutMs) {
         return kForceRemoveDefaultTimeoutMs;
@@ -319,6 +337,30 @@ void ServiceRuntime::note_ota_poll_status(uint32_t request_id, OtaPollStatus sta
 
 void ServiceRuntime::note_rcp_update_poll_status(uint32_t request_id, RcpUpdatePollStatus status) noexcept {
     operation_result_store_.note_rcp_update_poll_status(request_id, status);
+}
+
+CommandSubmitStatus ServiceRuntime::post_device_power_request(
+    uint32_t correlation_id,
+    uint16_t short_addr,
+    bool desired_power_on,
+    uint32_t issued_at_ms) noexcept {
+    core::CoreCommand command{};
+    command.type = core::CoreCommandType::kSetDevicePower;
+    command.correlation_id = correlation_id;
+    command.device_short_addr = short_addr;
+    command.desired_power_on = desired_power_on;
+    command.issued_at_ms = issued_at_ms;
+    return map_core_submit_status(post_command(command));
+}
+
+CommandSubmitStatus ServiceRuntime::post_network_refresh_request(
+    uint32_t correlation_id,
+    uint32_t issued_at_ms) noexcept {
+    core::CoreCommand command{};
+    command.type = core::CoreCommandType::kRefreshNetwork;
+    command.correlation_id = correlation_id;
+    command.issued_at_ms = issued_at_ms;
+    return map_core_submit_status(post_command(command));
 }
 
 core::CoreError ServiceRuntime::post_command(const core::CoreCommand& command) noexcept {

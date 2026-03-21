@@ -9,8 +9,6 @@
 
 #include "config_manager.hpp"
 #include "connectivity_manager.hpp"
-#include "core_commands.hpp"
-#include "core_errors.hpp"
 #include "core_events.hpp"
 #include "core_state.hpp"
 #include "device_manager.hpp"
@@ -245,6 +243,7 @@ enum class RcpUpdateSubmitStatus : uint8_t {
     kBoardMismatch = 4,
     kTransportMismatch = 5,
     kGatewayVersionMismatch = 6,
+    kUnsupportedBackend = 7,
 };
 
 enum class RcpUpdateOperationStatus : uint8_t {
@@ -261,6 +260,7 @@ enum class RcpUpdateOperationStatus : uint8_t {
     kProbeFailed = 10,
     kRecoveryFailed = 11,
     kInternalError = 12,
+    kUnsupportedBackend = 13,
 };
 
 struct RcpUpdateRequest {
@@ -275,12 +275,15 @@ struct RcpUpdateRequest {
 
 struct RcpUpdateApiSnapshot {
     static constexpr std::size_t kVersionMaxLen = kRcpUpdateVersionMaxLen;
+    static constexpr std::size_t kBackendNameMaxLen = 32U;
 
     uint32_t active_request_id{0};
     bool busy{false};
+    bool backend_available{false};
     RcpUpdateStage stage{RcpUpdateStage::kIdle};
     RcpUpdateOperationStatus last_error{RcpUpdateOperationStatus::kOk};
     uint32_t written_bytes{0};
+    std::array<char, kBackendNameMaxLen> backend_name{};
     std::array<char, kVersionMaxLen> current_version{};
     std::array<char, kVersionMaxLen> target_version{};
 };
@@ -379,7 +382,14 @@ public:
     virtual ~ServiceRuntimeApi() = default;
 
     virtual uint32_t next_operation_request_id() noexcept override = 0;
-    virtual core::CoreError post_command(const core::CoreCommand& command) noexcept override = 0;
+    virtual CommandSubmitStatus post_device_power_request(
+        uint32_t correlation_id,
+        uint16_t short_addr,
+        bool desired_power_on,
+        uint32_t issued_at_ms) noexcept override = 0;
+    virtual CommandSubmitStatus post_network_refresh_request(
+        uint32_t correlation_id,
+        uint32_t issued_at_ms) noexcept = 0;
     virtual bool post_config_write(const ConfigWriteRequest& request) noexcept = 0;
     virtual bool post_reporting_profile_write(const ConfigManager::ReportingProfile& profile) noexcept = 0;
     virtual bool post_network_scan(uint32_t request_id) noexcept = 0;

@@ -10,8 +10,6 @@
 #include <cstring>
 #include <limits>
 
-#include "core_commands.hpp"
-#include "core_errors.hpp"
 #include "core_events.hpp"
 #include "core_state.hpp"
 #ifdef ESP_PLATFORM
@@ -407,14 +405,12 @@ esp_err_t network_refresh_post_handler(httpd_req_t* req) {
 
     auto* context = static_cast<WebRouteContext*>(req->user_ctx);
 
-    core::CoreCommand command{};
-    command.type = core::CoreCommandType::kRefreshNetwork;
-    command.correlation_id = allocate_correlation_id(context);
-    command.issued_at_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-
-    const core::CoreError submit_result = context->runtime->post_command(command);
-    if (submit_result != core::CoreError::kOk) {
-        if (submit_result == core::CoreError::kInvalidArgument) {
+    const uint32_t correlation_id = allocate_correlation_id(context);
+    const service::CommandSubmitStatus submit_result = context->runtime->post_network_refresh_request(
+        correlation_id,
+        static_cast<uint32_t>(esp_timer_get_time() / 1000ULL));
+    if (submit_result != service::CommandSubmitStatus::kAccepted) {
+        if (submit_result == service::CommandSubmitStatus::kInvalidArgument) {
             return send_json_error(req, "400 Bad Request", "invalid_command");
         }
         return send_json_error(req, "503 Service Unavailable", "command_rejected");
@@ -425,7 +421,7 @@ esp_err_t network_refresh_post_handler(httpd_req_t* req) {
         response,
         sizeof(response),
         "{\"accepted\":true,\"correlation_id\":%" PRIu32 "}",
-        command.correlation_id);
+        correlation_id);
     if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
         return ESP_FAIL;
     }

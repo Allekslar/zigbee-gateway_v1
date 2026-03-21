@@ -167,26 +167,21 @@ std::size_t MatterBridge::sync_runtime_snapshot() noexcept {
     return sync_snapshot(runtime_snapshot_cache_);
 }
 
-core::CoreError MatterBridge::post_power_command(uint16_t short_addr,
-                                                 bool desired_power_on,
-                                                 uint32_t issued_at_ms,
-                                                 uint32_t* correlation_id_out) noexcept {
+service::CommandSubmitStatus MatterBridge::post_power_command(uint16_t short_addr,
+                                                              bool desired_power_on,
+                                                              uint32_t issued_at_ms,
+                                                              uint32_t* correlation_id_out) noexcept {
     if (runtime_ == nullptr || short_addr == core::kUnknownDeviceShortAddr) {
-        return core::CoreError::kInvalidArgument;
+        return service::CommandSubmitStatus::kInvalidArgument;
     }
 
-    core::CoreCommand command{};
-    command.type = core::CoreCommandType::kSetDevicePower;
-    command.correlation_id = runtime_->next_operation_request_id();
-    command.device_short_addr = short_addr;
-    command.desired_power_on = desired_power_on;
-    command.issued_at_ms = issued_at_ms;
+    const uint32_t correlation_id = runtime_->next_operation_request_id();
 
     if (correlation_id_out != nullptr) {
-        *correlation_id_out = command.correlation_id;
+        *correlation_id_out = correlation_id;
     }
 
-    return runtime_->post_command(command);
+    return runtime_->post_device_power_request(correlation_id, short_addr, desired_power_on, issued_at_ms);
 }
 
 std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& snapshot) noexcept {

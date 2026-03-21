@@ -19,7 +19,7 @@ int main() {
 
     // Runtime is not attached yet.
     assert(bridge.sync_runtime_snapshot() == 0U);
-    assert(bridge.post_power_command(0x2201U, true, 0U, nullptr) == core::CoreError::kInvalidArgument);
+    assert(bridge.post_power_command(0x2201U, true, 0U, nullptr) == service::CommandSubmitStatus::kInvalidArgument);
 
     const matter_bridge::MatterEndpointMapEntry map[] = {{0x2201U, 50U}};
     assert(bridge.set_endpoint_map(map, 1U));
@@ -33,7 +33,9 @@ int main() {
     assert(bridge.sync_runtime_snapshot() == 2U);
 
     // Unknown short address is rejected at the bridge boundary.
-    assert(bridge.post_power_command(core::kUnknownDeviceShortAddr, true, 10U, nullptr) == core::CoreError::kInvalidArgument);
+    assert(
+        bridge.post_power_command(core::kUnknownDeviceShortAddr, true, 10U, nullptr) ==
+        service::CommandSubmitStatus::kInvalidArgument);
 
     bridge.attach_runtime(nullptr);
     assert(bridge.sync_runtime_snapshot() == 0U);

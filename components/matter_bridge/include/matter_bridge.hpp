@@ -38,7 +38,7 @@ public:
     bool started() const noexcept;
     void attach_runtime(service::MatterRuntimeApi* runtime) noexcept;
     bool set_endpoint_map(const MatterEndpointMapEntry* map, std::size_t size) noexcept;
-    core::CoreError post_power_command(
+    service::CommandSubmitStatus post_power_command(
         uint16_t short_addr,
         bool desired_power_on,
         uint32_t issued_at_ms,

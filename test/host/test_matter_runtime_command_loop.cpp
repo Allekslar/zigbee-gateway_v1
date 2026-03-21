@@ -52,8 +52,10 @@ int main() {
 
     uint32_t correlation_id = 0U;
     uint32_t correlation_id_2 = 0U;
-    assert(bridge.post_power_command(0x2201U, true, 100U, &correlation_id) == core::CoreError::kOk);
-    assert(bridge.post_power_command(0x2201U, false, 101U, &correlation_id_2) == core::CoreError::kOk);
+    assert(bridge.post_power_command(0x2201U, true, 100U, &correlation_id) == service::CommandSubmitStatus::kAccepted);
+    assert(
+        bridge.post_power_command(0x2201U, false, 101U, &correlation_id_2) ==
+        service::CommandSubmitStatus::kAccepted);
     assert(correlation_id != 0U);
     assert(correlation_id_2 != 0U);
     assert(correlation_id_2 > correlation_id);

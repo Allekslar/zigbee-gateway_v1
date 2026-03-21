@@ -10,7 +10,6 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "core_commands.hpp"
 #ifdef ESP_PLATFORM
 #include "hal_mqtt.h"
 #endif
@@ -208,8 +207,9 @@ bool find_json_bool_field(const char* body, const char* key, bool* out_value) no
 
 bool parse_reporting_config_payload(
     const char* payload,
-    core::CoreCommand* out_command) noexcept {
-    if (payload == nullptr || out_command == nullptr) {
+    uint16_t short_addr,
+    service::ConfigManager::ReportingProfile* out_profile) noexcept {
+    if (payload == nullptr || out_profile == nullptr) {
         return false;
     }
 
@@ -236,19 +236,22 @@ bool parse_reporting_config_payload(
     uint32_t reportable_change = 0;
     (void)find_json_u32_field(payload, "reportable_change", &reportable_change);
 
+    out_profile->in_use = true;
+    out_profile->key.short_addr = short_addr;
+    out_profile->key.endpoint = static_cast<uint8_t>(endpoint);
+    out_profile->key.cluster_id = static_cast<uint16_t>(cluster_id);
+    out_profile->min_interval_seconds = static_cast<uint16_t>(min_interval);
+    out_profile->max_interval_seconds = static_cast<uint16_t>(max_interval);
+    out_profile->reportable_change = reportable_change;
+    out_profile->capability_flags = 0U;
+
     uint32_t capability_flags = 0;
     if (find_json_u32_field(payload, "capability_flags", &capability_flags)) {
         if (capability_flags > 0xFFU) {
             return false;
         }
-        out_command->reporting_capability_flags = static_cast<uint8_t>(capability_flags);
+        out_profile->capability_flags = static_cast<uint8_t>(capability_flags);
     }
-
-    out_command->reporting_endpoint = static_cast<uint8_t>(endpoint);
-    out_command->reporting_cluster_id = static_cast<uint16_t>(cluster_id);
-    out_command->reporting_min_interval_seconds = static_cast<uint16_t>(min_interval);
-    out_command->reporting_max_interval_seconds = static_cast<uint16_t>(max_interval);
-    out_command->reporting_reportable_change = reportable_change;
     return true;
 }
 
@@ -321,16 +324,12 @@ bool MqttBridge::handle_config_command(const char* topic, const char* payload, u
         return false;
     }
 
-    core::CoreCommand command{};
-    command.type = core::CoreCommandType::kUpdateReportingProfile;
-    command.correlation_id = correlation_id;
-    command.device_short_addr = short_addr;
-
-    if (!parse_reporting_config_payload(payload, &command)) {
+    service::ConfigManager::ReportingProfile profile{};
+    if (!parse_reporting_config_payload(payload, short_addr, &profile)) {
         return false;
     }
 
-    return runtime_->post_command(command) == core::CoreError::kOk;
+    return runtime_->post_reporting_profile_write(profile);
 }
 
 bool MqttBridge::handle_power_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept {
@@ -350,12 +349,8 @@ bool MqttBridge::handle_power_command(const char* topic, const char* payload, ui
         return false;
     }
 
-    core::CoreCommand command{};
-    command.type = core::CoreCommandType::kSetDevicePower;
-    command.correlation_id = correlation_id;
-    command.device_short_addr = short_addr;
-    command.desired_power_on = desired_power;
-    if (runtime_->post_command(command) != core::CoreError::kOk) {
+    if (runtime_->post_device_power_request(correlation_id, short_addr, desired_power, monotonic_now_ms()) !=
+        service::CommandSubmitStatus::kAccepted) {
         return false;
     }
 

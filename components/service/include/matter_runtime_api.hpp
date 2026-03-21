@@ -6,11 +6,17 @@
 #include <array>
 #include <cstdint>
 
-#include "core_commands.hpp"
-#include "core_errors.hpp"
 #include "core_state.hpp"
 
 namespace service {
+
+enum class CommandSubmitStatus : uint8_t {
+    kAccepted = 0,
+    kInvalidArgument = 1,
+    kBusy = 2,
+    kNoCapacity = 3,
+    kInternal = 4,
+};
 
 enum class MatterBridgeDeviceClass : uint8_t {
     kUnknown = 0,
@@ -45,7 +51,11 @@ public:
     virtual ~MatterRuntimeApi() = default;
 
     virtual uint32_t next_operation_request_id() noexcept = 0;
-    virtual core::CoreError post_command(const core::CoreCommand& command) noexcept = 0;
+    virtual CommandSubmitStatus post_device_power_request(
+        uint32_t correlation_id,
+        uint16_t short_addr,
+        bool desired_power_on,
+        uint32_t issued_at_ms) noexcept = 0;
     virtual bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept = 0;
 };
 

@@ -69,7 +69,15 @@ public:
 
     uint32_t next_operation_request_id() noexcept override;
     bool post_event(const core::CoreEvent& event) noexcept;
-    core::CoreError post_command(const core::CoreCommand& command) noexcept override;
+    CommandSubmitStatus post_device_power_request(
+        uint32_t correlation_id,
+        uint16_t short_addr,
+        bool desired_power_on,
+        uint32_t issued_at_ms) noexcept override;
+    CommandSubmitStatus post_network_refresh_request(
+        uint32_t correlation_id,
+        uint32_t issued_at_ms) noexcept override;
+    core::CoreError post_command(const core::CoreCommand& command) noexcept;
     core::CoreError submit_command(const core::CoreCommand& command) noexcept;
     core::CoreError handle_command_result(const core::CoreCommandResult& result) noexcept;
     bool post_config_write(const ConfigWriteRequest& request) noexcept override;
