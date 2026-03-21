@@ -19,7 +19,8 @@ For MVP:
 - route commands through Service;
 - keep protocol-specific Tuya encode/send below Service;
 - support hybrid standard-ZCL plus Tuya devices;
-- store quirks in a compiled-in registry behind a future-proof abstraction.
+- use compiled-in device plugins registered through a registry;
+- keep per-model quirk data behind a future-proof abstraction.
 
 ## Current Project Status
 
@@ -118,12 +119,15 @@ Add a Service-owned Tuya subsystem under `components/service/`:
 - `include/tuya_fingerprint.hpp`
 - `include/tuya_payload_view.hpp`
 - `include/tuya_dp_parser.hpp`
-- `include/tuya_quirk_registry.hpp`
+- `include/tuya_plugin.hpp`
+- `include/tuya_plugin_registry.hpp`
+- `include/tuya_quirk_data.hpp`
 - `include/tuya_translator.hpp`
 - `include/tuya_init_coordinator.hpp`
 - `tuya_fingerprint.cpp`
 - `tuya_dp_parser.cpp`
-- `tuya_quirk_registry.cpp`
+- `tuya_plugin_registry.cpp`
+- `tuya_quirk_data.cpp`
 - `tuya_translator.cpp`
 - `tuya_init_coordinator.cpp`
 
@@ -175,7 +179,8 @@ Responsible for:
 - `0xEF00` parsing;
 - DP translation;
 - semantic dedup/coalescing;
-- quirk lookup;
+- plugin lookup;
+- quirk data lookup;
 - vendor-specific init support.
 
 ## MVP Data Path
@@ -191,9 +196,9 @@ Responsible for:
    - observed endpoints/clusters
    - optional DP signature hints
 4. `TuyaDpParser` parses bounded DP records from the payload.
-5. `TuyaTranslator` maps supported DP values into existing domain events.
+5. `TuyaTranslator` maps supported DP values into Service-level normalized outputs.
 6. `ReportingManager` applies generic throttle/debounce.
-7. Core receives only normalized fixed-schema events.
+7. Existing Service code maps those normalized outputs into fixed-schema Core events.
 
 Rule:
 - standard frames continue through the existing standard path;
@@ -271,10 +276,25 @@ The parser should emit typed compact parse results, not a generic dynamic blob.
 ### Translation output
 
 `TuyaTranslator` should emit only:
-- zero or more normalized Core-domain events, or
+- zero or more Service-level normalized updates, or
 - "unsupported for MVP"
 
 It should not mutate Core state directly.
+
+This keeps the Tuya subsystem isolated from direct `core_*.hpp` dependencies.
+
+### Translator vs Plugin Responsibility
+
+Recommended split:
+- parser produces bounded `TuyaDpParseResult`;
+- plugin is the model-specific strategy that understands DP semantics;
+- translator is a thin orchestrator that calls the selected plugin and converts plugin output into Service-level normalized results;
+- existing ServiceRuntime code remains the place that turns normalized results into Core events.
+
+In other words:
+- plugin knows model semantics;
+- translator knows orchestration and output shape;
+- ServiceRuntime owns the final Core-event construction boundary.
 
 ## Hybrid Device Rule
 
@@ -286,19 +306,144 @@ Fingerprinting must therefore enable capability composition, not exclusive routi
 
 ## Quirk Registry
 
-MVP registry should be compiled-in but storage-agnostic by interface.
+MVP should move from a plain quirk-registry mindset to a plugin-registry-plus-quirk-data model.
+
+The registry selects a device plugin.
+The plugin may use compiled-in quirk data.
+Later, quirk data may become data-driven without changing the overall plugin contract.
+
+## Plugin Model
+
+### Stage 1: Compiled-In Plugins
+
+The first stage should use compiled-in device plugins registered through a central registry.
+
+Example modules:
+- `tuya_ts011f_plugin.cpp`
+- `tuya_ts0601_presence_plugin.cpp`
+- `tuya_generic_switch_plugin.cpp`
+
+Benefits:
+- strong per-model separation;
+- easy host unit testing;
+- no runtime-loader risk;
+- deterministic memory behavior;
+- clean migration path toward data-driven definitions.
+
+### Stage 2: Data-Driven Plugins
+
+The second stage may move part of the behavior into declarative data:
+- fingerprint rules;
+- DP schema;
+- field mapping;
+- init scenarios;
+- command mapping;
+- dedup hints.
+
+In that model:
+- the execution engine stays in code;
+- simple device behavior becomes table-driven;
+- complex models may still use small custom code hooks.
+
+### Recommended Interfaces
+
+#### `TuyaPlugin`
+
+Represents one device-family behavior module.
+
+It should be able to:
+- match a fingerprint;
+- interpret supported DP payload semantics for that model;
+- provide init-plan steps;
+- map supported commands;
+- provide dedup/coalescing hints.
+
+It must not:
+- modify Core state directly;
+- publish to MQTT, Matter, or Web directly;
+- bypass Service orchestration;
+- send Zigbee frames directly outside HAL/device adapter seams;
+- perform uncontrolled heap allocation.
+
+#### `TuyaPluginRegistry`
+
+Owns plugin registration and selection.
+
+Suggested responsibility:
+- resolve `fingerprint -> plugin`
+- expose a stable lookup API regardless of whether backing data is compiled-in or data-driven.
+
+For Stage 1, the preferred registration mechanism is an explicit table in `tuya_plugin_registry.cpp`, for example:
+- `const TuyaPlugin* kAllPlugins[] = { ... };`
+
+Why:
+- simpler to debug;
+- easy to grep;
+- no linker-section complexity;
+- sufficient for a small to medium number of supported models.
+
+#### `TuyaPluginContext`
+
+Provides bounded runtime context to a plugin.
+
+Recommended contents:
+- resolved fingerprint;
+- endpoint/cluster information;
+- manufacturer/model strings or ids;
+- bounded payload view;
+- lightweight device session hints;
+- capability flags for hybrid standard/Tuya behavior.
+
+#### `TuyaPluginResult`
+
+Represents the output of plugin processing.
+
+It should carry only Service-facing results such as:
+- normalized domain-intent updates;
+- init actions to schedule;
+- command encode requests;
+- dedup/coalescing metadata;
+- unsupported or partial-support status.
+
+It should not be a direct Core event or transport command object.
+
+### Plugin Boundary Rule
+
+Plugins should speak in Service-level normalized outputs, not in direct Core internals.
+
+This keeps:
+- Core closed;
+- Service as the orchestration owner;
+- HAL as the protocol execution boundary.
+
+As a result, the preferred architecture is:
+- plugins must not include `core_*.hpp`;
+- `tuya_translator.cpp` must not include `core_*.hpp`;
+- final Core-event construction happens in existing ServiceRuntime normalization code.
+
+### Relationship To Quirk Data
+
+Quirk data remains important, but it becomes subordinate to the plugin model.
+
+Recommended split:
+- plugin = behavior module / strategy;
+- quirk data = per-model declarative data used by that behavior.
+
+This is a better long-term shape than a bare registry of quirks alone.
 
 Suggested interface:
-- `find_quirk(fingerprint) -> const TuyaQuirk*`
+- `resolve_plugin(fingerprint) -> const TuyaPlugin*`
+- `find_quirk_data(fingerprint) -> const TuyaQuirkData*`
 
 Initial implementation:
-- `StaticCompiledTuyaQuirkRegistry`
+- `StaticCompiledTuyaPluginRegistry`
+- compiled-in quirk data tables per plugin or profile
 
 Future-compatible backends:
-- FS-backed
-- NVS-backed
+- FS-backed quirk data
+- NVS-backed quirk data
 
-The parser and translator must not know where quirks are physically stored.
+The parser, translator, and plugin engine must not know where quirk data is physically stored.
 
 ## Quirk Init State
 
@@ -386,6 +531,7 @@ This phase is a prerequisite for meaningful Tuya model support.
 
 3. Persist identity into a read-model seam.
    Publish the resolved identity into a Service-owned snapshot so Web/API and future fingerprinting can inspect it without touching Core.
+   Preferred direction: extend the existing `DevicesApiSnapshot` / `DevicesApiDeviceSnapshot` with bounded manufacturer/model fields instead of introducing a brand-new snapshot type.
 
 4. Add fingerprint infrastructure without quirks.
    Introduce:
@@ -416,7 +562,7 @@ This phase is a prerequisite for meaningful Tuya model support.
 - add fingerprint rule;
 - add bounded `0xEF00` parser;
 - add DP to existing-domain-event translator;
-- add one compiled-in quirk entry;
+- add one compiled-in plugin plus its quirk data;
 - prove downstream MQTT/Matter/Web still work unchanged.
 
 ### Phase 2
@@ -475,7 +621,8 @@ This should eventually be enforced by `check_arch_invariants.sh` the same way ot
 - one concrete Tuya model is fingerprinted correctly
 - `0xEF00` payload is parsed without unbounded allocation
 - parsed DPs map into existing domain events
+- plugin selection is deterministic for the chosen model
 - downstream MQTT/Matter/Web continue to work unchanged
 - no Core schema changes are required
-- host tests cover parser, translator, and quirk lookup
+- host tests cover parser, translator, plugin selection, and quirk-data lookup
 - integration tests prove standard + hybrid paths do not regress
