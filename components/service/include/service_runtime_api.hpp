@@ -242,6 +242,9 @@ enum class RcpUpdateSubmitStatus : uint8_t {
     kBusy = 1,
     kInvalidRequest = 2,
     kConflict = 3,
+    kBoardMismatch = 4,
+    kTransportMismatch = 5,
+    kGatewayVersionMismatch = 6,
 };
 
 enum class RcpUpdateOperationStatus : uint8_t {
@@ -249,10 +252,15 @@ enum class RcpUpdateOperationStatus : uint8_t {
     kInvalidArgument = 1,
     kNoCapacity = 2,
     kConflict = 3,
-    kBeginFailed = 4,
-    kWriteFailed = 5,
-    kFinalizeFailed = 6,
-    kInternalError = 7,
+    kBoardMismatch = 4,
+    kTransportMismatch = 5,
+    kGatewayVersionMismatch = 6,
+    kTransportFailed = 7,
+    kVerifyFailed = 8,
+    kApplyFailed = 9,
+    kProbeFailed = 10,
+    kRecoveryFailed = 11,
+    kInternalError = 12,
 };
 
 struct RcpUpdateRequest {

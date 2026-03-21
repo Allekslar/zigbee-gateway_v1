@@ -14,7 +14,22 @@ namespace {
 int g_begin_status = 0;
 int g_write_status = 0;
 int g_end_status = 0;
+int g_prepare_status = 0;
+int g_recover_status = 0;
 uint32_t g_last_write_len = 0U;
+char g_mock_running_version[32] = "rcp-2.0.0";
+
+extern "C" bool hal_rcp_stack_get_running_version(char* out, size_t out_len) {
+    assert(out != nullptr);
+    assert(out_len > std::strlen(g_mock_running_version));
+    std::strncpy(out, g_mock_running_version, out_len - 1U);
+    out[out_len - 1U] = '\0';
+    return true;
+}
+
+extern "C" int hal_rcp_stack_prepare_for_update(void) {
+    return g_prepare_status;
+}
 
 extern "C" int hal_rcp_stack_update_begin(void) {
     return g_begin_status;
@@ -28,6 +43,11 @@ extern "C" int hal_rcp_stack_update_write(const uint8_t* data, uint32_t len) {
 
 extern "C" int hal_rcp_stack_update_end(void) {
     return g_end_status;
+}
+
+extern "C" int hal_rcp_stack_recover_after_update(bool update_applied) {
+    (void)update_applied;
+    return g_recover_status;
 }
 
 service::RcpUpdateRequest make_request(uint32_t request_id, const char* url, const char* version) {
@@ -65,7 +85,7 @@ int main() {
     assert(runtime.build_rcp_update_api_snapshot(&snapshot));
     assert(snapshot.stage == service::RcpUpdateStage::kCompleted);
     assert(snapshot.written_bytes == g_last_write_len);
-    assert(std::strcmp(snapshot.current_version.data(), common::kVersion) == 0);
+    assert(std::strcmp(snapshot.current_version.data(), "rcp-2.0.0") == 0);
     assert(std::strcmp(snapshot.target_version.data(), "rcp-2.0.0") == 0);
 
     service::RcpUpdateResult result{};
@@ -75,18 +95,38 @@ int main() {
     assert(std::strcmp(result.target_version.data(), "rcp-2.0.0") == 0);
     assert(runtime.get_rcp_update_poll_status(first_request.request_id) == service::RcpUpdatePollStatus::kNotReady);
 
+    g_prepare_status = 0;
     g_begin_status = 0;
     g_write_status = -1;
     g_end_status = 0;
+    g_recover_status = 0;
     const service::RcpUpdateRequest failed_request =
         make_request(53U, "https://updates.local/rcp-v4.bin", "rcp-4.0.0");
     assert(runtime.post_rcp_update_start(failed_request) == service::RcpUpdateSubmitStatus::kAccepted);
     assert(runtime.process_pending() == 0U);
     assert(runtime.take_rcp_update_result(failed_request.request_id, &result));
-    assert(result.status == service::RcpUpdateOperationStatus::kWriteFailed);
+    assert(result.status == service::RcpUpdateOperationStatus::kApplyFailed);
     assert(runtime.build_rcp_update_api_snapshot(&snapshot));
     assert(snapshot.stage == service::RcpUpdateStage::kFailed);
-    assert(snapshot.last_error == service::RcpUpdateOperationStatus::kWriteFailed);
+    assert(snapshot.last_error == service::RcpUpdateOperationStatus::kApplyFailed);
+
+    const service::RcpUpdateRequest wrong_board_request = [] {
+        service::RcpUpdateRequest request{};
+        request.request_id = 55U;
+        std::strncpy(request.url.data(), "https://updates.local/rcp-v6.bin", request.url.size() - 1U);
+        std::strncpy(request.board.data(), "other-board", request.board.size() - 1U);
+        return request;
+    }();
+    assert(runtime.post_rcp_update_start(wrong_board_request) == service::RcpUpdateSubmitStatus::kBoardMismatch);
+
+    const service::RcpUpdateRequest wrong_transport_request = [] {
+        service::RcpUpdateRequest request{};
+        request.request_id = 56U;
+        std::strncpy(request.url.data(), "https://updates.local/rcp-v7.bin", request.url.size() - 1U);
+        std::strncpy(request.transport.data(), "spi", request.transport.size() - 1U);
+        return request;
+    }();
+    assert(runtime.post_rcp_update_start(wrong_transport_request) == service::RcpUpdateSubmitStatus::kTransportMismatch);
 
     const service::OtaStartRequest ota_request = [] {
         service::OtaStartRequest request{};

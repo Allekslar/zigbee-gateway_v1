@@ -49,12 +49,22 @@ const char* rcp_status_token(service::RcpUpdateOperationStatus status) noexcept 
             return "no_capacity";
         case service::RcpUpdateOperationStatus::kConflict:
             return "conflict";
-        case service::RcpUpdateOperationStatus::kBeginFailed:
-            return "begin_failed";
-        case service::RcpUpdateOperationStatus::kWriteFailed:
-            return "write_failed";
-        case service::RcpUpdateOperationStatus::kFinalizeFailed:
-            return "finalize_failed";
+        case service::RcpUpdateOperationStatus::kBoardMismatch:
+            return "board_mismatch";
+        case service::RcpUpdateOperationStatus::kTransportMismatch:
+            return "transport_mismatch";
+        case service::RcpUpdateOperationStatus::kGatewayVersionMismatch:
+            return "gateway_version_mismatch";
+        case service::RcpUpdateOperationStatus::kTransportFailed:
+            return "transport_failed";
+        case service::RcpUpdateOperationStatus::kVerifyFailed:
+            return "verify_failed";
+        case service::RcpUpdateOperationStatus::kApplyFailed:
+            return "apply_failed";
+        case service::RcpUpdateOperationStatus::kProbeFailed:
+            return "probe_failed";
+        case service::RcpUpdateOperationStatus::kRecoveryFailed:
+            return "recovery_failed";
         case service::RcpUpdateOperationStatus::kInternalError:
         default:
             return "internal_error";
@@ -81,6 +91,12 @@ const char* rcp_submit_error_message(service::RcpUpdateSubmitStatus status) noex
             return "rcp_update_busy";
         case service::RcpUpdateSubmitStatus::kConflict:
             return "ota_conflict";
+        case service::RcpUpdateSubmitStatus::kBoardMismatch:
+            return "board_mismatch";
+        case service::RcpUpdateSubmitStatus::kTransportMismatch:
+            return "transport_mismatch";
+        case service::RcpUpdateSubmitStatus::kGatewayVersionMismatch:
+            return "gateway_version_mismatch";
         case service::RcpUpdateSubmitStatus::kInvalidRequest:
         case service::RcpUpdateSubmitStatus::kAccepted:
         default:
@@ -93,6 +109,9 @@ const char* rcp_submit_http_status(service::RcpUpdateSubmitStatus status) noexce
         case service::RcpUpdateSubmitStatus::kBusy:
             return "503 Service Unavailable";
         case service::RcpUpdateSubmitStatus::kConflict:
+        case service::RcpUpdateSubmitStatus::kBoardMismatch:
+        case service::RcpUpdateSubmitStatus::kTransportMismatch:
+        case service::RcpUpdateSubmitStatus::kGatewayVersionMismatch:
             return "409 Conflict";
         case service::RcpUpdateSubmitStatus::kInvalidRequest:
         case service::RcpUpdateSubmitStatus::kAccepted:

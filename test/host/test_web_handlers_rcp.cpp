@@ -94,6 +94,18 @@ extern "C" int hal_rcp_stack_update_begin(void) {
     return 0;
 }
 
+extern "C" bool hal_rcp_stack_get_running_version(char* out, size_t out_len) {
+    assert(out != nullptr);
+    assert(out_len > 12U);
+    std::strncpy(out, "rcp-1.0.0", out_len - 1U);
+    out[out_len - 1U] = '\0';
+    return true;
+}
+
+extern "C" int hal_rcp_stack_prepare_for_update(void) {
+    return 0;
+}
+
 extern "C" int hal_rcp_stack_update_write(const uint8_t* data, uint32_t len) {
     assert(data != nullptr);
     assert(len != 0U);
@@ -101,6 +113,11 @@ extern "C" int hal_rcp_stack_update_write(const uint8_t* data, uint32_t len) {
 }
 
 extern "C" int hal_rcp_stack_update_end(void) {
+    return 0;
+}
+
+extern "C" int hal_rcp_stack_recover_after_update(bool update_applied) {
+    (void)update_applied;
     return 0;
 }
 
@@ -133,6 +150,7 @@ int main() {
     g_last_response.clear();
     assert(web_ui::rcp_get_handler(&req) == ESP_OK);
     assert(g_last_response.find("\"stage\":\"idle\"") != std::string::npos);
+    assert(g_last_response.find("\"current_version\":\"rcp-1.0.0\"") != std::string::npos);
 
     g_request_body = "{\"target_version\":\"rcp-1.0.0\"}";
     req.content_len = static_cast<int>(g_request_body.size());
@@ -167,6 +185,15 @@ int main() {
     assert(g_last_response.find("\"ready\":true") != std::string::npos);
     assert(g_last_response.find("\"ok\":true") != std::string::npos);
     assert(g_last_response.find("\"written_bytes\":") != std::string::npos);
+
+    g_request_body =
+        "{\"url\":\"https://updates.local/rcp.bin\",\"target_version\":\"rcp-1.0.0\",\"board\":\"other-board\"}";
+    req.content_len = static_cast<int>(g_request_body.size());
+    g_last_status.clear();
+    g_last_response.clear();
+    assert(web_ui::rcp_post_handler(&req) == ESP_OK);
+    assert(g_last_status == "409 Conflict");
+    assert(g_last_response.find("\"error\":\"board_mismatch\"") != std::string::npos);
 
     g_register_call_count = 0;
     assert(web_ui::register_rcp_routes(reinterpret_cast<void*>(1), &route_ctx));

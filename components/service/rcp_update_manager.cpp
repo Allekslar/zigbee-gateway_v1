@@ -3,8 +3,10 @@
 
 #include "rcp_update_manager.hpp"
 
+#include <cctype>
 #include <cstring>
 
+#include "hal_ota.h"
 #include "hal_rcp.h"
 #include "service_runtime.hpp"
 #include "version.hpp"
@@ -21,6 +23,7 @@ namespace {
 #ifdef ESP_PLATFORM
 constexpr TickType_t kRcpWorkerIdleDelayTicks = pdMS_TO_TICKS(20);
 #endif
+constexpr const char* kExpectedRcpTransport = "uart";
 
 template <std::size_t N>
 void clear_chars(std::array<char, N>& value) noexcept {
@@ -44,11 +47,144 @@ std::array<char, RcpUpdateResult::kVersionMaxLen> request_version_or_empty(const
     return value;
 }
 
+bool is_empty_cstr(const char* value) noexcept {
+    return value == nullptr || *value == '\0';
+}
+
+bool strings_equal(const char* lhs, const char* rhs) noexcept {
+    if (lhs == nullptr || rhs == nullptr) {
+        return false;
+    }
+    return std::strcmp(lhs, rhs) == 0;
+}
+
+bool is_valid_sha256_hex(const char* value) noexcept {
+    if (value == nullptr || *value == '\0') {
+        return true;
+    }
+    if (std::strlen(value) != 64U) {
+        return false;
+    }
+    for (std::size_t i = 0; i < 64U; ++i) {
+        if (std::isxdigit(static_cast<unsigned char>(value[i])) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool parse_dotted_numeric_version(const char* value, uint32_t* out_parts, std::size_t part_capacity, std::size_t* out_count) noexcept {
+    if (value == nullptr || out_parts == nullptr || out_count == nullptr || part_capacity == 0U || *value == '\0') {
+        return false;
+    }
+
+    std::size_t count = 0U;
+    const char* cursor = value;
+    while (*cursor != '\0') {
+        if (count >= part_capacity) {
+            return false;
+        }
+        if (std::isdigit(static_cast<unsigned char>(*cursor)) == 0) {
+            return false;
+        }
+
+        uint32_t part = 0U;
+        while (*cursor != '\0' && *cursor != '.') {
+            if (std::isdigit(static_cast<unsigned char>(*cursor)) == 0) {
+                return false;
+            }
+            part = (part * 10U) + static_cast<uint32_t>(*cursor - '0');
+            ++cursor;
+        }
+
+        out_parts[count++] = part;
+        if (*cursor == '.') {
+            ++cursor;
+            if (*cursor == '\0') {
+                return false;
+            }
+        }
+    }
+
+    *out_count = count;
+    return count != 0U;
+}
+
+bool version_is_older_than(const char* current, const char* minimum) noexcept {
+    uint32_t current_parts[4]{};
+    uint32_t minimum_parts[4]{};
+    std::size_t current_count = 0U;
+    std::size_t minimum_count = 0U;
+
+    if (!parse_dotted_numeric_version(current, current_parts, 4U, &current_count) ||
+        !parse_dotted_numeric_version(minimum, minimum_parts, 4U, &minimum_count)) {
+        return false;
+    }
+
+    const std::size_t count = current_count > minimum_count ? current_count : minimum_count;
+    for (std::size_t index = 0U; index < count; ++index) {
+        const uint32_t lhs = index < current_count ? current_parts[index] : 0U;
+        const uint32_t rhs = index < minimum_count ? minimum_parts[index] : 0U;
+        if (lhs < rhs) {
+            return true;
+        }
+        if (lhs > rhs) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+RcpUpdateSubmitStatus validate_request(const RcpUpdateRequest& request) noexcept {
+    if (request.url[0] == '\0' || !is_valid_sha256_hex(request.sha256.data())) {
+        return RcpUpdateSubmitStatus::kInvalidRequest;
+    }
+    if (!is_empty_cstr(request.board.data()) && !strings_equal(request.board.data(), common::kBoardId)) {
+        return RcpUpdateSubmitStatus::kBoardMismatch;
+    }
+    if (!is_empty_cstr(request.transport.data()) && !strings_equal(request.transport.data(), kExpectedRcpTransport)) {
+        return RcpUpdateSubmitStatus::kTransportMismatch;
+    }
+    if (!is_empty_cstr(request.gateway_min_version.data()) &&
+        version_is_older_than(common::kVersion, request.gateway_min_version.data())) {
+        return RcpUpdateSubmitStatus::kGatewayVersionMismatch;
+    }
+    return RcpUpdateSubmitStatus::kAccepted;
+}
+
+RcpUpdateOperationStatus map_hal_status(hal_rcp_https_status_t status) noexcept {
+    switch (status) {
+        case HAL_RCP_HTTPS_STATUS_OK:
+            return RcpUpdateOperationStatus::kOk;
+        case HAL_RCP_HTTPS_STATUS_INVALID_ARGUMENT:
+            return RcpUpdateOperationStatus::kInvalidArgument;
+        case HAL_RCP_HTTPS_STATUS_TRANSPORT_FAILED:
+            return RcpUpdateOperationStatus::kTransportFailed;
+        case HAL_RCP_HTTPS_STATUS_VERIFY_FAILED:
+            return RcpUpdateOperationStatus::kVerifyFailed;
+        case HAL_RCP_HTTPS_STATUS_APPLY_FAILED:
+            return RcpUpdateOperationStatus::kApplyFailed;
+        case HAL_RCP_HTTPS_STATUS_PROBE_FAILED:
+            return RcpUpdateOperationStatus::kProbeFailed;
+        case HAL_RCP_HTTPS_STATUS_RECOVERY_FAILED:
+            return RcpUpdateOperationStatus::kRecoveryFailed;
+        case HAL_RCP_HTTPS_STATUS_INTERNAL_ERROR:
+        default:
+            return RcpUpdateOperationStatus::kInternalError;
+    }
+}
+
 }  // namespace
 
 RcpUpdateSubmitStatus RcpUpdateManager::enqueue_request(ServiceRuntime& runtime, const RcpUpdateRequest& request) noexcept {
     if (request.request_id == 0U || request.url[0] == '\0') {
         return RcpUpdateSubmitStatus::kInvalidRequest;
+    }
+
+    const RcpUpdateSubmitStatus validation_status = validate_request(request);
+    if (validation_status != RcpUpdateSubmitStatus::kAccepted) {
+        return validation_status;
     }
 
     RuntimeLockGuard guard(queue_lock_);
@@ -71,7 +207,9 @@ bool RcpUpdateManager::build_api_snapshot(RcpUpdateApiSnapshot* out) const noexc
 
     RuntimeLockGuard guard(snapshot_lock_);
     *out = snapshot_;
-    copy_chars(common::kVersion, out->current_version);
+    if (!hal_rcp_get_running_version(out->current_version.data(), out->current_version.size())) {
+        copy_chars(common::kVersion, out->current_version);
+    }
     return true;
 }
 
@@ -169,7 +307,9 @@ bool RcpUpdateManager::apply_status_update(const StatusUpdate& update) noexcept 
             return false;
     }
 
-    copy_chars(common::kVersion, snapshot_.current_version);
+    if (!hal_rcp_get_running_version(snapshot_.current_version.data(), snapshot_.current_version.size())) {
+        copy_chars(common::kVersion, snapshot_.current_version);
+    }
     return true;
 }
 
@@ -180,28 +320,18 @@ bool RcpUpdateManager::process_request(ServiceRuntime& runtime, const RcpUpdateR
     RcpUpdateResult result{};
     result.request_id = request.request_id;
     result.target_version = request_version_or_empty(request);
+    hal_rcp_https_request_t hal_request{};
+    hal_request.url = request.url.data();
+    hal_request.expected_sha256_hex = request.sha256.data();
+    hal_request.expected_version = request.target_version.data();
 
-    const int begin_rc = hal_rcp_update_begin();
-    if (begin_rc != 0) {
-        result.status = RcpUpdateOperationStatus::kBeginFailed;
-        busy_.store(false, std::memory_order_release);
-        publish_status_finished(result);
-        return runtime.queue_rcp_update_result(result);
+    hal_rcp_https_result_t hal_result{};
+    const int rc = hal_rcp_perform_https_update(&hal_request, &hal_result);
+    result.written_bytes = hal_result.bytes_read;
+    result.status = map_hal_status(hal_result.status);
+    if (rc == 0 && hal_result.discovered_version[0] != '\0') {
+        copy_chars(hal_result.discovered_version, result.target_version);
     }
-
-    const uint8_t* payload = reinterpret_cast<const uint8_t*>(request.url.data());
-    const uint32_t payload_len = static_cast<uint32_t>(std::strlen(request.url.data()));
-    const int write_rc = hal_rcp_update_write(payload, payload_len);
-    if (write_rc != 0) {
-        result.status = RcpUpdateOperationStatus::kWriteFailed;
-        busy_.store(false, std::memory_order_release);
-        publish_status_finished(result);
-        return runtime.queue_rcp_update_result(result);
-    }
-
-    result.written_bytes = payload_len;
-    const int end_rc = hal_rcp_update_end();
-    result.status = (end_rc == 0) ? RcpUpdateOperationStatus::kOk : RcpUpdateOperationStatus::kFinalizeFailed;
     busy_.store(false, std::memory_order_release);
     publish_status_finished(result);
     return runtime.queue_rcp_update_result(result);

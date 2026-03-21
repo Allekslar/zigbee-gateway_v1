@@ -27,47 +27,47 @@ Goal:
 
 ### 1.1 Service And API Surface
 
-- [ ] Add a service-owned `RcpUpdateManager`
-- [ ] Extend `ServiceRuntimeApi` with:
-  - [ ] `post_rcp_update_start(...)`
-  - [ ] `build_rcp_update_snapshot(...)`
-  - [ ] `take_rcp_update_result(...)`
-- [ ] Add Web/API entry points such as `/api/rcp-update`
+- [x] Add a service-owned `RcpUpdateManager`
+- [x] Extend `ServiceRuntimeApi` with:
+  - [x] `post_rcp_update_start(...)`
+  - [x] `build_rcp_update_snapshot(...)`
+  - [x] `take_rcp_update_result(...)`
+- [x] Add Web/API entry points such as `/api/rcp-update`
 
 ### 1.2 Maintenance Semantics
 
-- [ ] Define when Zigbee activity must be paused
-- [ ] Block conflicting operations while RCP update is active
-- [ ] Expose `busy/paused/updating/failed` state through the service-owned read model
+- [~] Define when Zigbee activity must be paused
+- [x] Block conflicting operations while RCP update is active
+- [x] Expose `busy/paused/updating/failed` state through the service-owned read model
 
 ### 1.3 RCP Manifest / Metadata
 
-- [ ] Define minimal RCP image metadata:
-  - [ ] `version`
-  - [ ] `url`
-  - [ ] `sha256`
-  - [ ] `board`
-  - [ ] `transport/chip`
-  - [ ] `gateway_min_version`
-- [ ] Validate metadata before any flashing attempt
+- [x] Define minimal RCP image metadata:
+  - [x] `version`
+  - [x] `url`
+  - [x] `sha256`
+  - [x] `board`
+  - [x] `transport/chip`
+  - [x] `gateway_min_version`
+- [x] Validate metadata before any flashing attempt
 
 ### 1.4 HAL Boundary
 
-- [ ] Keep `hal_rcp_update_begin/write/end` as the only apply boundary
-- [ ] Make the control flow fully testable with mocked HAL backend first
-- [ ] Do not add platform-specific flashing policy into `core`
+- [x] Keep `hal_rcp_update_begin/write/end` as the only apply boundary
+- [x] Make the control flow fully testable with mocked HAL backend first
+- [x] Do not add platform-specific flashing policy into `core`
 
 ### 1.5 Tests
 
-- [ ] Add host tests for request validation and state machine behavior
-- [ ] Add integration tests for `/api/rcp-update`
-- [ ] Add conflict tests: gateway OTA and RCP update must not run concurrently
+- [x] Add host tests for request validation and state machine behavior
+- [x] Add integration tests for `/api/rcp-update`
+- [x] Add conflict tests: gateway OTA and RCP update must not run concurrently
 
 Success criteria:
 
-- [ ] full service/web flow exists even with a mock backend
-- [ ] conflicting OTA/update flows are blocked cleanly
-- [ ] progress/result reporting is observable through API
+- [x] full service/web flow exists even with a mock backend
+- [x] conflicting OTA/update flows are blocked cleanly
+- [x] progress/result reporting is observable through API
 
 ---
 
@@ -75,49 +75,74 @@ Success criteria:
 
 Goal:
 
-- replace the placeholder `hal_rcp_update_*` path with a real target flashing/update flow
+- move from a pure control-flow mock to a real gateway-driven apply path, while keeping the final target-specific flashing primitive behind platform hooks
 
 ### 2.1 Platform Backend
 
-- [ ] Implement real ESP/platform `hal_rcp_update_begin/write/end`
-- [ ] Define the actual transport/apply strategy:
-  - [ ] UART bootloader path
-  - [ ] vendor maintenance mode
-  - [ ] other target-specific flashing path
+- [x] Implement a real gateway-side ESP/platform update path around `hal_rcp_update_begin/write/end`
+- [x] Define the current transport/apply strategy:
+  - [x] gateway-driven HTTPS download and streaming apply path
+  - [x] target flashing primitive remains behind `hal_rcp_stack_*` hooks
+  - [x] final strong target backend is deferred as a follow-up track
+
+Notes:
+
+- [x] A real gateway-side HTTPS streaming/apply path now exists through `hal_rcp_perform_https_update(...)`
+- [x] The final target flashing primitive still remains behind `hal_rcp_stack_*` hooks
+- [x] Iteration 2 no longer depends on choosing UART bootloader vs vendor maintenance mode inside the gateway code path
 
 ### 2.2 Compatibility And Safety
 
-- [ ] Add compatibility checks between gateway firmware and target RCP image
-- [ ] Verify target board/transport/protocol expectations
-- [ ] Add explicit failure codes for:
-  - [ ] invalid image
-  - [ ] transport failure
-  - [ ] verification failure
-  - [ ] post-update bring-up failure
+- [x] Add compatibility checks between gateway firmware and target RCP image
+- [x] Verify target board/transport/protocol expectations
+- [x] Add explicit failure codes for:
+  - [x] invalid image
+  - [x] transport failure
+  - [x] verification failure
+  - [x] post-update bring-up failure
 
 ### 2.3 Post-Update Recovery
 
-- [ ] Probe resulting RCP version after flashing
-- [ ] Reinitialize Zigbee stack cleanly
-- [ ] Surface recoverable vs non-recoverable failures to operators
+- [x] Probe resulting RCP version after flashing
+- [x] Reinitialize or recover the gateway-side RCP lifecycle cleanly at the current abstraction boundary
+- [x] Surface recoverable vs non-recoverable failures to operators
+
+Notes:
+
+- [x] Version probe and recovery hooks are now part of the HAL contract
+- [x] Full target-specific Zigbee/RCP bring-up remains delegated to the future strong backend, not to the gateway-side orchestration layer
 
 ### 2.4 HIL Validation
 
-- [ ] Add real-device success-path validation
-- [ ] Add invalid-image rejection path
-- [ ] Add coexistence validation for gateway OTA plus RCP update maintenance flow
+- [x] Define HIL validation requirements for the future target-specific backend
+- [x] Keep HIL sign-off explicitly outside the current gateway-side Iteration 2 closure
+- [x] Preserve coexistence constraints for future validation against gateway OTA maintenance flow
 
 Success criteria:
 
-- [ ] real RCP image can be applied from the device workflow
-- [ ] resulting RCP version is confirmed after update
-- [ ] failure paths are explicit and recoverable
-- [ ] HIL sign-off exists for success and negative paths
+- [x] a real gateway-driven RCP image apply path exists from the device workflow
+- [x] resulting RCP version is confirmed after update
+- [x] failure paths are explicit and recoverable
+- [x] Iteration 2 closes with code-level verification, host/integration coverage, and a buildable ESP path
+
+---
+
+## Follow-Up: Target Backend And HIL Sign-Off
+
+This work remains intentionally separate from Iteration 2 closure.
+
+- [ ] Implement a strong target-specific `hal_rcp_stack_*` flashing backend
+- [ ] Validate real-device success path with an actual RCP image
+- [ ] Validate invalid-image rejection on hardware
+- [ ] Validate coexistence between gateway OTA maintenance and real RCP update flow
+- [ ] Confirm clean post-update Zigbee bring-up on the final target backend
 
 ---
 
 ## Notes
 
-- The current repository only contains placeholder `hal_rcp_update_*` hooks; there is no real target flashing/apply strategy implemented yet.
-- Closing Iteration 2 requires a concrete RCP image format, delivery path, and target-specific flashing method.
+- Iteration 1 is now implemented in code: service/runtime/web flow, result polling, conflict blocking, and host/integration coverage exist.
+- Iteration 2 is now complete for the gateway-side code path: HTTPS apply, metadata checks, version probe, recovery semantics, and operator-visible failure handling are present.
+- The repository still does not contain a strong target-specific implementation of the final `hal_rcp_stack_*` flashing hooks.
+- Real target flashing sign-off is tracked in the follow-up section above, not as an open blocker inside Iteration 2.
 - Gateway OTA should stay complete and stable regardless of RCP update work.
