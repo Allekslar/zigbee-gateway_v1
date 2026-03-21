@@ -3,45 +3,43 @@
 
 #include "hal_rcp.h"
 
-#ifdef ESP_PLATFORM
 // Weak hooks for a platform-specific RCP updater implementation.
 int __attribute__((weak)) hal_rcp_stack_update_begin(void) {
+#ifdef ESP_PLATFORM
     return -1;
+#else
+    return 0;
+#endif
 }
 
 int __attribute__((weak)) hal_rcp_stack_update_write(const uint8_t* data, uint32_t len) {
+#ifdef ESP_PLATFORM
     (void)data;
     (void)len;
     return -1;
+#else
+    (void)data;
+    (void)len;
+    return 0;
+#endif
 }
 
 int __attribute__((weak)) hal_rcp_stack_update_end(void) {
-    return -1;
-}
-#endif
-
-int hal_rcp_update_begin(void) {
 #ifdef ESP_PLATFORM
-    return hal_rcp_stack_update_begin();
+    return -1;
 #else
     return 0;
 #endif
+}
+
+int hal_rcp_update_begin(void) {
+    return hal_rcp_stack_update_begin();
 }
 
 int hal_rcp_update_write(const uint8_t* data, uint32_t len) {
-#ifdef ESP_PLATFORM
     return hal_rcp_stack_update_write(data, len);
-#else
-    (void)data;
-    (void)len;
-    return 0;
-#endif
 }
 
 int hal_rcp_update_end(void) {
-#ifdef ESP_PLATFORM
     return hal_rcp_stack_update_end();
-#else
-    return 0;
-#endif
 }

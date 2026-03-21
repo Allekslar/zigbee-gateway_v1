@@ -13,6 +13,7 @@ bool g_device_ok = true;
 bool g_network_ok = true;
 bool g_config_ok = true;
 bool g_ota_ok = true;
+bool g_rcp_ok = true;
 
 int g_call_index = 0;
 int g_static_call_order = 0;
@@ -20,6 +21,7 @@ int g_device_call_order = 0;
 int g_network_call_order = 0;
 int g_config_call_order = 0;
 int g_ota_call_order = 0;
+int g_rcp_call_order = 0;
 
 void reset_expectations() {
     g_static_ok = true;
@@ -27,12 +29,14 @@ void reset_expectations() {
     g_network_ok = true;
     g_config_ok = true;
     g_ota_ok = true;
+    g_rcp_ok = true;
     g_call_index = 0;
     g_static_call_order = 0;
     g_device_call_order = 0;
     g_network_call_order = 0;
     g_config_call_order = 0;
     g_ota_call_order = 0;
+    g_rcp_call_order = 0;
 }
 
 }  // namespace
@@ -72,6 +76,13 @@ bool register_ota_routes(void* server_handle, WebRouteContext* context) noexcept
     (void)context;
     g_ota_call_order = ++g_call_index;
     return g_ota_ok;
+}
+
+bool register_rcp_routes(void* server_handle, WebRouteContext* context) noexcept {
+    (void)server_handle;
+    (void)context;
+    g_rcp_call_order = ++g_call_index;
+    return g_rcp_ok;
 }
 
 }  // namespace web_ui
@@ -123,6 +134,12 @@ int main() {
     g_ota_ok = false;
     assert(!web_ui::register_web_routes(reinterpret_cast<void*>(0x1), &context));
     assert(g_ota_call_order == 5);
+    assert(g_rcp_call_order == 0);
+
+    reset_expectations();
+    g_rcp_ok = false;
+    assert(!web_ui::register_web_routes(reinterpret_cast<void*>(0x1), &context));
+    assert(g_rcp_call_order == 6);
 
     reset_expectations();
     assert(web_ui::register_web_routes(reinterpret_cast<void*>(0x1), &context));
@@ -131,6 +148,7 @@ int main() {
     assert(g_network_call_order == 3);
     assert(g_config_call_order == 4);
     assert(g_ota_call_order == 5);
+    assert(g_rcp_call_order == 6);
 
     return 0;
 }

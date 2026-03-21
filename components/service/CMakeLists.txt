@@ -20,6 +20,7 @@ idf_component_register(
         "ota_bootstrap.cpp"
         "operation_result_store.cpp"
         "persistence_manager.cpp"
+        "rcp_update_manager.cpp"
         "reporting_manager.cpp"
         "scan_manager.cpp"
         "service_runtime.cpp"

@@ -19,21 +19,27 @@ public:
     static constexpr std::size_t kNetworkResultQueueCapacity = 16;
     static constexpr std::size_t kConfigResultQueueCapacity = 8;
     static constexpr std::size_t kOtaResultQueueCapacity = 4;
+    static constexpr std::size_t kRcpUpdateResultQueueCapacity = 4;
 
     uint32_t next_request_id() noexcept;
     void note_network_poll_status(uint32_t request_id, NetworkOperationPollStatus status) noexcept;
     void note_ota_poll_status(uint32_t request_id, OtaPollStatus status) noexcept;
+    void note_rcp_update_poll_status(uint32_t request_id, RcpUpdatePollStatus status) noexcept;
     bool publish_config_result(const ConfigResult& result) noexcept;
     bool take_config_result(uint32_t request_id, ConfigResult* out) noexcept;
     bool publish_network_result(const NetworkResult& result) noexcept;
     bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept;
     bool publish_ota_result(const OtaResult& result) noexcept;
     bool take_ota_result(uint32_t request_id, OtaResult* out) noexcept;
+    bool publish_rcp_update_result(const RcpUpdateResult& result) noexcept;
+    bool take_rcp_update_result(uint32_t request_id, RcpUpdateResult* out) noexcept;
     NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept;
     OtaPollStatus get_ota_poll_status(uint32_t request_id) const noexcept;
+    RcpUpdatePollStatus get_rcp_update_poll_status(uint32_t request_id) const noexcept;
     std::size_t pending_config_results() const noexcept;
     std::size_t pending_network_results() const noexcept;
     std::size_t pending_ota_results() const noexcept;
+    std::size_t pending_rcp_update_results() const noexcept;
 
 private:
     struct NetworkPollStatusEntry {
@@ -46,10 +52,17 @@ private:
         OtaPollStatus status{OtaPollStatus::kNotReady};
     };
 
+    struct RcpUpdatePollStatusEntry {
+        uint32_t request_id{0};
+        RcpUpdatePollStatus status{RcpUpdatePollStatus::kNotReady};
+    };
+
     bool upsert_network_poll_status_locked(uint32_t request_id, NetworkOperationPollStatus status) noexcept;
     void remove_network_poll_status_locked(uint32_t request_id) noexcept;
     bool upsert_ota_poll_status_locked(uint32_t request_id, OtaPollStatus status) noexcept;
     void remove_ota_poll_status_locked(uint32_t request_id) noexcept;
+    bool upsert_rcp_update_poll_status_locked(uint32_t request_id, RcpUpdatePollStatus status) noexcept;
+    void remove_rcp_update_poll_status_locked(uint32_t request_id) noexcept;
 
     std::atomic<uint32_t> next_request_id_{1U};
     mutable RuntimeLock network_result_lock_{};
@@ -63,6 +76,10 @@ private:
     std::size_t ota_result_count_{0};
     std::array<OtaPollStatusEntry, kOtaResultQueueCapacity> ota_poll_status_queue_{};
     std::size_t ota_poll_status_count_{0};
+    std::array<RcpUpdateResult, kRcpUpdateResultQueueCapacity> rcp_update_result_queue_{};
+    std::size_t rcp_update_result_count_{0};
+    std::array<RcpUpdatePollStatusEntry, kRcpUpdateResultQueueCapacity> rcp_update_poll_status_queue_{};
+    std::size_t rcp_update_poll_status_count_{0};
 };
 
 }  // namespace service

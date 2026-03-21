@@ -22,6 +22,7 @@ int main() {
     service::NetworkResult out{};
     service::ConfigResult config_out{};
     service::OtaResult ota_out{};
+    service::RcpUpdateResult rcp_out{};
 
     const uint32_t first_request_id = store.next_request_id();
     const uint32_t second_request_id = store.next_request_id();
@@ -55,6 +56,22 @@ int main() {
     assert(ota_out.transport_socket_errno == 11);
     assert(store.get_ota_poll_status(9U) == service::OtaPollStatus::kNotReady);
     assert(!store.take_ota_result(9U, &ota_out));
+
+    store.note_rcp_update_poll_status(10U, service::RcpUpdatePollStatus::kQueued);
+    assert(store.get_rcp_update_poll_status(10U) == service::RcpUpdatePollStatus::kQueued);
+    store.note_rcp_update_poll_status(10U, service::RcpUpdatePollStatus::kApplying);
+    assert(store.get_rcp_update_poll_status(10U) == service::RcpUpdatePollStatus::kApplying);
+    service::RcpUpdateResult rcp_result{};
+    rcp_result.request_id = 10U;
+    rcp_result.status = service::RcpUpdateOperationStatus::kOk;
+    rcp_result.written_bytes = 128U;
+    assert(store.publish_rcp_update_result(rcp_result));
+    assert(store.get_rcp_update_poll_status(10U) == service::RcpUpdatePollStatus::kReady);
+    assert(store.take_rcp_update_result(10U, &rcp_out));
+    assert(rcp_out.status == service::RcpUpdateOperationStatus::kOk);
+    assert(rcp_out.written_bytes == 128U);
+    assert(store.get_rcp_update_poll_status(10U) == service::RcpUpdatePollStatus::kNotReady);
+    assert(!store.take_rcp_update_result(10U, &rcp_out));
 
     for (uint32_t request_id = 1U;
          request_id <= service::OperationResultStore::kNetworkResultQueueCapacity + 1U;

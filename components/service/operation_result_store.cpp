@@ -85,6 +85,46 @@ void OperationResultStore::remove_ota_poll_status_locked(uint32_t request_id) no
     }
 }
 
+bool OperationResultStore::upsert_rcp_update_poll_status_locked(
+    uint32_t request_id,
+    RcpUpdatePollStatus status) noexcept {
+    if (request_id == 0U) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < rcp_update_poll_status_count_; ++i) {
+        if (rcp_update_poll_status_queue_[i].request_id == request_id) {
+            rcp_update_poll_status_queue_[i].status = status;
+            return true;
+        }
+    }
+
+    if (rcp_update_poll_status_count_ >= rcp_update_poll_status_queue_.size()) {
+        for (std::size_t i = 1; i < rcp_update_poll_status_count_; ++i) {
+            rcp_update_poll_status_queue_[i - 1U] = rcp_update_poll_status_queue_[i];
+        }
+        --rcp_update_poll_status_count_;
+    }
+
+    rcp_update_poll_status_queue_[rcp_update_poll_status_count_].request_id = request_id;
+    rcp_update_poll_status_queue_[rcp_update_poll_status_count_].status = status;
+    ++rcp_update_poll_status_count_;
+    return true;
+}
+
+void OperationResultStore::remove_rcp_update_poll_status_locked(uint32_t request_id) noexcept {
+    for (std::size_t i = 0; i < rcp_update_poll_status_count_; ++i) {
+        if (rcp_update_poll_status_queue_[i].request_id != request_id) {
+            continue;
+        }
+        for (std::size_t j = i + 1U; j < rcp_update_poll_status_count_; ++j) {
+            rcp_update_poll_status_queue_[j - 1U] = rcp_update_poll_status_queue_[j];
+        }
+        --rcp_update_poll_status_count_;
+        return;
+    }
+}
+
 uint32_t OperationResultStore::next_request_id() noexcept {
     for (;;) {
         uint32_t current = next_request_id_.load(std::memory_order_acquire);
@@ -141,6 +181,15 @@ void OperationResultStore::note_ota_poll_status(uint32_t request_id, OtaPollStat
     (void)upsert_ota_poll_status_locked(request_id, status);
 }
 
+void OperationResultStore::note_rcp_update_poll_status(uint32_t request_id, RcpUpdatePollStatus status) noexcept {
+    RuntimeLockGuard guard(network_result_lock_);
+    if (status == RcpUpdatePollStatus::kNotReady) {
+        remove_rcp_update_poll_status_locked(request_id);
+        return;
+    }
+    (void)upsert_rcp_update_poll_status_locked(request_id, status);
+}
+
 bool OperationResultStore::publish_network_result(const NetworkResult& result) noexcept {
     RuntimeLockGuard guard(network_result_lock_);
 
@@ -188,6 +237,33 @@ bool OperationResultStore::publish_ota_result(const OtaResult& result) noexcept 
     ota_result_queue_[ota_result_count_] = result;
     ++ota_result_count_;
     (void)upsert_ota_poll_status_locked(result.request_id, OtaPollStatus::kReady);
+    return true;
+}
+
+bool OperationResultStore::publish_rcp_update_result(const RcpUpdateResult& result) noexcept {
+    RuntimeLockGuard guard(network_result_lock_);
+    if (result.request_id == 0U) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < rcp_update_result_count_; ++i) {
+        if (rcp_update_result_queue_[i].request_id == result.request_id) {
+            rcp_update_result_queue_[i] = result;
+            (void)upsert_rcp_update_poll_status_locked(result.request_id, RcpUpdatePollStatus::kReady);
+            return true;
+        }
+    }
+
+    if (rcp_update_result_count_ >= kRcpUpdateResultQueueCapacity) {
+        for (std::size_t i = 1; i < rcp_update_result_count_; ++i) {
+            rcp_update_result_queue_[i - 1U] = rcp_update_result_queue_[i];
+        }
+        --rcp_update_result_count_;
+    }
+
+    rcp_update_result_queue_[rcp_update_result_count_] = result;
+    ++rcp_update_result_count_;
+    (void)upsert_rcp_update_poll_status_locked(result.request_id, RcpUpdatePollStatus::kReady);
     return true;
 }
 
@@ -259,6 +335,29 @@ bool OperationResultStore::take_ota_result(uint32_t request_id, OtaResult* out) 
     return false;
 }
 
+bool OperationResultStore::take_rcp_update_result(uint32_t request_id, RcpUpdateResult* out) noexcept {
+    RuntimeLockGuard guard(network_result_lock_);
+    if (out == nullptr || request_id == 0U) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < rcp_update_result_count_; ++i) {
+        if (rcp_update_result_queue_[i].request_id != request_id) {
+            continue;
+        }
+
+        *out = rcp_update_result_queue_[i];
+        for (std::size_t j = i + 1U; j < rcp_update_result_count_; ++j) {
+            rcp_update_result_queue_[j - 1U] = rcp_update_result_queue_[j];
+        }
+        --rcp_update_result_count_;
+        remove_rcp_update_poll_status_locked(request_id);
+        return true;
+    }
+
+    return false;
+}
+
 NetworkOperationPollStatus OperationResultStore::get_network_operation_poll_status(uint32_t request_id) const noexcept {
     RuntimeLockGuard guard(network_result_lock_);
     if (request_id == 0U) {
@@ -301,6 +400,27 @@ OtaPollStatus OperationResultStore::get_ota_poll_status(uint32_t request_id) con
     return OtaPollStatus::kNotReady;
 }
 
+RcpUpdatePollStatus OperationResultStore::get_rcp_update_poll_status(uint32_t request_id) const noexcept {
+    RuntimeLockGuard guard(network_result_lock_);
+    if (request_id == 0U) {
+        return RcpUpdatePollStatus::kNotReady;
+    }
+
+    for (std::size_t i = 0; i < rcp_update_result_count_; ++i) {
+        if (rcp_update_result_queue_[i].request_id == request_id) {
+            return RcpUpdatePollStatus::kReady;
+        }
+    }
+
+    for (std::size_t i = 0; i < rcp_update_poll_status_count_; ++i) {
+        if (rcp_update_poll_status_queue_[i].request_id == request_id) {
+            return rcp_update_poll_status_queue_[i].status;
+        }
+    }
+
+    return RcpUpdatePollStatus::kNotReady;
+}
+
 std::size_t OperationResultStore::pending_config_results() const noexcept {
     RuntimeLockGuard guard(network_result_lock_);
     return config_result_count_;
@@ -314,6 +434,11 @@ std::size_t OperationResultStore::pending_network_results() const noexcept {
 std::size_t OperationResultStore::pending_ota_results() const noexcept {
     RuntimeLockGuard guard(network_result_lock_);
     return ota_result_count_;
+}
+
+std::size_t OperationResultStore::pending_rcp_update_results() const noexcept {
+    RuntimeLockGuard guard(network_result_lock_);
+    return rcp_update_result_count_;
 }
 
 }  // namespace service

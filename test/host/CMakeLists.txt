@@ -41,6 +41,7 @@ set(SERVICE_SOURCES
     ../../components/service/ota_bootstrap.cpp
     ../../components/service/operation_result_store.cpp
     ../../components/service/persistence_manager.cpp
+    ../../components/service/rcp_update_manager.cpp
     ../../components/service/reporting_manager.cpp
     ../../components/service/scan_manager.cpp
     ../../components/service/service_runtime.cpp
@@ -53,6 +54,7 @@ set(APP_HAL_SOURCES
     ../../components/app_hal/hal_led.c
     ../../components/app_hal/hal_nvs.c
     ../../components/app_hal/hal_ota.c
+    ../../components/app_hal/hal_rcp.c
     ../../components/app_hal/hal_wifi.c
     ../../components/app_hal/hal_zigbee.c
 )
@@ -198,6 +200,11 @@ target_link_libraries(test_ota_manifest PRIVATE service_host)
 zg_apply_component_compile_policy(test_ota_manifest)
 add_test(NAME test_ota_manifest COMMAND test_ota_manifest)
 
+add_executable(test_service_rcp test_service_rcp.cpp)
+target_link_libraries(test_service_rcp PRIVATE service_host)
+zg_apply_component_compile_policy(test_service_rcp)
+add_test(NAME test_service_rcp COMMAND test_service_rcp)
+
 add_executable(test_service_saved_credentials_zigbee_start test_service_saved_credentials_zigbee_start.cpp)
 target_link_libraries(test_service_saved_credentials_zigbee_start PRIVATE service_host)
 zg_apply_component_compile_policy(test_service_saved_credentials_zigbee_start)
@@ -247,6 +254,11 @@ add_executable(test_web_handlers_network_routes test_web_handlers_network_routes
 target_link_libraries(test_web_handlers_network_routes PRIVATE service_host web_ui_host)
 zg_apply_component_compile_policy(test_web_handlers_network_routes)
 add_test(NAME test_web_handlers_network_routes COMMAND test_web_handlers_network_routes)
+
+add_executable(test_web_handlers_rcp test_web_handlers_rcp.cpp)
+target_link_libraries(test_web_handlers_rcp PRIVATE service_host web_ui_host)
+zg_apply_component_compile_policy(test_web_handlers_rcp)
+add_test(NAME test_web_handlers_rcp COMMAND test_web_handlers_rcp)
 
 add_executable(test_service_reporting_manager test_service_reporting_manager.cpp)
 target_link_libraries(test_service_reporting_manager PRIVATE service_host)

@@ -216,6 +216,76 @@ struct OtaApiSnapshot {
     std::array<char, kVersionMaxLen> target_version{};
 };
 
+constexpr std::size_t kRcpUpdateUrlMaxLen = kOtaManifestUrlMaxLen;
+constexpr std::size_t kRcpUpdateVersionMaxLen = kOtaManifestVersionMaxLen;
+constexpr std::size_t kRcpUpdateSha256MaxLen = kOtaManifestSha256MaxLen;
+constexpr std::size_t kRcpUpdateBoardMaxLen = kOtaManifestBoardMaxLen;
+constexpr std::size_t kRcpUpdateTransportMaxLen = 32U;
+
+enum class RcpUpdateStage : uint8_t {
+    kIdle = 0,
+    kQueued = 1,
+    kApplying = 2,
+    kCompleted = 3,
+    kFailed = 4,
+};
+
+enum class RcpUpdatePollStatus : uint8_t {
+    kNotReady = 0,
+    kQueued = 1,
+    kApplying = 2,
+    kReady = 3,
+};
+
+enum class RcpUpdateSubmitStatus : uint8_t {
+    kAccepted = 0,
+    kBusy = 1,
+    kInvalidRequest = 2,
+    kConflict = 3,
+};
+
+enum class RcpUpdateOperationStatus : uint8_t {
+    kOk = 0,
+    kInvalidArgument = 1,
+    kNoCapacity = 2,
+    kConflict = 3,
+    kBeginFailed = 4,
+    kWriteFailed = 5,
+    kFinalizeFailed = 6,
+    kInternalError = 7,
+};
+
+struct RcpUpdateRequest {
+    uint32_t request_id{0};
+    std::array<char, kRcpUpdateUrlMaxLen> url{};
+    std::array<char, kRcpUpdateVersionMaxLen> target_version{};
+    std::array<char, kRcpUpdateSha256MaxLen> sha256{};
+    std::array<char, kRcpUpdateBoardMaxLen> board{};
+    std::array<char, kRcpUpdateTransportMaxLen> transport{};
+    std::array<char, kRcpUpdateVersionMaxLen> gateway_min_version{};
+};
+
+struct RcpUpdateApiSnapshot {
+    static constexpr std::size_t kVersionMaxLen = kRcpUpdateVersionMaxLen;
+
+    uint32_t active_request_id{0};
+    bool busy{false};
+    RcpUpdateStage stage{RcpUpdateStage::kIdle};
+    RcpUpdateOperationStatus last_error{RcpUpdateOperationStatus::kOk};
+    uint32_t written_bytes{0};
+    std::array<char, kVersionMaxLen> current_version{};
+    std::array<char, kVersionMaxLen> target_version{};
+};
+
+struct RcpUpdateResult {
+    static constexpr std::size_t kVersionMaxLen = kRcpUpdateVersionMaxLen;
+
+    uint32_t request_id{0};
+    RcpUpdateOperationStatus status{RcpUpdateOperationStatus::kInternalError};
+    uint32_t written_bytes{0};
+    std::array<char, kVersionMaxLen> target_version{};
+};
+
 struct OtaResult {
     static constexpr std::size_t kVersionMaxLen = kOtaManifestVersionMaxLen;
 
@@ -313,6 +383,7 @@ public:
     virtual bool post_network_credentials_status(uint32_t request_id) noexcept = 0;
     virtual bool post_mqtt_status(const NetworkApiSnapshot::MqttStatusSnapshot& snapshot) noexcept = 0;
     virtual OtaSubmitStatus post_ota_start(const OtaStartRequest& request) noexcept = 0;
+    virtual RcpUpdateSubmitStatus post_rcp_update_start(const RcpUpdateRequest& request) noexcept = 0;
     virtual bool post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept = 0;
     virtual bool post_remove_device(
         uint32_t request_id,
@@ -324,13 +395,16 @@ public:
     virtual bool build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept = 0;
     virtual bool build_config_api_snapshot(ConfigApiSnapshot* out) const noexcept = 0;
     virtual bool build_ota_api_snapshot(OtaApiSnapshot* out) const noexcept = 0;
+    virtual bool build_rcp_update_api_snapshot(RcpUpdateApiSnapshot* out) const noexcept = 0;
     virtual bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept = 0;
     virtual bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept override = 0;
     virtual bool take_config_result(uint32_t request_id, ConfigResult* out) noexcept = 0;
     virtual bool take_network_result(uint32_t request_id, NetworkResult* out) noexcept = 0;
     virtual bool take_ota_result(uint32_t request_id, OtaResult* out) noexcept = 0;
+    virtual bool take_rcp_update_result(uint32_t request_id, RcpUpdateResult* out) noexcept = 0;
     virtual NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept = 0;
     virtual OtaPollStatus get_ota_poll_status(uint32_t request_id) const noexcept = 0;
+    virtual RcpUpdatePollStatus get_rcp_update_poll_status(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_queued(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_in_progress(uint32_t request_id) const noexcept = 0;
     virtual bool initialize_hal_adapter() noexcept = 0;

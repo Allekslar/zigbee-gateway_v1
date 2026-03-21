@@ -41,6 +41,7 @@ set(SERVICE_SOURCES
     ../../components/service/ota_bootstrap.cpp
     ../../components/service/persistence_manager.cpp
     ../../components/service/read_model_coordinator.cpp
+    ../../components/service/rcp_update_manager.cpp
     ../../components/service/reporting_manager.cpp
     ../../components/service/scan_manager.cpp
     ../../components/service/service_runtime.cpp
@@ -53,6 +54,7 @@ set(APP_HAL_SERVICE_SOURCES
     ../../components/app_hal/hal_led.c
     ../../components/app_hal/hal_nvs.c
     ../../components/app_hal/hal_ota.c
+    ../../components/app_hal/hal_rcp.c
     ../../components/app_hal/hal_wifi.c
     ../../components/app_hal/hal_zigbee.c
 )
@@ -151,3 +153,17 @@ target_include_directories(test_integration_web_handlers_ota
 target_link_libraries(test_integration_web_handlers_ota PRIVATE web_ui_integration)
 zg_apply_component_compile_policy(test_integration_web_handlers_ota)
 add_test(NAME test_integration_web_handlers_ota COMMAND test_integration_web_handlers_ota)
+
+add_executable(test_integration_web_handlers_rcp test_integration_web_handlers_rcp.cpp)
+target_include_directories(test_integration_web_handlers_rcp
+    PRIVATE
+        ../../components/web_ui/include
+        ../../components/web_ui
+        ../../components/service/include
+        ../../components/app_hal/include
+        ../../components/common/include
+        ../../components/core/include
+)
+target_link_libraries(test_integration_web_handlers_rcp PRIVATE web_ui_integration)
+zg_apply_component_compile_policy(test_integration_web_handlers_rcp)
+add_test(NAME test_integration_web_handlers_rcp COMMAND test_integration_web_handlers_rcp)

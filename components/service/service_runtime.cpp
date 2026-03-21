@@ -49,6 +49,9 @@ constexpr UBaseType_t kScanWorkerTaskPriority = 5U;
 constexpr const char* kOtaWorkerTaskName = "ota_worker";
 constexpr uint32_t kOtaWorkerTaskStackSize = 8192U;
 constexpr UBaseType_t kOtaWorkerTaskPriority = 5U;
+constexpr const char* kRcpWorkerTaskName = "rcp_worker";
+constexpr uint32_t kRcpWorkerTaskStackSize = 4096U;
+constexpr UBaseType_t kRcpWorkerTaskPriority = 5U;
 #endif
 
 uint32_t clamp_force_remove_timeout(uint32_t timeout_ms) noexcept {
@@ -299,6 +302,10 @@ bool ServiceRuntime::queue_ota_result(const OtaResult& result) noexcept {
     return operation_result_store_.publish_ota_result(result);
 }
 
+bool ServiceRuntime::queue_rcp_update_result(const RcpUpdateResult& result) noexcept {
+    return operation_result_store_.publish_rcp_update_result(result);
+}
+
 void ServiceRuntime::note_network_operation_poll_status(
     uint32_t request_id,
     NetworkOperationPollStatus status) noexcept {
@@ -308,6 +315,10 @@ void ServiceRuntime::note_network_operation_poll_status(
 void ServiceRuntime::note_ota_poll_status(uint32_t request_id, OtaPollStatus status) noexcept {
     SR_LOGI("OTA poll status request_id=%" PRIu32 " status=%u", request_id, static_cast<unsigned>(status));
     operation_result_store_.note_ota_poll_status(request_id, status);
+}
+
+void ServiceRuntime::note_rcp_update_poll_status(uint32_t request_id, RcpUpdatePollStatus status) noexcept {
+    operation_result_store_.note_rcp_update_poll_status(request_id, status);
 }
 
 core::CoreError ServiceRuntime::post_command(const core::CoreCommand& command) noexcept {
@@ -431,7 +442,17 @@ bool ServiceRuntime::post_mqtt_status(const MqttStatusSnapshot& snapshot) noexce
 }
 
 OtaSubmitStatus ServiceRuntime::post_ota_start(const OtaStartRequest& request) noexcept {
+    if (rcp_update_manager_.has_pending_or_busy()) {
+        return OtaSubmitStatus::kBusy;
+    }
     return ota_manager_.enqueue_request(*this, request);
+}
+
+RcpUpdateSubmitStatus ServiceRuntime::post_rcp_update_start(const RcpUpdateRequest& request) noexcept {
+    if (ota_manager_.has_pending_or_busy()) {
+        return RcpUpdateSubmitStatus::kConflict;
+    }
+    return rcp_update_manager_.enqueue_request(*this, request);
 }
 
 bool ServiceRuntime::post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept {
@@ -738,6 +759,10 @@ bool ServiceRuntime::build_ota_api_snapshot(OtaApiSnapshot* out) const noexcept 
     return ota_manager_.build_api_snapshot(out);
 }
 
+bool ServiceRuntime::build_rcp_update_api_snapshot(RcpUpdateApiSnapshot* out) const noexcept {
+    return rcp_update_manager_.build_api_snapshot(out);
+}
+
 bool ServiceRuntime::take_config_result(uint32_t request_id, ConfigResult* out) noexcept {
     return operation_result_store_.take_config_result(request_id, out);
 }
@@ -757,12 +782,20 @@ bool ServiceRuntime::take_ota_result(uint32_t request_id, OtaResult* out) noexce
     return operation_result_store_.take_ota_result(request_id, out);
 }
 
+bool ServiceRuntime::take_rcp_update_result(uint32_t request_id, RcpUpdateResult* out) noexcept {
+    return operation_result_store_.take_rcp_update_result(request_id, out);
+}
+
 NetworkOperationPollStatus ServiceRuntime::get_network_operation_poll_status(uint32_t request_id) const noexcept {
     return operation_result_store_.get_network_operation_poll_status(request_id);
 }
 
 OtaPollStatus ServiceRuntime::get_ota_poll_status(uint32_t request_id) const noexcept {
     return operation_result_store_.get_ota_poll_status(request_id);
+}
+
+RcpUpdatePollStatus ServiceRuntime::get_rcp_update_poll_status(uint32_t request_id) const noexcept {
+    return operation_result_store_.get_rcp_update_poll_status(request_id);
 }
 
 bool ServiceRuntime::is_scan_request_queued(uint32_t request_id) const noexcept {
@@ -884,6 +917,27 @@ bool ServiceRuntime::start() noexcept {
     }
 
     ota_worker_task_handle_ = ota_worker_task;
+
+    TaskHandle_t rcp_worker_task = nullptr;
+    const BaseType_t rcp_task_ok = xTaskCreate(
+        &RcpUpdateManager::worker_task_entry,
+        kRcpWorkerTaskName,
+        kRcpWorkerTaskStackSize,
+        this,
+        kRcpWorkerTaskPriority,
+        &rcp_worker_task);
+    if (rcp_task_ok != pdPASS) {
+        vTaskDelete(ota_worker_task);
+        vTaskDelete(scan_worker_task);
+        vTaskDelete(runtime_task);
+        ota_worker_task_handle_ = nullptr;
+        scan_worker_task_handle_ = nullptr;
+        runtime_task_handle_ = nullptr;
+        SR_LOGI("Failed to create RCP update worker task");
+        return false;
+    }
+
+    rcp_update_worker_task_handle_ = rcp_worker_task;
     SR_LOGI("Service runtime task started");
     return true;
 #else
@@ -964,6 +1018,9 @@ std::size_t ServiceRuntime::process_pending() noexcept {
     if (drain_ota_status_update()) {
         overall_progress = true;
     }
+    if (drain_rcp_update_status_update()) {
+        overall_progress = true;
+    }
     for (;;) {
         if (processed >= kMaxProcessedEventsPerCycle) {
             break;
@@ -1005,6 +1062,14 @@ std::size_t ServiceRuntime::process_pending() noexcept {
         }
 
         if (drain_ota_status_update()) {
+            made_progress = true;
+        }
+
+        if (drain_rcp_update_requests()) {
+            made_progress = true;
+        }
+
+        if (drain_rcp_update_status_update()) {
             made_progress = true;
         }
 
@@ -1156,8 +1221,9 @@ std::size_t ServiceRuntime::pending_events() const noexcept {
 
     return local_queue_count + command_manager_.pending_ingress_count() + persistence_manager_.pending_ingress_count() +
            network_manager_.pending_ingress_count() + operation_result_store_.pending_network_results() +
-           operation_result_store_.pending_ota_results() + scan_manager_.pending_ingress_count() +
-           ota_manager_.pending_ingress_count();
+           operation_result_store_.pending_ota_results() + operation_result_store_.pending_rcp_update_results() +
+           scan_manager_.pending_ingress_count() + ota_manager_.pending_ingress_count() +
+           rcp_update_manager_.pending_ingress_count();
 }
 
 std::size_t ServiceRuntime::pending_commands() const noexcept {
@@ -1204,6 +1270,14 @@ bool ServiceRuntime::drain_ota_requests() noexcept {
 #endif
 }
 
+bool ServiceRuntime::drain_rcp_update_requests() noexcept {
+#ifdef ESP_PLATFORM
+    return false;
+#else
+    return rcp_update_manager_.drain_requests(*this);
+#endif
+}
+
 bool ServiceRuntime::drain_ota_status_update() noexcept {
     OtaManager::StatusUpdate update{};
     if (!ota_manager_.take_status_update(&update)) {
@@ -1217,6 +1291,15 @@ bool ServiceRuntime::drain_ota_status_update() noexcept {
         update.downloaded_bytes,
         update.image_size);
     return ota_manager_.apply_status_update(update);
+}
+
+bool ServiceRuntime::drain_rcp_update_status_update() noexcept {
+    RcpUpdateManager::StatusUpdate update{};
+    if (!rcp_update_manager_.take_status_update(&update)) {
+        return false;
+    }
+
+    return rcp_update_manager_.apply_status_update(update);
 }
 
 uint32_t ServiceRuntime::monotonic_now_ms() const noexcept {

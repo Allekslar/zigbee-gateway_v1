@@ -23,5 +23,6 @@ bool register_device_routes(void* server_handle, WebRouteContext* context) noexc
 bool register_network_routes(void* server_handle, WebRouteContext* context) noexcept;
 bool register_config_routes(void* server_handle, WebRouteContext* context) noexcept;
 bool register_ota_routes(void* server_handle, WebRouteContext* context) noexcept;
+bool register_rcp_routes(void* server_handle, WebRouteContext* context) noexcept;
 
 }  // namespace web_ui

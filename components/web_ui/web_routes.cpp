@@ -31,6 +31,10 @@ bool register_web_routes(void* server_handle, WebRouteContext* context) noexcept
         return false;
     }
 
+    if (!register_rcp_routes(server_handle, context)) {
+        return false;
+    }
+
     return true;
 }
 
