@@ -505,7 +505,7 @@ This gives the narrowest MVP without changing Core.
 
 ## Suggested MVP Phases
 
-### Phase 0
+### Phase 0 ✅
 
 - add manufacturer/model query support through interview or post-interview Basic-cluster reads;
 - persist or publish the resolved identity into a Service-visible seam;
@@ -556,7 +556,7 @@ This phase is a prerequisite for meaningful Tuya model support.
 - host tests cover identity DTO and fingerprint resolver bootstrap
 - integration tests confirm standard interview flow is not regressed
 
-### Phase 1
+### Phase 1 ✅
 
 - choose one concrete Tuya device or one narrow device family;
 - add fingerprint rule;
@@ -565,7 +565,7 @@ This phase is a prerequisite for meaningful Tuya model support.
 - add one compiled-in plugin plus its quirk data;
 - prove downstream MQTT/Matter/Web still work unchanged.
 
-### Phase 2
+### Phase 2 ✅
 
 For controllable devices:
 - add Service-side command routing;
