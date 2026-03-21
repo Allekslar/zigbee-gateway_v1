@@ -11,18 +11,9 @@
 #include "esp_err.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_crt_bundle.h"
 #include "esp_tls_errors.h"
 #include "mbedtls/sha256.h"
-#if CONFIG_ZGW_OTA_TLS_TRUST_CERT_BUNDLE
-#include "esp_crt_bundle.h"
-#endif
-#endif
-
-#ifdef ESP_PLATFORM
-#if CONFIG_ZGW_OTA_TLS_TRUST_PINNED_CA
-extern const char ota_server_root_ca_pem_start[] asm("_binary_ota_server_root_ca_pem_start");
-extern const char ota_server_root_ca_pem_end[] asm("_binary_ota_server_root_ca_pem_end");
-#endif
 #endif
 
 // Weak hooks for an optional platform-specific external RCP updater.
@@ -209,24 +200,27 @@ static bool hal_rcp_url_has_prefix(const char* url, const char* prefix) {
     return strncmp(url, prefix, prefix_len) == 0;
 }
 
-static bool hal_rcp_configure_tls_trust(esp_http_client_config_t* http_config) {
-    if (http_config == NULL) {
+static bool hal_rcp_configure_tls_trust(
+    const hal_rcp_https_request_t* request, esp_http_client_config_t* http_config) {
+    if (request == NULL || http_config == NULL) {
         return false;
     }
 
-#if CONFIG_ZGW_OTA_TLS_TRUST_CERT_BUNDLE
-    http_config->crt_bundle_attach = esp_crt_bundle_attach;
-    return true;
-#elif CONFIG_ZGW_OTA_TLS_TRUST_PINNED_CA
-    const size_t cert_len = (size_t)(ota_server_root_ca_pem_end - ota_server_root_ca_pem_start);
-    if (cert_len <= 1U || strstr(ota_server_root_ca_pem_start, "BEGIN CERTIFICATE") == NULL) {
-        return false;
+    switch (request->tls_trust_mode) {
+        case HAL_RCP_TLS_TRUST_CERT_BUNDLE:
+            http_config->crt_bundle_attach = esp_crt_bundle_attach;
+            return true;
+        case HAL_RCP_TLS_TRUST_PINNED_CA:
+            if (request->trusted_root_ca_pem == NULL ||
+                strstr(request->trusted_root_ca_pem, "BEGIN CERTIFICATE") == NULL) {
+                return false;
+            }
+            http_config->cert_pem = request->trusted_root_ca_pem;
+            return true;
+        case HAL_RCP_TLS_TRUST_NONE:
+        default:
+            return false;
     }
-    http_config->cert_pem = ota_server_root_ca_pem_start;
-    return true;
-#else
-    return false;
-#endif
 }
 
 typedef struct {
@@ -287,15 +281,10 @@ int hal_rcp_perform_https_update(const hal_rcp_https_request_t* request, hal_rcp
 
 #ifdef ESP_PLATFORM
     if (!hal_rcp_url_has_prefix(request->url, "https://")) {
-#if defined(CONFIG_ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING) && CONFIG_ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING
-        if (!hal_rcp_url_has_prefix(request->url, "http://")) {
+        if (!(request->allow_plain_http && hal_rcp_url_has_prefix(request->url, "http://"))) {
             out_result->status = HAL_RCP_HTTPS_STATUS_INVALID_ARGUMENT;
             return -1;
         }
-#else
-        out_result->status = HAL_RCP_HTTPS_STATUS_INVALID_ARGUMENT;
-        return -1;
-#endif
     }
 
     if (hal_rcp_prepare_for_update() != 0) {
@@ -305,7 +294,7 @@ int hal_rcp_perform_https_update(const hal_rcp_https_request_t* request, hal_rcp
 
     esp_http_client_config_t http_config = {
         .url = request->url,
-        .timeout_ms = 30000,
+        .timeout_ms = (int)request->timeout_ms,
         .buffer_size = 2048,
         .buffer_size_tx = 1024,
         .keep_alive_enable = false,
@@ -321,7 +310,7 @@ int hal_rcp_perform_https_update(const hal_rcp_https_request_t* request, hal_rcp
     };
     http_config.user_data = &diag;
 
-    if (hal_rcp_url_has_prefix(request->url, "https://") && !hal_rcp_configure_tls_trust(&http_config)) {
+    if (hal_rcp_url_has_prefix(request->url, "https://") && !hal_rcp_configure_tls_trust(request, &http_config)) {
         out_result->status = HAL_RCP_HTTPS_STATUS_INTERNAL_ERROR;
         (void)hal_rcp_recover_after_update(false);
         return -1;

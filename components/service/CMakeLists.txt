@@ -23,6 +23,7 @@ idf_component_register(
         "ota_trust_store.cpp"
         "operation_result_store.cpp"
         "persistence_manager.cpp"
+        "rcp_transport_policy.cpp"
         "rcp_update_manager.cpp"
         "reporting_manager.cpp"
         "scan_manager.cpp"

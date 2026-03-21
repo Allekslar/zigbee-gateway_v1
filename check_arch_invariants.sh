@@ -550,6 +550,12 @@ run_checks() {
     check_present "INV-M026" "medium" "components/service/ota_transport_policy.cpp" \
         'CONFIG_ZGW_OTA_TLS_TRUST_|CONFIG_ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING' \
         "service-owned OTA transport policy must resolve trust and HTTP settings before calling HAL"
+    check_absent "INV-M026" "medium" "components/app_hal/hal_rcp.c" \
+        'CONFIG_ZGW_OTA_TLS_TRUST_|CONFIG_ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING' \
+        "HAL RCP adapter must not own OTA trust or HTTP policy directly"
+    check_present "INV-M026" "medium" "components/service/rcp_transport_policy.cpp" \
+        'CONFIG_ZGW_OTA_TLS_TRUST_|CONFIG_ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING' \
+        "service-owned RCP transport policy must resolve trust and HTTP settings before calling HAL"
 
     check_present "INV-M027" "medium" "components/service/include/service_runtime_api.hpp" \
         'struct[[:space:]]+MqttStatusSnapshot' \

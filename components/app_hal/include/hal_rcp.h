@@ -22,10 +22,20 @@ typedef enum {
     HAL_RCP_HTTPS_STATUS_INTERNAL_ERROR = 7,
 } hal_rcp_https_status_t;
 
+typedef enum {
+    HAL_RCP_TLS_TRUST_NONE = 0,
+    HAL_RCP_TLS_TRUST_CERT_BUNDLE = 1,
+    HAL_RCP_TLS_TRUST_PINNED_CA = 2,
+} hal_rcp_tls_trust_mode_t;
+
 typedef struct {
     const char* url;
     const char* expected_sha256_hex;
     const char* expected_version;
+    uint32_t timeout_ms;
+    bool allow_plain_http;
+    hal_rcp_tls_trust_mode_t tls_trust_mode;
+    const char* trusted_root_ca_pem;
 } hal_rcp_https_request_t;
 
 typedef struct {

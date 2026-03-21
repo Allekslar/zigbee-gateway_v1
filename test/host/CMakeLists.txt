@@ -44,6 +44,7 @@ set(SERVICE_SOURCES
     ../../components/service/ota_trust_store.cpp
     ../../components/service/operation_result_store.cpp
     ../../components/service/persistence_manager.cpp
+    ../../components/service/rcp_transport_policy.cpp
     ../../components/service/rcp_update_manager.cpp
     ../../components/service/reporting_manager.cpp
     ../../components/service/scan_manager.cpp

@@ -8,6 +8,7 @@
 
 #include "hal_ota.h"
 #include "hal_rcp.h"
+#include "rcp_transport_policy.hpp"
 #include "service_runtime.hpp"
 #include "version.hpp"
 
@@ -344,9 +345,12 @@ bool RcpUpdateManager::process_request(ServiceRuntime& runtime, const RcpUpdateR
         return runtime.queue_rcp_update_result(result);
     }
     hal_rcp_https_request_t hal_request{};
-    hal_request.url = request.url.data();
-    hal_request.expected_sha256_hex = request.sha256.data();
-    hal_request.expected_version = request.target_version.data();
+    if (!build_rcp_transport_request(request, &hal_request)) {
+        result.status = RcpUpdateOperationStatus::kInvalidArgument;
+        busy_.store(false, std::memory_order_release);
+        publish_status_finished(result);
+        return runtime.queue_rcp_update_result(result);
+    }
 
     hal_rcp_https_result_t hal_result{};
     const int rc = hal_rcp_perform_https_update(&hal_request, &hal_result);

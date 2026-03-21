@@ -6,6 +6,8 @@
 
 #include "core_registry.hpp"
 #include "effect_executor.hpp"
+#include "hal_rcp.h"
+#include "rcp_transport_policy.hpp"
 #include "service_runtime.hpp"
 #include "version.hpp"
 
@@ -89,6 +91,10 @@ int main() {
 
     const service::RcpUpdateRequest first_request =
         make_request(51U, "https://updates.local/rcp-v2.bin", "rcp-2.0.0");
+    hal_rcp_https_request_t transport_request{};
+    assert(service::build_rcp_transport_request(first_request, &transport_request));
+    assert(transport_request.timeout_ms == 30000U);
+    assert(!transport_request.allow_plain_http);
     assert(runtime.post_rcp_update_start(first_request) == service::RcpUpdateSubmitStatus::kAccepted);
     assert(runtime.get_rcp_update_poll_status(first_request.request_id) == service::RcpUpdatePollStatus::kQueued);
     assert(runtime.post_rcp_update_start(make_request(52U, "https://updates.local/rcp-v3.bin", "rcp-3.0.0")) ==
