@@ -116,6 +116,9 @@ void hal_zigbee_notify_configure_reporting_result(
     uint16_t short_addr,
     hal_zigbee_result_t result);
 void hal_zigbee_notify_attribute_report_raw(const hal_zigbee_raw_attribute_report_t* report);
+void hal_zigbee_notify_read_attribute_result(
+    uint32_t correlation_id,
+    const hal_zigbee_read_attr_result_t* result);
 
 static bool is_valid_short_addr(uint16_t short_addr) {
     return short_addr != 0xFFFFU && short_addr != 0x0000U;
@@ -1852,6 +1855,20 @@ void hal_zigbee_notify_attribute_report_raw(const hal_zigbee_raw_attribute_repor
             normalized.rssi_dbm = 0;
         }
         s_callbacks.on_attribute_report_raw(s_context, &normalized);
+    }
+}
+
+void hal_zigbee_notify_read_attribute_result(
+    uint32_t correlation_id,
+    const hal_zigbee_read_attr_result_t* result) {
+    if (result == NULL) {
+        return;
+    }
+    if (result->value_len > 0U && result->value == NULL) {
+        return;
+    }
+    if (s_callbacks.on_read_attribute_result != 0) {
+        s_callbacks.on_read_attribute_result(s_context, correlation_id, result);
     }
 }
 

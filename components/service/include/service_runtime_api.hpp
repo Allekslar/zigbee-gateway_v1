@@ -10,6 +10,7 @@
 #include "application_requests.hpp"
 #include "config_manager.hpp"
 #include "connectivity_manager.hpp"
+#include "device_identity_store.hpp"
 #include "matter_runtime_api.hpp"
 #include "network_manager.hpp"
 #include "ota_manifest.hpp"
@@ -35,6 +36,16 @@ struct ZigbeeRawAttributeReport {
     int8_t rssi_dbm{0};
     const uint8_t* payload{nullptr};
     uint8_t payload_len{0};
+};
+
+struct ZigbeeReadAttributeResult {
+    uint16_t short_addr{kUnknownShortAddr};
+    uint8_t endpoint{0};
+    uint16_t cluster_id{0};
+    uint16_t attribute_id{0};
+    bool success{false};
+    const uint8_t* value{nullptr};
+    uint8_t value_len{0};
 };
 
 struct RuntimeStats {
@@ -316,6 +327,9 @@ struct DevicesApiDeviceSnapshot {
     int8_t rssi_dbm{0};
     bool force_remove_armed{false};
     uint32_t force_remove_ms_left{0};
+    DeviceIdentityStatus identity_status{DeviceIdentityStatus::kUnknown};
+    std::array<char, kDeviceIdentityManufacturerMaxLen> manufacturer{};
+    std::array<char, kDeviceIdentityModelMaxLen> model{};
 };
 
 struct DevicesApiSnapshot {

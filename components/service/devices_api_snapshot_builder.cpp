@@ -56,6 +56,7 @@ DeviceContactState to_device_contact_state(core::CoreContactState state) noexcep
 bool DevicesApiSnapshotBuilder::build(
     const core::CoreState& state,
     const DeviceRuntimeSnapshot& runtime_snapshot,
+    const DeviceIdentityStore& identity_store,
     DevicesApiSnapshot* out) const noexcept {
     if (out == nullptr) {
         return false;
@@ -95,6 +96,13 @@ bool DevicesApiSnapshotBuilder::build(
         api_device.rssi_dbm = runtime_snapshot.rssi_dbm[i];
         api_device.force_remove_ms_left = runtime_snapshot.force_remove_ms_left[i];
         api_device.force_remove_armed = api_device.force_remove_ms_left > 0U;
+
+        const DeviceIdentityEntry* identity = identity_store.find(device.short_addr);
+        if (identity != nullptr) {
+            api_device.identity_status = identity->status;
+            api_device.manufacturer = identity->manufacturer;
+            api_device.model = identity->model;
+        }
     }
 
     return true;

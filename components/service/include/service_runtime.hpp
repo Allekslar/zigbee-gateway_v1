@@ -13,6 +13,7 @@
 #include "core_commands.hpp"
 #include "core_event_bus.hpp"
 #include "core_registry.hpp"
+#include "device_identity_store.hpp"
 #include "device_manager.hpp"
 #include "effect_executor.hpp"
 #include "connectivity_manager.hpp"
@@ -103,6 +104,9 @@ public:
         uint32_t correlation_id,
         uint16_t short_addr,
         ZigbeeResult result) noexcept;
+    bool post_zigbee_read_attribute_result(
+        uint32_t correlation_id,
+        const ZigbeeReadAttributeResult& result) noexcept;
     bool post_zigbee_attribute_report_raw(const ZigbeeRawAttributeReport& report) noexcept;
     bool post_remove_device(
         uint32_t request_id,
@@ -196,6 +200,7 @@ private:
     bool request_join_window_open(uint16_t duration_seconds) noexcept;
     void process_zigbee_network_policy(uint32_t now_ms) noexcept;
     void set_join_window_cache(bool open, uint16_t seconds_left) noexcept;
+    void request_device_identity_read(uint16_t short_addr) noexcept;
     void note_dropped_event() noexcept;
     bool persist_current_core_state() noexcept;
     bool restore_persisted_core_state() noexcept;
@@ -263,6 +268,7 @@ private:
     ReadModelCoordinator read_model_coordinator_;
     StatePersistenceCoordinator state_persistence_coordinator_;
     ZigbeeLifecycleCoordinator zigbee_lifecycle_coordinator_;
+    DeviceIdentityStore device_identity_store_{};
 
     std::atomic<uint32_t> config_timeout_ms_cache_{5000};
     std::atomic<uint32_t> config_max_retries_cache_{1};

@@ -51,6 +51,8 @@ set(SERVICE_SOURCES
     ../../components/service/service_runtime.cpp
     ../../components/service/state_persistence_coordinator.cpp
     ../../components/service/zigbee_lifecycle_coordinator.cpp
+    ../../components/service/device_identity_store.cpp
+    ../../components/service/tuya_fingerprint.cpp
     ../../components/service/hal_event_adapter.cpp
 )
 
@@ -528,3 +530,13 @@ add_executable(test_web_handlers_ota test_web_handlers_ota.cpp)
 target_link_libraries(test_web_handlers_ota PRIVATE service_host web_ui_host)
 zg_apply_component_compile_policy(test_web_handlers_ota)
 add_test(NAME test_web_handlers_ota COMMAND test_web_handlers_ota)
+
+add_executable(test_device_identity_store test_device_identity_store.cpp)
+target_link_libraries(test_device_identity_store PRIVATE service_host)
+zg_apply_component_compile_policy(test_device_identity_store)
+add_test(NAME test_device_identity_store COMMAND test_device_identity_store)
+
+add_executable(test_tuya_fingerprint test_tuya_fingerprint.cpp)
+target_link_libraries(test_tuya_fingerprint PRIVATE service_host)
+zg_apply_component_compile_policy(test_tuya_fingerprint)
+add_test(NAME test_tuya_fingerprint COMMAND test_tuya_fingerprint)

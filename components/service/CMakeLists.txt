@@ -30,6 +30,8 @@ idf_component_register(
         "service_runtime.cpp"
         "state_persistence_coordinator.cpp"
         "zigbee_lifecycle_coordinator.cpp"
+        "device_identity_store.cpp"
+        "tuya_fingerprint.cpp"
         "hal_event_adapter.cpp"
     EMBED_TXTFILES
         "../app_hal/ota_release_manifest_pub.pem"

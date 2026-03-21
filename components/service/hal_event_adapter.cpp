@@ -217,6 +217,35 @@ void zigbee_configure_reporting_result_cb(
     }
 }
 
+void zigbee_read_attribute_result_cb(
+    void* context,
+    uint32_t correlation_id,
+    const hal_zigbee_read_attr_result_t* result) noexcept {
+    if (context == nullptr || result == nullptr) {
+        return;
+    }
+
+    ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
+
+    ZigbeeReadAttributeResult mapped{};
+    mapped.short_addr = result->short_addr;
+    mapped.endpoint = result->endpoint;
+    mapped.cluster_id = result->cluster_id;
+    mapped.attribute_id = result->attribute_id;
+    mapped.success = (result->result == HAL_ZIGBEE_RESULT_SUCCESS);
+    mapped.value = result->value;
+    mapped.value_len = result->value_len;
+
+    if (!runtime->post_zigbee_read_attribute_result(correlation_id, mapped)) {
+        HAL_ADAPTER_LOGW(
+            "Drop read-attr result short_addr=0x%04x cluster=0x%04x attr=0x%04x correlation_id=%lu",
+            static_cast<unsigned>(result->short_addr),
+            static_cast<unsigned>(result->cluster_id),
+            static_cast<unsigned>(result->attribute_id),
+            static_cast<unsigned long>(correlation_id));
+    }
+}
+
 void zigbee_attribute_report_raw_cb(void* context, const hal_zigbee_raw_attribute_report_t* report) noexcept {
     if (context == nullptr || report == nullptr) {
         return;
@@ -288,6 +317,7 @@ bool init_hal_event_adapter(ServiceRuntime& runtime) noexcept {
     zigbee_callbacks.on_interview_result = &zigbee_interview_result_cb;
     zigbee_callbacks.on_bind_result = &zigbee_bind_result_cb;
     zigbee_callbacks.on_configure_reporting_result = &zigbee_configure_reporting_result_cb;
+    zigbee_callbacks.on_read_attribute_result = &zigbee_read_attribute_result_cb;
 
     hal_wifi_callbacks_t wifi_callbacks{};
     wifi_callbacks.on_network_up = &wifi_network_up_cb;

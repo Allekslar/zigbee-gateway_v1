@@ -41,6 +41,16 @@ typedef struct {
 } hal_zigbee_raw_attribute_report_t;
 
 typedef struct {
+    uint16_t short_addr;
+    uint8_t endpoint;
+    uint16_t cluster_id;
+    uint16_t attribute_id;
+    hal_zigbee_result_t result;
+    const uint8_t* value;
+    uint8_t value_len;
+} hal_zigbee_read_attr_result_t;
+
+typedef struct {
     void (*on_device_joined)(void* context, uint16_t short_addr);
     void (*on_device_left)(void* context, uint16_t short_addr);
     void (*on_attribute_report)(
@@ -67,6 +77,10 @@ typedef struct {
         uint32_t correlation_id,
         uint16_t short_addr,
         hal_zigbee_result_t result);
+    void (*on_read_attribute_result)(
+        void* context,
+        uint32_t correlation_id,
+        const hal_zigbee_read_attr_result_t* result);
 } hal_zigbee_callbacks_t;
 
 // Target path contract:

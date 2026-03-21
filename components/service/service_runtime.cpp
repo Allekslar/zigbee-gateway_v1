@@ -518,6 +518,8 @@ bool ServiceRuntime::post_zigbee_interview_result(
         return false;
     }
 
+    request_device_identity_read(short_addr);
+
     core::CoreEvent event{};
     event.type = core::CoreEventType::kDeviceInterviewCompleted;
     event.device_short_addr = short_addr;
@@ -552,6 +554,83 @@ bool ServiceRuntime::post_zigbee_configure_reporting_result(
     event.type = core::CoreEventType::kDeviceReportingConfigured;
     event.device_short_addr = short_addr;
     return push_event(event);
+}
+
+void ServiceRuntime::request_device_identity_read(uint16_t short_addr) noexcept {
+    static constexpr uint8_t kDefaultEndpoint = 1U;
+    static constexpr uint16_t kBasicClusterId = 0x0000U;
+    static constexpr uint16_t kManufacturerNameAttrId = 0x0004U;
+    static constexpr uint16_t kModelIdentifierAttrId = 0x0005U;
+
+    device_identity_store_.mark_pending(short_addr);
+
+    const uint32_t corr_mfr = next_operation_request_id();
+    const uint32_t corr_model = next_operation_request_id();
+
+    const hal_zigbee_status_t mfr_status = hal_zigbee_request_read_attribute(
+        corr_mfr, short_addr, kDefaultEndpoint, kBasicClusterId, kManufacturerNameAttrId);
+    const hal_zigbee_status_t model_status = hal_zigbee_request_read_attribute(
+        corr_model, short_addr, kDefaultEndpoint, kBasicClusterId, kModelIdentifierAttrId);
+
+    SR_LOGI(
+        "Identity read requested short_addr=0x%04x mfr_status=%d model_status=%d",
+        static_cast<unsigned>(short_addr),
+        static_cast<int>(mfr_status),
+        static_cast<int>(model_status));
+
+    if (mfr_status != HAL_ZIGBEE_STATUS_OK && model_status != HAL_ZIGBEE_STATUS_OK) {
+        device_identity_store_.mark_failed(short_addr);
+    }
+}
+
+bool ServiceRuntime::post_zigbee_read_attribute_result(
+    uint32_t correlation_id,
+    const ZigbeeReadAttributeResult& result) noexcept {
+    (void)correlation_id;
+
+    static constexpr uint16_t kBasicClusterId = 0x0000U;
+    static constexpr uint16_t kManufacturerNameAttrId = 0x0004U;
+    static constexpr uint16_t kModelIdentifierAttrId = 0x0005U;
+
+    if (result.short_addr == core::kUnknownDeviceShortAddr || result.short_addr == 0x0000U) {
+        return false;
+    }
+
+    if (result.cluster_id != kBasicClusterId) {
+        return true;
+    }
+
+    if (!result.success || result.value == nullptr || result.value_len == 0U) {
+        SR_LOGW(
+            "Identity read failed short_addr=0x%04x attr=0x%04x",
+            static_cast<unsigned>(result.short_addr),
+            static_cast<unsigned>(result.attribute_id));
+        return true;
+    }
+
+    // ZCL char string: first byte is length, followed by string bytes.
+    const uint8_t zcl_str_len = result.value[0];
+    const char* str_data = reinterpret_cast<const char*>(result.value + 1U);
+    const std::size_t available = (result.value_len > 1U) ? static_cast<std::size_t>(result.value_len - 1U) : 0U;
+    const std::size_t actual_len = (zcl_str_len <= available) ? zcl_str_len : available;
+
+    if (result.attribute_id == kManufacturerNameAttrId) {
+        device_identity_store_.store_manufacturer(result.short_addr, str_data, actual_len);
+        SR_LOGI(
+            "Identity manufacturer short_addr=0x%04x value=%.*s",
+            static_cast<unsigned>(result.short_addr),
+            static_cast<int>(actual_len),
+            str_data);
+    } else if (result.attribute_id == kModelIdentifierAttrId) {
+        device_identity_store_.store_model(result.short_addr, str_data, actual_len);
+        SR_LOGI(
+            "Identity model short_addr=0x%04x value=%.*s",
+            static_cast<unsigned>(result.short_addr),
+            static_cast<int>(actual_len),
+            str_data);
+    }
+
+    return true;
 }
 
 bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeReport& report) noexcept {
@@ -725,7 +804,7 @@ bool ServiceRuntime::build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnaps
         return false;
     }
 
-    const bool built = read_model_coordinator_.publish_devices_api_snapshot(*snapshot.state, runtime_snapshot) &&
+    const bool built = read_model_coordinator_.publish_devices_api_snapshot(*snapshot.state, runtime_snapshot, device_identity_store_) &&
                        read_model_coordinator_.build_devices_api_snapshot(out);
     registry_->release_snapshot(&snapshot);
     return built;

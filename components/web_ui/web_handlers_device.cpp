@@ -66,6 +66,20 @@ const char* contact_state_to_string(service::DeviceContactState state) noexcept 
     }
 }
 
+const char* identity_status_to_string(service::DeviceIdentityStatus status) noexcept {
+    switch (status) {
+        case service::DeviceIdentityStatus::kPending:
+            return "pending";
+        case service::DeviceIdentityStatus::kResolved:
+            return "resolved";
+        case service::DeviceIdentityStatus::kFailed:
+            return "failed";
+        case service::DeviceIdentityStatus::kUnknown:
+        default:
+            return "unknown";
+    }
+}
+
 esp_err_t send_async_accept(httpd_req_t* req, uint32_t request_id, const char* operation) {
     if (req == nullptr || request_id == 0 || operation == nullptr) {
         return ESP_FAIL;
@@ -175,13 +189,24 @@ esp_err_t devices_get_handler(httpd_req_t* req) {
             rssi = rssi_buf;
         }
 
+        const char* identity_status = identity_status_to_string(device.identity_status);
+        char manufacturer_buf[service::kDeviceIdentityManufacturerMaxLen]{};
+        char model_buf[service::kDeviceIdentityModelMaxLen]{};
+        if (device.manufacturer[0] != '\0') {
+            std::snprintf(manufacturer_buf, sizeof(manufacturer_buf), "%s", device.manufacturer.data());
+        }
+        if (device.model[0] != '\0') {
+            std::snprintf(model_buf, sizeof(model_buf), "%s", device.model.data());
+        }
+
         written = std::snprintf(
             chunk,
             sizeof(chunk),
             "%s{\"short_addr\":%u,\"online\":%s,\"power_on\":%s,\"reporting_state\":\"%s\",\"last_report_at\":%lu,\"stale\":%s,"
             "\"temperature_c\":%s,\"occupancy\":\"%s\",\"contact\":{\"state\":\"%s\",\"tamper\":%s,\"battery_low\":%s},"
             "\"battery\":{\"percent\":%s,\"voltage_mv\":%s},\"lqi\":%s,\"rssi\":%s,"
-            "\"force_remove_armed\":%s,\"force_remove_ms_left\":%lu}",
+            "\"force_remove_armed\":%s,\"force_remove_ms_left\":%lu,"
+            "\"identity_status\":\"%s\",\"manufacturer\":\"%s\",\"model\":\"%s\"}",
             first ? "" : ",",
             static_cast<unsigned>(device.short_addr),
             device.online ? "true" : "false",
@@ -199,7 +224,10 @@ esp_err_t devices_get_handler(httpd_req_t* req) {
             lqi,
             rssi,
             device.force_remove_armed ? "true" : "false",
-            static_cast<unsigned long>(device.force_remove_ms_left));
+            static_cast<unsigned long>(device.force_remove_ms_left),
+            identity_status,
+            manufacturer_buf,
+            model_buf);
         if (written <= 0 || written >= static_cast<int>(sizeof(chunk))) {
             return ESP_FAIL;
         }
