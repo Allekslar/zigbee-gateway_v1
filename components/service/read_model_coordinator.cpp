@@ -7,6 +7,47 @@
 
 namespace service {
 
+namespace {
+
+template <typename T>
+bool load_snapshot(const detail::SnapshotStorage<T>& storage, T* out) noexcept {
+    if (out == nullptr) {
+        return false;
+    }
+    if (!storage.ready.load(std::memory_order_acquire)) {
+        return false;
+    }
+
+    for (;;) {
+        const uint32_t start_seq = storage.seq.load(std::memory_order_acquire);
+        if ((start_seq & 1U) != 0U) {
+            continue;
+        }
+
+        T snapshot = storage.value;
+        const uint32_t end_seq = storage.seq.load(std::memory_order_acquire);
+        if (start_seq == end_seq) {
+            *out = snapshot;
+            return true;
+        }
+    }
+}
+
+template <typename T>
+void store_snapshot(detail::SnapshotStorage<T>* storage, const T& value) noexcept {
+    if (storage == nullptr) {
+        return;
+    }
+
+    const uint32_t start_seq = storage->seq.load(std::memory_order_relaxed);
+    storage->seq.store(start_seq + 1U, std::memory_order_release);
+    storage->value = value;
+    storage->seq.store(start_seq + 2U, std::memory_order_release);
+    storage->ready.store(true, std::memory_order_release);
+}
+
+}  // namespace
+
 ReadModelCoordinator::ReadModelCoordinator(core::CoreRegistry& registry) noexcept
     : bridge_snapshot_builder_(registry) {}
 
@@ -18,49 +59,20 @@ bool ReadModelCoordinator::publish_devices_api_snapshot(
         return false;
     }
 
-    RuntimeLockGuard guard(devices_snapshot_lock_);
-    devices_api_snapshot_ = snapshot;
-    devices_api_snapshot_ready_ = true;
+    store_snapshot(&devices_api_snapshot_, snapshot);
     return true;
 }
 
 bool ReadModelCoordinator::build_devices_api_snapshot(DevicesApiSnapshot* out) const noexcept {
-    if (out == nullptr) {
-        return false;
-    }
-
-    RuntimeLockGuard guard(devices_snapshot_lock_);
-    if (!devices_api_snapshot_ready_) {
-        return false;
-    }
-    *out = devices_api_snapshot_;
-    return true;
+    return load_snapshot(devices_api_snapshot_, out);
 }
 
 bool ReadModelCoordinator::build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept {
-    if (out == nullptr) {
-        return false;
-    }
-
-    RuntimeLockGuard guard(bridge_snapshot_lock_);
-    if (!mqtt_bridge_snapshot_ready_) {
-        return false;
-    }
-    *out = mqtt_bridge_snapshot_;
-    return true;
+    return load_snapshot(mqtt_bridge_snapshot_, out);
 }
 
 bool ReadModelCoordinator::build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept {
-    if (out == nullptr) {
-        return false;
-    }
-
-    RuntimeLockGuard guard(bridge_snapshot_lock_);
-    if (!matter_bridge_snapshot_ready_) {
-        return false;
-    }
-    *out = matter_bridge_snapshot_;
-    return true;
+    return load_snapshot(matter_bridge_snapshot_, out);
 }
 
 void ReadModelCoordinator::rebuild_network_snapshot() noexcept {
@@ -106,14 +118,11 @@ void ReadModelCoordinator::refresh_bridge_snapshots() noexcept {
     MatterBridgeSnapshot matter_snapshot{};
     const bool matter_ok = bridge_snapshot_builder_.build_matter_snapshot(&matter_snapshot);
 
-    RuntimeLockGuard guard(bridge_snapshot_lock_);
     if (mqtt_ok) {
-        mqtt_bridge_snapshot_ = mqtt_snapshot;
-        mqtt_bridge_snapshot_ready_ = true;
+        store_snapshot(&mqtt_bridge_snapshot_, mqtt_snapshot);
     }
     if (matter_ok) {
-        matter_bridge_snapshot_ = matter_snapshot;
-        matter_bridge_snapshot_ready_ = true;
+        store_snapshot(&matter_bridge_snapshot_, matter_snapshot);
     }
 }
 

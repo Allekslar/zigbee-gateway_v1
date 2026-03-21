@@ -9,7 +9,6 @@
 
 #include "bridge_snapshot_builder.hpp"
 #include "devices_api_snapshot_builder.hpp"
-#include "runtime_lock.hpp"
 #include "service_runtime_api.hpp"
 
 namespace core {
@@ -18,6 +17,17 @@ class CoreState;
 }  // namespace core
 
 namespace service {
+
+namespace detail {
+
+template <typename T>
+struct SnapshotStorage {
+    std::atomic<uint32_t> seq{0};
+    std::atomic<bool> ready{false};
+    T value{};
+};
+
+}  // namespace detail
 
 class ReadModelCoordinator {
 public:
@@ -86,17 +96,12 @@ private:
     DevicesApiSnapshotBuilder devices_api_snapshot_builder_{};
     NetworkApiSnapshotStorage network_api_snapshot_{};
     ConfigApiSnapshotStorage config_api_snapshot_{};
+    mutable detail::SnapshotStorage<DevicesApiSnapshot> devices_api_snapshot_{};
+    detail::SnapshotStorage<MqttBridgeSnapshot> mqtt_bridge_snapshot_{};
+    detail::SnapshotStorage<MatterBridgeSnapshot> matter_bridge_snapshot_{};
     CorePublishInput core_publish_input_{};
     NetworkPublishInput network_publish_input_{};
     ConfigPublishInput config_publish_input_{};
-    mutable RuntimeLock devices_snapshot_lock_{};
-    mutable DevicesApiSnapshot devices_api_snapshot_{};
-    mutable bool devices_api_snapshot_ready_{false};
-    mutable RuntimeLock bridge_snapshot_lock_{};
-    MqttBridgeSnapshot mqtt_bridge_snapshot_{};
-    MatterBridgeSnapshot matter_bridge_snapshot_{};
-    bool mqtt_bridge_snapshot_ready_{false};
-    bool matter_bridge_snapshot_ready_{false};
 };
 
 }  // namespace service

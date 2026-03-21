@@ -71,7 +71,7 @@ int main() {
     state.devices[0].short_addr = 0x1234U;
     state.devices[0].online = true;
     state.devices[0].power_on = true;
-    service::DevicesRuntimeSnapshot runtime_snapshot{};
+    service::DeviceRuntimeSnapshot runtime_snapshot{};
     runtime_snapshot.join_window_open = true;
     runtime_snapshot.join_window_seconds_left = 17U;
     runtime_snapshot.reporting_state[0] = core::CoreReportingState::kReportingActive;
