@@ -148,7 +148,19 @@ zigbee-gateway/
 ├── sdkconfig.defaults.esp32c6
 ├── partitions.csv
 ├── README.md
-├── ARCHITECTURE.md
+├── docs/
+│   ├── architecture/
+│   │   ├── ARCHITECTURE.md
+│   │   ├── CODING_GUIDELINES.md
+│   │   ├── ARCH_COMPLIANCE_MATRIX.md
+│   │   └── ADR_EXCEPTIONS.md
+│   ├── process/
+│   │   └── TEAM_WORKFLOW.md
+│   ├── releases/
+│   │   └── OTA_RELEASE.md
+│   └── implementation/
+│       ├── OTA_Implementation.md
+│       └── RCP.md
 │
 ├── main/
 │   ├── CMakeLists.txt

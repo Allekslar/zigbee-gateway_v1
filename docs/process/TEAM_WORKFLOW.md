@@ -3,25 +3,25 @@
 
 # Team Workflow: Architecture-First Development
 
-This document describes how the team should work so code consistently follows `ARCHITECTURE.md` and `CODING_GUIDELINES.md` without recurring regressions.
+This document describes how the team should work so code consistently follows [`ARCHITECTURE.md`](../architecture/ARCHITECTURE.md) and [`CODING_GUIDELINES.md`](../architecture/CODING_GUIDELINES.md) without recurring regressions.
 
 ## 1. Source of Truth
 
-- Architecture and layer boundaries: `ARCHITECTURE.md`
-- Technical code rules: `CODING_GUIDELINES.md`
-- Machine-checkable invariants: `ARCH_COMPLIANCE_MATRIX.md`
-- Exceptions (temporary): `ADR_EXCEPTIONS.md`
+- Architecture and layer boundaries: [`ARCHITECTURE.md`](../architecture/ARCHITECTURE.md)
+- Technical code rules: [`CODING_GUIDELINES.md`](../architecture/CODING_GUIDELINES.md)
+- Machine-checkable invariants: [`ARCH_COMPLIANCE_MATRIX.md`](../architecture/ARCH_COMPLIANCE_MATRIX.md)
+- Exceptions (temporary): [`ADR_EXCEPTIONS.md`](../architecture/ADR_EXCEPTIONS.md)
 - Automatic invariant checks: `check_arch_invariants.sh`
 - CI pipeline: `.github/workflows/ci.yml`
 
-Rule: if prose documentation conflicts with a gate, first record consensus in `ARCH_COMPLIANCE_MATRIX.md`, then change code.
+Rule: if prose documentation conflicts with a gate, first record consensus in [`ARCH_COMPLIANCE_MATRIX.md`](../architecture/ARCH_COMPLIANCE_MATRIX.md), then change code.
 
 ## 2. Daily Development Cycle
 
-1. Start each task by mapping it to concrete Rule IDs from `ARCH_COMPLIANCE_MATRIX.md`.
+1. Start each task by mapping it to concrete Rule IDs from [`ARCH_COMPLIANCE_MATRIX.md`](../architecture/ARCH_COMPLIANCE_MATRIX.md).
 2. Commit in small units (1 topic = 1 commit).
 3. Run local gates before push (section 3).
-4. If a rule deviation is required, register an exception in `ADR_EXCEPTIONS.md` before merge.
+4. If a rule deviation is required, register an exception in [`ADR_EXCEPTIONS.md`](../architecture/ADR_EXCEPTIONS.md) before merge.
 5. After merge, remove/close temporary exceptions in a dedicated follow-up commit.
 
 ## 3. Local Commands (Required Before Push)
@@ -57,7 +57,7 @@ idf.py -C test/target -B build-target-tests build
 Diagnostics:
 
 1. Find the Rule ID in the log.
-2. Open its description in `ARCH_COMPLIANCE_MATRIX.md`.
+2. Open its description in [`ARCH_COMPLIANCE_MATRIX.md`](../architecture/ARCH_COMPLIANCE_MATRIX.md).
 3. Fix code in the indicated scope.
 4. Re-run the local gate.
 
@@ -110,7 +110,7 @@ Merge rule: all blocking jobs must be green.
 2. For each new runtime scenario, add a test (host or target).
 3. Do not accept manual agreements without automated checks.
 4. Review weekly:
-- active exceptions in `ADR_EXCEPTIONS.md`;
+- active exceptions in [`ADR_EXCEPTIONS.md`](../architecture/ADR_EXCEPTIONS.md);
 - flaky or slow tests;
 - invariants that fail often.
 

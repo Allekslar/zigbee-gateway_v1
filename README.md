@@ -44,12 +44,12 @@ scripts/run_gateway_matter_hil_smoke.sh
 
 ## Key Documents
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - architecture, layers, design invariants.
-- [CODING_GUIDELINES.md](CODING_GUIDELINES.md) - C/C++ implementation rules.
-- [ARCH_COMPLIANCE_MATRIX.md](ARCH_COMPLIANCE_MATRIX.md) - machine-checkable architecture rules.
-- [ADR_EXCEPTIONS.md](ADR_EXCEPTIONS.md) - temporary rule exceptions.
-- [TEAM_WORKFLOW.md](TEAM_WORKFLOW.md) - team process and Definition of Done.
-- [OTA_RELEASE.md](OTA_RELEASE.md) - OTA release packaging, promotion, key rotation, and operator checklist.
+- [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) - architecture, layers, design invariants.
+- [CODING_GUIDELINES.md](docs/architecture/CODING_GUIDELINES.md) - C/C++ implementation rules.
+- [ARCH_COMPLIANCE_MATRIX.md](docs/architecture/ARCH_COMPLIANCE_MATRIX.md) - machine-checkable architecture rules.
+- [ADR_EXCEPTIONS.md](docs/architecture/ADR_EXCEPTIONS.md) - temporary rule exceptions.
+- [TEAM_WORKFLOW.md](docs/process/TEAM_WORKFLOW.md) - team process and Definition of Done.
+- [OTA_RELEASE.md](docs/releases/OTA_RELEASE.md) - OTA release packaging, promotion, key rotation, and operator checklist.
 - [check_arch_invariants.sh](check_arch_invariants.sh) - local architecture gate.
 
 ## Repository Structure (Short)
@@ -236,7 +236,7 @@ Module notes: `components/matter_bridge/README.md`.
 
 ## Requirements
 
-- ESP-IDF `v5.5.x` (`ARCHITECTURE.md` pins `v5.5.2`);
+- ESP-IDF `v5.5.x` ([`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) pins `v5.5.2`);
 - target: `esp32c6`;
 - CMake `>=3.16`;
 - Python 3 and `idf.py`;

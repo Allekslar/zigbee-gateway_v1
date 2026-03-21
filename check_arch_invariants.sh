@@ -7,8 +7,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT_DIR}"
 
-MATRIX_FILE="${ARCH_MATRIX_FILE:-${ROOT_DIR}/ARCH_COMPLIANCE_MATRIX.md}"
-EXCEPTIONS_FILE="${ARCH_EXCEPTIONS_FILE:-${ROOT_DIR}/ADR_EXCEPTIONS.md}"
+MATRIX_FILE="${ARCH_MATRIX_FILE:-${ROOT_DIR}/docs/architecture/ARCH_COMPLIANCE_MATRIX.md}"
+EXCEPTIONS_FILE="${ARCH_EXCEPTIONS_FILE:-${ROOT_DIR}/docs/architecture/ADR_EXCEPTIONS.md}"
 BLOCKING_SEVERITIES="${ARCH_BLOCKING_SEVERITIES:-high,medium}"
 
 TMP_DIR="$(mktemp -d)"
@@ -165,9 +165,9 @@ run_checks() {
     print_banner "Running architecture invariants (blocking severities: ${BLOCKING_SEVERITIES})"
 
     check_present "INV-H000" "high" "${MATRIX_FILE}" "INV-H001" \
-        "ARCH_COMPLIANCE_MATRIX.md must exist and contain rule definitions"
+        "docs/architecture/ARCH_COMPLIANCE_MATRIX.md must exist and contain rule definitions"
     check_present "INV-H000" "high" "${EXCEPTIONS_FILE}" "ARCH_EXCEPTION" \
-        "ADR_EXCEPTIONS.md must exist and define exception format"
+        "docs/architecture/ADR_EXCEPTIONS.md must exist and define exception format"
 
     check_absent "INV-H001" "high" "components/core" \
         '#include[[:space:]]+[<"](esp_|freertos/|lwip/|nvs|driver/|soc/|hal/)' \

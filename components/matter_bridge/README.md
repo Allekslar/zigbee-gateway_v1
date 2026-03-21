@@ -36,6 +36,6 @@ If a specific Matter SDK integration requires RTTI/exceptions:
 
 1. Scope that requirement strictly to Matter submodule files.
 2. Document the exact rationale and file scope in this README.
-3. Add a time-bounded ADR exception entry in `ADR_EXCEPTIONS.md`.
+3. Add a time-bounded ADR exception entry in `docs/architecture/ADR_EXCEPTIONS.md`.
 
 No global project-wide relaxation is allowed for this requirement.
