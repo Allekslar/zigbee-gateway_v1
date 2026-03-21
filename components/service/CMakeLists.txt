@@ -19,6 +19,7 @@ idf_component_register(
         "ota_manager.cpp"
         "ota_manifest.cpp"
         "ota_bootstrap.cpp"
+        "ota_trust_store.cpp"
         "operation_result_store.cpp"
         "persistence_manager.cpp"
         "rcp_update_manager.cpp"
@@ -28,6 +29,9 @@ idf_component_register(
         "state_persistence_coordinator.cpp"
         "zigbee_lifecycle_coordinator.cpp"
         "hal_event_adapter.cpp"
+    EMBED_TXTFILES
+        "../app_hal/ota_release_manifest_pub.pem"
+        "../app_hal/ota_release_manifest_pub_next.pem"
     INCLUDE_DIRS "include"
     REQUIRES core app_hal common
 )

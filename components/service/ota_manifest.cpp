@@ -9,6 +9,7 @@
 #include <inttypes.h>
 
 #include "hal_ota.h"
+#include "ota_trust_store.hpp"
 
 namespace service {
 
@@ -236,19 +237,31 @@ OtaManifestValidationStatus validate_ota_manifest(
             return OtaManifestValidationStatus::kMissingSignature;
         }
 
-        char payload[kOtaManifestSigningPayloadMaxLen]{};
-        if (!build_ota_manifest_signing_payload(manifest, payload, sizeof(payload)) ||
-            !hal_ota_verify_manifest_signature(
-                payload,
-                std::strlen(payload),
-                manifest.signature_algo.data(),
-                manifest.signature_key_id.data(),
-                manifest.signature.data())) {
+        if (!verify_ota_manifest_signature(manifest)) {
             return OtaManifestValidationStatus::kInvalidSignature;
         }
     }
 
     return OtaManifestValidationStatus::kOk;
+}
+
+bool verify_ota_manifest_signature(const OtaManifest& manifest) noexcept {
+    const char* public_key_pem = find_ota_manifest_public_key_pem(manifest.signature_key_id.data());
+    if (public_key_pem == nullptr) {
+        return false;
+    }
+
+    char payload[kOtaManifestSigningPayloadMaxLen]{};
+    if (!build_ota_manifest_signing_payload(manifest, payload, sizeof(payload))) {
+        return false;
+    }
+
+    return hal_ota_verify_manifest_signature(
+        payload,
+        std::strlen(payload),
+        manifest.signature_algo.data(),
+        public_key_pem,
+        manifest.signature.data());
 }
 
 }  // namespace service

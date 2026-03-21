@@ -19,7 +19,7 @@ bool hal_ota_verify_manifest_signature(
     const char* payload,
     size_t payload_len,
     const char* signature_algo,
-    const char* signature_key_id,
+    const char* public_key_pem,
     const char* signature_hex);
 
 typedef enum {

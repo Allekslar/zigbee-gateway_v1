@@ -62,6 +62,7 @@ bool build_ota_manifest_signing_payload(
     const OtaManifest& manifest,
     char* out,
     std::size_t out_capacity) noexcept;
+bool verify_ota_manifest_signature(const OtaManifest& manifest) noexcept;
 OtaManifestValidationStatus validate_ota_manifest(
     const OtaManifest& manifest,
     const OtaManifestContext& context) noexcept;
