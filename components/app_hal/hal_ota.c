@@ -290,16 +290,14 @@ bool __attribute__((weak)) hal_ota_platform_verify_manifest_signature(
         return false;
     }
 
-    unsigned char public_key_pem[256] = {0};
-    if (pub_len + 1U > sizeof(public_key_pem)) {
+    unsigned char public_key_pem_buf[256] = {0};
+    if (pub_len + 1U > sizeof(public_key_pem_buf)) {
         ESP_LOGE(
             kOtaTag,
             "Manifest public key PEM too large len=%u",
             (unsigned int)pub_len);
         return false;
     }
-
-    unsigned char public_key_pem_buf[256] = {0};
     memcpy(public_key_pem_buf, public_key_pem, pub_len);
 
     unsigned char signature_bytes[96] = {0};
