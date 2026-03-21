@@ -8,10 +8,6 @@
 
 #include "service_public_types.hpp"
 
-namespace core {
-struct CoreEvent;
-}
-
 namespace mqtt_bridge {
 
 constexpr std::size_t kMqttPayloadMaxLen = 384U;
@@ -20,8 +16,6 @@ struct MqttMessage {
     const char* topic{nullptr};
     char payload[kMqttPayloadMaxLen]{};
 };
-
-MqttMessage serialize_event(const core::CoreEvent& event) noexcept;
 
 struct MqttSensorSnapshot {
     bool has_temperature{false};

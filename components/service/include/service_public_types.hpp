@@ -9,6 +9,7 @@
 namespace service {
 
 inline constexpr std::size_t kServiceMaxDevices = 64U;
+inline constexpr uint32_t kNoCorrelationId = 0U;
 inline constexpr uint16_t kUnknownShortAddr = 0xFFFFU;
 
 enum class DeviceReportingState : uint8_t {

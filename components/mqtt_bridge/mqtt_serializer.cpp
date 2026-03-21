@@ -5,8 +5,6 @@
 
 #include <cstdio>
 
-#include "core_events.hpp"
-
 namespace mqtt_bridge {
 namespace {
 
@@ -35,24 +33,6 @@ const char* contact_to_string(const service::DeviceContactState state) noexcept 
 }
 
 }  // namespace
-
-MqttMessage serialize_event(const core::CoreEvent& event) noexcept {
-    MqttMessage message{};
-    message.topic = "zigbee-gateway/state";
-
-    const int written = std::snprintf(
-        message.payload,
-        sizeof(message.payload),
-        "{\"event\":%u,\"short_addr\":%u,\"correlation_id\":%lu}",
-        static_cast<unsigned>(event.type),
-        static_cast<unsigned>(event.device_short_addr),
-        static_cast<unsigned long>(event.correlation_id));
-    if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(message.payload)) {
-        message.payload[0] = '\0';
-    }
-
-    return message;
-}
 
 bool serialize_sensor_payload(
     const MqttSensorSnapshot& snapshot,

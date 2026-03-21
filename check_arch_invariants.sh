@@ -535,6 +535,9 @@ run_checks() {
     check_absent "INV-M026" "medium" "components/service" \
         '#include[[:space:]]+"mqtt_client\.h"|esp_mqtt_client_' \
         "service layer must not use ESP-IDF MQTT client directly"
+    check_absent "INV-M026" "medium" "components/mqtt_bridge" \
+        '#include[[:space:]]+"core_[^"]+\.hpp"|core::' \
+        "MQTT bridge adapters must not depend on core headers or core symbols directly"
 
     check_present "INV-M027" "medium" "components/service/include/service_runtime_api.hpp" \
         'struct[[:space:]]+MqttStatusSnapshot' \

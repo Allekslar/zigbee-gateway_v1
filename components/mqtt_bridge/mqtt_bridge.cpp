@@ -120,7 +120,7 @@ bool MqttBridge::handle_command_message(const char* topic, const char* payload, 
 }
 
 bool MqttBridge::handle_config_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept {
-    if (runtime_ == nullptr || correlation_id == core::kNoCorrelationId) {
+    if (runtime_ == nullptr || correlation_id == service::kNoCorrelationId) {
         return false;
     }
 
@@ -134,7 +134,7 @@ bool MqttBridge::handle_config_command(const char* topic, const char* payload, u
 }
 
 bool MqttBridge::handle_power_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept {
-    if (runtime_ == nullptr || correlation_id == core::kNoCorrelationId) {
+    if (runtime_ == nullptr || correlation_id == service::kNoCorrelationId) {
         return false;
     }
 
@@ -370,7 +370,7 @@ bool MqttBridge::publish_homeassistant_discovery(
     bool published_any = false;
     for (std::size_t i = 0; i < snapshot.device_count && i < snapshot.devices.size(); ++i) {
         const service::MqttBridgeDeviceSnapshot& current = snapshot.devices[i];
-        if (current.short_addr == core::kUnknownDeviceShortAddr || !current.online) {
+        if (current.short_addr == service::kUnknownShortAddr || !current.online) {
             continue;
         }
 
@@ -413,7 +413,7 @@ bool MqttBridge::publish_homeassistant_discovery(
 
 uint32_t MqttBridge::next_command_correlation_id() noexcept {
     const uint32_t next = next_correlation_id_.fetch_add(1U, std::memory_order_relaxed);
-    if (next != core::kNoCorrelationId) {
+    if (next != service::kNoCorrelationId) {
         return next;
     }
     return next_correlation_id_.fetch_add(1U, std::memory_order_relaxed);
