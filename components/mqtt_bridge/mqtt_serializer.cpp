@@ -5,28 +5,30 @@
 
 #include <cstdio>
 
+#include "core_events.hpp"
+
 namespace mqtt_bridge {
 namespace {
 
-const char* occupancy_to_string(const core::CoreOccupancyState state) noexcept {
+const char* occupancy_to_string(const service::DeviceOccupancyState state) noexcept {
     switch (state) {
-        case core::CoreOccupancyState::kNotOccupied:
+        case service::DeviceOccupancyState::kNotOccupied:
             return "not_occupied";
-        case core::CoreOccupancyState::kOccupied:
+        case service::DeviceOccupancyState::kOccupied:
             return "occupied";
-        case core::CoreOccupancyState::kUnknown:
+        case service::DeviceOccupancyState::kUnknown:
         default:
             return "unknown";
     }
 }
 
-const char* contact_to_string(const core::CoreContactState state) noexcept {
+const char* contact_to_string(const service::DeviceContactState state) noexcept {
     switch (state) {
-        case core::CoreContactState::kClosed:
+        case service::DeviceContactState::kClosed:
             return "closed";
-        case core::CoreContactState::kOpen:
+        case service::DeviceContactState::kOpen:
             return "open";
-        case core::CoreContactState::kUnknown:
+        case service::DeviceContactState::kUnknown:
         default:
             return "unknown";
     }

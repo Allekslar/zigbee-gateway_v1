@@ -189,7 +189,7 @@ bool build_temperature_discovery(
 bool build_occupancy_discovery(
     const service::MqttBridgeDeviceSnapshot& device,
     HomeAssistantDiscoveryMessage* out) noexcept {
-    if (out == nullptr || device.occupancy_state == core::CoreOccupancyState::kUnknown) {
+    if (out == nullptr || device.occupancy_state == service::DeviceOccupancyState::kUnknown) {
         return false;
     }
 
@@ -238,7 +238,7 @@ bool build_occupancy_discovery(
 bool build_contact_discovery(
     const service::MqttBridgeDeviceSnapshot& device,
     HomeAssistantDiscoveryMessage* out) noexcept {
-    if (out == nullptr || device.contact_state == core::CoreContactState::kUnknown) {
+    if (out == nullptr || device.contact_state == service::DeviceContactState::kUnknown) {
         return false;
     }
 
@@ -339,7 +339,7 @@ std::size_t build_homeassistant_discovery_messages(
     const service::MqttBridgeDeviceSnapshot& device,
     HomeAssistantDiscoveryMessage* out,
     const std::size_t capacity) noexcept {
-    if (out == nullptr || capacity == 0U || device.short_addr == core::kUnknownDeviceShortAddr || !device.online) {
+    if (out == nullptr || capacity == 0U || device.short_addr == service::kUnknownShortAddr || !device.online) {
         return 0U;
     }
 
@@ -369,10 +369,10 @@ bool discovery_schema_changed(
     const service::MqttBridgeDeviceSnapshot& previous,
     const service::MqttBridgeDeviceSnapshot& current) noexcept {
     return previous.has_temperature != current.has_temperature ||
-           (previous.occupancy_state == core::CoreOccupancyState::kUnknown) !=
-               (current.occupancy_state == core::CoreOccupancyState::kUnknown) ||
-           (previous.contact_state == core::CoreContactState::kUnknown) !=
-               (current.contact_state == core::CoreContactState::kUnknown) ||
+           (previous.occupancy_state == service::DeviceOccupancyState::kUnknown) !=
+               (current.occupancy_state == service::DeviceOccupancyState::kUnknown) ||
+           (previous.contact_state == service::DeviceContactState::kUnknown) !=
+               (current.contact_state == service::DeviceContactState::kUnknown) ||
            previous.has_battery != current.has_battery;
 }
 

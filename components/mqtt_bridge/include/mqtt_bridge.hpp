@@ -14,7 +14,7 @@
 #include "service_runtime_api.hpp"
 
 namespace mqtt_bridge {
-constexpr std::size_t kMaxMqttPublicationsPerSync = core::kMaxDevices * 3U;
+constexpr std::size_t kMaxMqttPublicationsPerSync = service::kServiceMaxDevices * 3U;
 constexpr uint32_t kMqttPowerOverrideWindowMs = 15000U;
 
 class MqttBridgeTestAccess;
@@ -26,7 +26,7 @@ struct MqttPublishedMessage {
 };
 
 struct PendingPowerOverride {
-    uint16_t short_addr{core::kUnknownDeviceShortAddr};
+    uint16_t short_addr{service::kUnknownShortAddr};
     bool power_on{false};
     bool active{false};
     uint32_t expires_at_ms{0};
@@ -85,8 +85,8 @@ private:
     std::atomic<uint32_t> next_correlation_id_{1U};
     service::MqttBridgeSnapshot runtime_snapshot_cache_{};
     service::NetworkApiSnapshot::MqttStatusSnapshot runtime_status_cache_{};
-    service::MqttBridgeDeviceSnapshot cached_devices_[core::kMaxDevices]{};
-    service::MqttBridgeDeviceSnapshot sync_devices_scratch_[core::kMaxDevices]{};
+    service::MqttBridgeDeviceSnapshot cached_devices_[service::kServiceMaxDevices]{};
+    service::MqttBridgeDeviceSnapshot sync_devices_scratch_[service::kServiceMaxDevices]{};
     uint16_t cached_device_count_{0};
     bool cache_initialized_{false};
     MqttPublishedMessage pending_publications_[kMaxMqttPublicationsPerSync]{};
@@ -97,7 +97,7 @@ private:
     std::atomic<bool> command_topics_subscribed_{false};
     bool discovery_republish_requested_{true};
     HomeAssistantDiscoveryMessage discovery_messages_scratch_[kMaxDiscoveryMessagesPerDevice]{};
-    PendingPowerOverride power_overrides_[core::kMaxDevices]{};
+    PendingPowerOverride power_overrides_[service::kServiceMaxDevices]{};
     mutable service::RuntimeLock state_lock_{};
 #ifdef ESP_PLATFORM
     void* task_handle_{nullptr};

@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-#include "core_state.hpp"
+#include "service_public_types.hpp"
 
 namespace web_ui {
 
@@ -13,13 +13,13 @@ struct DeviceDto {
     uint16_t short_addr{0};
     bool online{false};
     bool power_on{false};
-    core::CoreReportingState reporting_state{core::CoreReportingState::kUnknown};
+    service::DeviceReportingState reporting_state{service::DeviceReportingState::kUnknown};
     uint32_t last_report_at_ms{0};
     bool stale{false};
     int16_t temperature_centi_c{0};
     bool has_temperature{false};
-    core::CoreOccupancyState occupancy_state{core::CoreOccupancyState::kUnknown};
-    core::CoreContactState contact_state{core::CoreContactState::kUnknown};
+    service::DeviceOccupancyState occupancy_state{service::DeviceOccupancyState::kUnknown};
+    service::DeviceContactState contact_state{service::DeviceContactState::kUnknown};
     bool contact_tamper{false};
     bool contact_battery_low{false};
     uint8_t battery_percent{0};

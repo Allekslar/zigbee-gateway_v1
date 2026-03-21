@@ -28,8 +28,8 @@ struct MatterAttributeUpdate {
     int32_t int_value{0};
 };
 
-constexpr std::size_t kMatterMaxEndpointMapEntries = core::kMaxDevices;
-constexpr std::size_t kMatterMaxUpdatesPerSync = core::kMaxDevices * 5U;
+constexpr std::size_t kMatterMaxEndpointMapEntries = service::kServiceMaxDevices;
+constexpr std::size_t kMatterMaxUpdatesPerSync = service::kServiceMaxDevices * 5U;
 
 class MatterBridge {
 public:
@@ -73,8 +73,8 @@ private:
     MatterEndpointMapEntry endpoint_map_[kMatterMaxEndpointMapEntries]{};
     std::size_t endpoint_map_size_{0};
     service::MatterBridgeSnapshot runtime_snapshot_cache_{};
-    DeviceShadow cached_devices_[core::kMaxDevices]{};
-    DeviceShadow sync_shadow_scratch_[core::kMaxDevices]{};
+    DeviceShadow cached_devices_[service::kServiceMaxDevices]{};
+    DeviceShadow sync_shadow_scratch_[service::kServiceMaxDevices]{};
     std::size_t pending_update_count_{0};
     MatterAttributeUpdate pending_updates_[kMatterMaxUpdatesPerSync]{};
     service::MatterRuntimeApi* runtime_{nullptr};

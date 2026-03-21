@@ -9,12 +9,10 @@
 
 #include "config_manager.hpp"
 #include "connectivity_manager.hpp"
-#include "core_events.hpp"
-#include "core_state.hpp"
-#include "device_manager.hpp"
 #include "matter_runtime_api.hpp"
 #include "network_manager.hpp"
 #include "ota_manifest.hpp"
+#include "service_public_types.hpp"
 
 namespace service {
 
@@ -25,7 +23,7 @@ enum class ZigbeeResult : uint8_t {
 };
 
 struct ZigbeeRawAttributeReport {
-    uint16_t short_addr{core::kUnknownDeviceShortAddr};
+    uint16_t short_addr{kUnknownShortAddr};
     uint8_t endpoint{0};
     uint16_t cluster_id{0};
     uint16_t attribute_id{0};
@@ -107,28 +105,6 @@ struct ConfigApiSnapshot {
 };
 
 using BootAutoconnectResult = ConnectivityAutoconnectResult;
-using DevicesRuntimeSnapshot = DeviceRuntimeSnapshot;
-
-enum class DeviceReportingState : uint8_t {
-    kUnknown = 0,
-    kInterviewCompleted = 1,
-    kBindingReady = 2,
-    kReportingConfigured = 3,
-    kReportingActive = 4,
-    kStale = 5,
-};
-
-enum class DeviceOccupancyState : uint8_t {
-    kUnknown = 0,
-    kNotOccupied = 1,
-    kOccupied = 2,
-};
-
-enum class DeviceContactState : uint8_t {
-    kUnknown = 0,
-    kClosed = 1,
-    kOpen = 2,
-};
 
 enum class NetworkOperationPollStatus : uint8_t {
     kNotReady = 0,
@@ -317,7 +293,7 @@ struct OtaResult {
 };
 
 struct DevicesApiDeviceSnapshot {
-    uint16_t short_addr{core::kUnknownDeviceShortAddr};
+    uint16_t short_addr{kUnknownShortAddr};
     bool online{false};
     bool power_on{false};
     DeviceReportingState reporting_state{DeviceReportingState::kUnknown};
@@ -346,17 +322,17 @@ struct DevicesApiSnapshot {
     uint16_t device_count{0};
     bool join_window_open{false};
     uint16_t join_window_seconds_left{0};
-    std::array<DevicesApiDeviceSnapshot, core::kMaxDevices> devices{};
+    std::array<DevicesApiDeviceSnapshot, kServiceMaxDevices> devices{};
 };
 
 struct MqttBridgeDeviceSnapshot {
-    uint16_t short_addr{core::kUnknownDeviceShortAddr};
+    uint16_t short_addr{kUnknownShortAddr};
     bool online{false};
     bool power_on{false};
     bool has_temperature{false};
     int16_t temperature_centi_c{0};
-    core::CoreOccupancyState occupancy_state{core::CoreOccupancyState::kUnknown};
-    core::CoreContactState contact_state{core::CoreContactState::kUnknown};
+    DeviceOccupancyState occupancy_state{DeviceOccupancyState::kUnknown};
+    DeviceContactState contact_state{DeviceContactState::kUnknown};
     bool contact_tamper{false};
     bool contact_battery_low{false};
     bool has_battery{false};
@@ -374,7 +350,7 @@ struct MqttBridgeDeviceSnapshot {
 struct MqttBridgeSnapshot {
     uint32_t revision{0};
     uint16_t device_count{0};
-    std::array<MqttBridgeDeviceSnapshot, core::kMaxDevices> devices{};
+    std::array<MqttBridgeDeviceSnapshot, kServiceMaxDevices> devices{};
 };
 
 class ServiceRuntimeApi : public MatterRuntimeApi {

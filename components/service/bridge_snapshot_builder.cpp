@@ -5,6 +5,34 @@
 
 namespace service {
 
+namespace {
+
+DeviceOccupancyState to_device_occupancy_state(core::CoreOccupancyState state) noexcept {
+    switch (state) {
+        case core::CoreOccupancyState::kNotOccupied:
+            return DeviceOccupancyState::kNotOccupied;
+        case core::CoreOccupancyState::kOccupied:
+            return DeviceOccupancyState::kOccupied;
+        case core::CoreOccupancyState::kUnknown:
+        default:
+            return DeviceOccupancyState::kUnknown;
+    }
+}
+
+DeviceContactState to_device_contact_state(core::CoreContactState state) noexcept {
+    switch (state) {
+        case core::CoreContactState::kClosed:
+            return DeviceContactState::kClosed;
+        case core::CoreContactState::kOpen:
+            return DeviceContactState::kOpen;
+        case core::CoreContactState::kUnknown:
+        default:
+            return DeviceContactState::kUnknown;
+    }
+}
+
+}  // namespace
+
 bool BridgeSnapshotBuilder::build_mqtt_snapshot(MqttBridgeSnapshot* out) const noexcept {
     if (out == nullptr || registry_ == nullptr) {
         return false;
@@ -18,7 +46,7 @@ bool BridgeSnapshotBuilder::build_mqtt_snapshot(MqttBridgeSnapshot* out) const n
     out->revision = snapshot.state->revision;
     out->device_count = 0U;
 
-    for (std::size_t i = 0; i < snapshot.state->devices.size() && out->device_count < core::kMaxDevices; ++i) {
+    for (std::size_t i = 0; i < snapshot.state->devices.size() && out->device_count < kServiceMaxDevices; ++i) {
         const core::CoreDeviceRecord& device = snapshot.state->devices[i];
         if (device.short_addr == core::kUnknownDeviceShortAddr || !device.online) {
             continue;
@@ -30,8 +58,8 @@ bool BridgeSnapshotBuilder::build_mqtt_snapshot(MqttBridgeSnapshot* out) const n
         mqtt_device.power_on = device.power_on;
         mqtt_device.has_temperature = device.has_temperature;
         mqtt_device.temperature_centi_c = device.temperature_centi_c;
-        mqtt_device.occupancy_state = device.occupancy_state;
-        mqtt_device.contact_state = device.contact_state;
+        mqtt_device.occupancy_state = to_device_occupancy_state(device.occupancy_state);
+        mqtt_device.contact_state = to_device_contact_state(device.contact_state);
         mqtt_device.contact_tamper = device.contact_tamper;
         mqtt_device.contact_battery_low = device.contact_battery_low;
         mqtt_device.has_battery = device.has_battery;
@@ -63,7 +91,7 @@ bool BridgeSnapshotBuilder::build_matter_snapshot(MatterBridgeSnapshot* out) con
     out->revision = snapshot.state->revision;
     out->device_count = 0U;
 
-    for (std::size_t i = 0; i < snapshot.state->devices.size() && out->device_count < core::kMaxDevices; ++i) {
+    for (std::size_t i = 0; i < snapshot.state->devices.size() && out->device_count < kServiceMaxDevices; ++i) {
         const core::CoreDeviceRecord& device = snapshot.state->devices[i];
         if (device.short_addr == core::kUnknownDeviceShortAddr || !device.online) {
             continue;

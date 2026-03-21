@@ -6,7 +6,7 @@
 #include <array>
 #include <cstdint>
 
-#include "core_state.hpp"
+#include "service_public_types.hpp"
 
 namespace service {
 
@@ -26,7 +26,7 @@ enum class MatterBridgeDeviceClass : uint8_t {
 };
 
 struct MatterBridgeDeviceSnapshot {
-    uint16_t short_addr{core::kUnknownDeviceShortAddr};
+    uint16_t short_addr{kUnknownShortAddr};
     bool online{false};
     bool stale{false};
     MatterBridgeDeviceClass primary_class{MatterBridgeDeviceClass::kUnknown};
@@ -41,7 +41,7 @@ struct MatterBridgeDeviceSnapshot {
 struct MatterBridgeSnapshot {
     uint32_t revision{0};
     uint16_t device_count{0};
-    std::array<MatterBridgeDeviceSnapshot, core::kMaxDevices> devices{};
+    std::array<MatterBridgeDeviceSnapshot, kServiceMaxDevices> devices{};
 };
 
 // Narrow Matter-facing runtime seam: Matter bridge must depend on this contract

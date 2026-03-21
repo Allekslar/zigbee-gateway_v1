@@ -25,6 +25,7 @@
 #include "read_model_coordinator.hpp"
 #include "reporting_manager.hpp"
 #include "scan_manager.hpp"
+#include "service_public_types.hpp"
 #include "state_persistence_coordinator.hpp"
 #include "runtime_lock.hpp"
 #include "service_runtime_api.hpp"
@@ -57,7 +58,7 @@ public:
     using NetworkRequest = service::NetworkRequest;
     using NetworkResult = service::NetworkResult;
 
-    using DevicesRuntimeSnapshot = service::DevicesRuntimeSnapshot;
+    using DevicesRuntimeSnapshot = service::DeviceRuntimeSnapshot;
     using DevicesApiSnapshot = service::DevicesApiSnapshot;
     using MqttBridgeDeviceSnapshot = service::MqttBridgeDeviceSnapshot;
     using MqttBridgeSnapshot = service::MqttBridgeSnapshot;

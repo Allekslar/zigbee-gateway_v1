@@ -4,7 +4,7 @@
 #include <cassert>
 #include <cstring>
 
-#include "core_state.hpp"
+#include "service_public_types.hpp"
 #include "web_dto.hpp"
 #include "web_handler_common.hpp"
 
@@ -58,12 +58,12 @@ int main() {
     assert(dto.short_addr == 0U);
     assert(!dto.online);
     assert(!dto.power_on);
-    assert(dto.reporting_state == core::CoreReportingState::kUnknown);
+    assert(dto.reporting_state == service::DeviceReportingState::kUnknown);
     assert(dto.last_report_at_ms == 0U);
     assert(!dto.stale);
     assert(!dto.has_temperature);
-    assert(dto.occupancy_state == core::CoreOccupancyState::kUnknown);
-    assert(dto.contact_state == core::CoreContactState::kUnknown);
+    assert(dto.occupancy_state == service::DeviceOccupancyState::kUnknown);
+    assert(dto.contact_state == service::DeviceContactState::kUnknown);
     assert(!dto.contact_tamper);
     assert(!dto.contact_battery_low);
     assert(!dto.has_battery);

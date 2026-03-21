@@ -26,7 +26,7 @@ constexpr TickType_t kMatterBridgeTaskPeriodTicks = pdMS_TO_TICKS(1000);
 #endif
 
 bool is_active_device(const service::MatterBridgeDeviceSnapshot& device) noexcept {
-    return device.short_addr != core::kUnknownDeviceShortAddr && device.online;
+    return device.short_addr != service::kUnknownShortAddr && device.online;
 }
 
 MatterDeviceClass infer_primary_class(const service::MatterBridgeDeviceSnapshot& device) noexcept {
@@ -171,7 +171,7 @@ service::CommandSubmitStatus MatterBridge::post_power_command(uint16_t short_add
                                                               bool desired_power_on,
                                                               uint32_t issued_at_ms,
                                                               uint32_t* correlation_id_out) noexcept {
-    if (runtime_ == nullptr || short_addr == core::kUnknownDeviceShortAddr) {
+    if (runtime_ == nullptr || short_addr == service::kUnknownShortAddr) {
         return service::CommandSubmitStatus::kInvalidArgument;
     }
 
@@ -213,7 +213,7 @@ std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& sna
 
     std::size_t next_count = 0;
 
-    for (std::size_t i = 0; i < snapshot.device_count && next_count < core::kMaxDevices; ++i) {
+    for (std::size_t i = 0; i < snapshot.device_count && next_count < service::kServiceMaxDevices; ++i) {
         const service::MatterBridgeDeviceSnapshot& device = snapshot.devices[i];
         if (!is_active_device(device)) {
             continue;
@@ -232,7 +232,7 @@ std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& sna
         next.contact_open = device.contact_open;
         next.status_endpoint = resolve_status_endpoint(endpoint_map_, endpoint_map_size_, device);
 
-        const DeviceShadow* prev = find_shadow(cached_devices_, core::kMaxDevices, next.short_addr);
+        const DeviceShadow* prev = find_shadow(cached_devices_, service::kServiceMaxDevices, next.short_addr);
         const bool is_new = (prev == nullptr);
 
         if (next.status_endpoint != 0U && (is_new || !prev->online)) {
@@ -295,7 +295,7 @@ std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& sna
         sync_shadow_scratch_[next_count++] = next;
     }
 
-    for (std::size_t i = 0; i < core::kMaxDevices; ++i) {
+    for (std::size_t i = 0; i < service::kServiceMaxDevices; ++i) {
         const DeviceShadow& prev = cached_devices_[i];
         if (!prev.in_use) {
             continue;
@@ -315,7 +315,7 @@ std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& sna
         enqueue(update);
     }
 
-    for (std::size_t i = 0; i < core::kMaxDevices; ++i) {
+    for (std::size_t i = 0; i < service::kServiceMaxDevices; ++i) {
         cached_devices_[i] = DeviceShadow{};
     }
     for (std::size_t i = 0; i < next_count; ++i) {
@@ -357,7 +357,7 @@ std::size_t MatterBridge::drain_attribute_updates(MatterAttributeUpdate* out, st
 
 void MatterBridge::reset_sync_state() noexcept {
     pending_update_count_ = 0U;
-    for (std::size_t i = 0; i < core::kMaxDevices; ++i) {
+    for (std::size_t i = 0; i < service::kServiceMaxDevices; ++i) {
         cached_devices_[i] = DeviceShadow{};
         sync_shadow_scratch_[i] = DeviceShadow{};
     }

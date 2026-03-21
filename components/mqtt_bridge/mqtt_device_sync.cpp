@@ -11,7 +11,7 @@ namespace mqtt_bridge {
 namespace {
 
 bool is_active_device(const service::MqttBridgeDeviceSnapshot& device) noexcept {
-    return device.short_addr != core::kUnknownDeviceShortAddr && device.online;
+    return device.short_addr != service::kUnknownShortAddr && device.online;
 }
 
 const service::MqttBridgeDeviceSnapshot* find_device_by_short(

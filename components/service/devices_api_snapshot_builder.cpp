@@ -3,6 +3,8 @@
 
 #include "devices_api_snapshot_builder.hpp"
 
+#include "core_state.hpp"
+
 namespace service {
 
 namespace {
@@ -53,7 +55,7 @@ DeviceContactState to_device_contact_state(core::CoreContactState state) noexcep
 
 bool DevicesApiSnapshotBuilder::build(
     const core::CoreState& state,
-    const DevicesRuntimeSnapshot& runtime_snapshot,
+    const DeviceRuntimeSnapshot& runtime_snapshot,
     DevicesApiSnapshot* out) const noexcept {
     if (out == nullptr) {
         return false;

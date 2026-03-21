@@ -6,8 +6,11 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "core_events.hpp"
-#include "core_state.hpp"
+#include "service_public_types.hpp"
+
+namespace core {
+struct CoreEvent;
+}
 
 namespace mqtt_bridge {
 
@@ -24,8 +27,8 @@ struct MqttSensorSnapshot {
     bool has_temperature{false};
     int16_t temperature_centi_c{0};
 
-    core::CoreOccupancyState occupancy{core::CoreOccupancyState::kUnknown};
-    core::CoreContactState contact_state{core::CoreContactState::kUnknown};
+    service::DeviceOccupancyState occupancy{service::DeviceOccupancyState::kUnknown};
+    service::DeviceContactState contact_state{service::DeviceContactState::kUnknown};
     bool contact_tamper{false};
     bool contact_battery_low{false};
 

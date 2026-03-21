@@ -12,8 +12,8 @@ int main() {
     device.online = true;
     device.power_on = true;
     device.has_temperature = true;
-    device.occupancy_state = core::CoreOccupancyState::kOccupied;
-    device.contact_state = core::CoreContactState::kClosed;
+    device.occupancy_state = service::DeviceOccupancyState::kOccupied;
+    device.contact_state = service::DeviceContactState::kClosed;
     device.has_battery = true;
 
     mqtt_bridge::HomeAssistantDiscoveryMessage messages[mqtt_bridge::kMaxDiscoveryMessagesPerDevice]{};

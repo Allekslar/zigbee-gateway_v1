@@ -3,8 +3,12 @@
 
 #pragma once
 
-#include "core_state.hpp"
+#include "device_manager.hpp"
 #include "service_runtime_api.hpp"
+
+namespace core {
+class CoreState;
+}
 
 namespace service {
 
@@ -12,7 +16,7 @@ class DevicesApiSnapshotBuilder {
 public:
     bool build(
         const core::CoreState& state,
-        const DevicesRuntimeSnapshot& runtime_snapshot,
+        const DeviceRuntimeSnapshot& runtime_snapshot,
         DevicesApiSnapshot* out) const noexcept;
 };
 
