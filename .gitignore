@@ -29,6 +29,7 @@ Makefile
 
 # Host test build outputs
 build-host/
+build_host_test/
 
 # ESP-IDF component manager (generated)
 managed_components/
