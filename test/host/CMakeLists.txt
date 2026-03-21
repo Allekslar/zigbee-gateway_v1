@@ -320,6 +320,7 @@ add_executable(test_mqtt_serializer
 )
 target_include_directories(test_mqtt_serializer PRIVATE
     ../../components/mqtt_bridge/include
+    ../../components/service/include
     ../../components/core/include
 )
 zg_apply_component_compile_policy(test_mqtt_serializer)

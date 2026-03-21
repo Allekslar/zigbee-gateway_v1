@@ -12,8 +12,8 @@ int main() {
     MqttSensorSnapshot full{};
     full.has_temperature = true;
     full.temperature_centi_c = 2150;
-    full.occupancy = core::CoreOccupancyState::kOccupied;
-    full.contact_state = core::CoreContactState::kOpen;
+    full.occupancy = service::DeviceOccupancyState::kOccupied;
+    full.contact_state = service::DeviceContactState::kOpen;
     full.contact_tamper = true;
     full.contact_battery_low = false;
     full.has_battery_percent = true;
@@ -47,8 +47,8 @@ int main() {
     assert(std::strstr(payload_a, "\"timestamp_ms\":4242") != nullptr);
 
     MqttSensorSnapshot partial{};
-    partial.occupancy = core::CoreOccupancyState::kNotOccupied;
-    partial.contact_state = core::CoreContactState::kClosed;
+    partial.occupancy = service::DeviceOccupancyState::kNotOccupied;
+    partial.contact_state = service::DeviceContactState::kClosed;
     partial.stale = true;
     partial.timestamp_ms = 99;
 
