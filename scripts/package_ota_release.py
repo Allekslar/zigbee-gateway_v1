@@ -32,6 +32,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--artifact-name", help="Override artifact filename inside the bundle")
     parser.add_argument("--manifest-name", default="ota-manifest.json", help="Manifest filename (default: ota-manifest.json)")
     parser.add_argument("--signing-key", type=Path, help="Optional PEM private key for signed manifests")
+    parser.add_argument(
+        "--signature-algo",
+        default="ecdsa-p256-sha256",
+        help="Manifest signature algorithm passed to generate_ota_manifest.py (default: ecdsa-p256-sha256)",
+    )
+    parser.add_argument(
+        "--signature-key-id",
+        default="ota-release-v1",
+        help="Manifest signature key id passed to generate_ota_manifest.py (default: ota-release-v1)",
+    )
     parser.add_argument("--allow-downgrade", action="store_true", help="Set allow_downgrade=true in generated manifest")
     parser.add_argument(
         "--verify-artifact-url",
@@ -107,6 +117,8 @@ def run_manifest_generator(
     output_path: Path,
     version: str | None,
     signing_key: Path | None,
+    signature_algo: str,
+    signature_key_id: str,
     allow_downgrade: bool,
 ) -> None:
     script_path = Path(__file__).resolve().parent / "generate_ota_manifest.py"
@@ -124,6 +136,8 @@ def run_manifest_generator(
         command.extend(["--version", version])
     if signing_key is not None:
         command.extend(["--signing-key", str(signing_key)])
+        command.extend(["--signature-algo", signature_algo])
+        command.extend(["--signature-key-id", signature_key_id])
     if allow_downgrade:
         command.append("--allow-downgrade")
     subprocess.run(command, check=True)
@@ -178,6 +192,8 @@ def main() -> int:
         manifest_path,
         args.version,
         args.signing_key,
+        args.signature_algo,
+        args.signature_key_id,
         args.allow_downgrade,
     )
 

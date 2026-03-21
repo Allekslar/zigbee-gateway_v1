@@ -223,6 +223,7 @@ python3 scripts/generate_ota_manifest.py \
   --chip-target esp32c6 \
   --min-schema 3 \
   --signing-key test/fixtures/ota_manifest_test_private.pem \
+  --signature-key-id ota-release-v1 \
   --output dist/ota/staging/ota-hil-b/ota-manifest.json
 ```
 

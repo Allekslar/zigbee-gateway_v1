@@ -49,6 +49,7 @@ scripts/run_gateway_matter_hil_smoke.sh
 - [ARCH_COMPLIANCE_MATRIX.md](ARCH_COMPLIANCE_MATRIX.md) - machine-checkable architecture rules.
 - [ADR_EXCEPTIONS.md](ADR_EXCEPTIONS.md) - temporary rule exceptions.
 - [TEAM_WORKFLOW.md](TEAM_WORKFLOW.md) - team process and Definition of Done.
+- [OTA_RELEASE.md](OTA_RELEASE.md) - OTA release packaging, promotion, key rotation, and operator checklist.
 - [check_arch_invariants.sh](check_arch_invariants.sh) - local architecture gate.
 
 ## Repository Structure (Short)
