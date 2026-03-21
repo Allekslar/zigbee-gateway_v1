@@ -8,7 +8,15 @@ on:
     branches:
       - main
       - master
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'test/hil/README.md'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'test/hil/README.md'
   schedule:
     # Nightly HIL run for target HAL tests.
     - cron: "30 2 * * *"

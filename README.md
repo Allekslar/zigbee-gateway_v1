@@ -16,7 +16,9 @@ Focus: stable layered architecture, business-logic isolation from HAL, host-side
 - provides a Web UI and HTTP API for control;
 - uses separated layers `core -> service -> app_hal`;
 - includes an active MQTT bridge transport/command/discovery path (Phase 2 completed);
-- includes a Matter bridge runtime path (Phase 3 completed).
+- includes a Matter bridge runtime path (Phase 3 completed);
+- includes production-grade gateway firmware OTA with signed manifests, staged packaging, and HIL validation;
+- keeps `RCP update` as a separate follow-up track, not mixed into gateway OTA.
 
 ## Current Scope And Roadmap
 
@@ -25,8 +27,19 @@ Focus: stable layered architecture, business-logic isolation from HAL, host-side
 | Phase 1 | Completed | Zigbee, HTTP, mDNS |
 | Phase 2 | Completed: MQTT transport, topics, commands, status path, Home Assistant discovery, and broker HIL smoke | MQTT |
 | Phase 3 | Completed: runtime contract, snapshot semantics, command/update loop, robustness gates, and Matter host/HIL smoke | Matter-over-Thread/Wi-Fi |
+| Phase 4 | Completed for gateway OTA: signed manifest flow, staging bundle packaging, promotion tooling, direct-URL and staged HIL sign-off | HTTPS OTA |
 
-## Phase 3 Closure Evidence
+## Current Status
+
+- Gateway firmware OTA is implemented and validated on real hardware.
+- Signed OTA manifests, trust anchors, key rotation scaffolding, packaging, and `staging -> production` promotion flow are in place.
+- OTA HIL coverage now includes:
+  - direct HTTPS firmware URL smoke
+  - signed staging manifest success path
+  - tampered-signature rejection path
+- `RCP update` is not part of the completed gateway OTA baseline and remains a separate implementation track documented in [RCP.md](docs/implementation/RCP.md).
+
+## Phase Closure Evidence
 
 ```bash
 # 1) Full blocking local gate (includes target HAL test firmware build)
@@ -40,6 +53,18 @@ GW_BASE_URL=http://192.168.178.171 \
 JOIN_SECONDS=30 \
 MATTER_LOOP_CYCLES=2 \
 scripts/run_gateway_matter_hil_smoke.sh
+
+# 4) Real-gateway OTA HIL smoke
+GATEWAY_BASE_URL=http://192.168.178.171 \
+OTA_URL=https://<ota-host>:8443/staging/<version>/zigbee_gateway.bin \
+EXPECTED_VERSION=<version> \
+scripts/run_gateway_ota_hil_smoke.sh
+
+# 5) Real-gateway OTA staging HIL sign-off
+GATEWAY_BASE_URL=http://192.168.178.171 \
+OTA_MANIFEST_PATH=dist/ota/staging/<version>/ota-manifest.json \
+LOG_PATH=gateway-ota-signoff.log \
+scripts/run_gateway_ota_staging_hil.sh
 ```
 
 ## Key Documents
@@ -50,11 +75,14 @@ scripts/run_gateway_matter_hil_smoke.sh
 - [ADR_EXCEPTIONS.md](docs/architecture/ADR_EXCEPTIONS.md) - temporary rule exceptions.
 - [TEAM_WORKFLOW.md](docs/process/TEAM_WORKFLOW.md) - team process and Definition of Done.
 - [OTA_RELEASE.md](docs/releases/OTA_RELEASE.md) - OTA release packaging, promotion, key rotation, and operator checklist.
+- [OTA_Implementation.md](docs/implementation/OTA_Implementation.md) - full staged gateway OTA implementation record.
+- [RCP.md](docs/implementation/RCP.md) - separate RCP update plan and open work.
 - [check_arch_invariants.sh](check_arch_invariants.sh) - local architecture gate.
 
 ## Repository Structure (Short)
 
 ```text
+docs/                 - architecture, process, release, and implementation docs
 main/                 - app_main and firmware entry point
 components/core/      - event bus, reducer, registry, commands
 components/service/   - use-case managers, orchestration
