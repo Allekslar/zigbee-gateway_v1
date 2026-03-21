@@ -161,6 +161,42 @@ check_freertos_include_order() {
     fi
 }
 
+check_no_cross_include() {
+    local rule_id="${1}"
+    local severity="${2}"
+    local consumer_dir="${3}"
+    local provider_include_dir="${4}"
+    local message="${5}"
+    local matches_file="${TMP_DIR}/${rule_id}_cross_$(printf '%s' "${consumer_dir}" | tr '/' '_').txt"
+    : > "${matches_file}"
+
+    local -a header_names=()
+    while IFS= read -r header; do
+        header_names+=("$(basename "${header}")")
+    done < <(find "${provider_include_dir}" -maxdepth 1 -type f \( -name '*.h' -o -name '*.hpp' \) 2>/dev/null)
+
+    if [[ ${#header_names[@]} -eq 0 ]]; then
+        return
+    fi
+
+    local pattern=""
+    for h in "${header_names[@]}"; do
+        local escaped
+        escaped="$(printf '%s' "${h}" | sed 's/\./\\./g')"
+        if [[ -n "${pattern}" ]]; then
+            pattern="${pattern}|${escaped}"
+        else
+            pattern="${escaped}"
+        fi
+    done
+
+    grep -E -r -n -- "#include[[:space:]]+\"(${pattern})\"" "${consumer_dir}" > "${matches_file}" 2>/dev/null || true
+
+    if [[ -s "${matches_file}" ]]; then
+        report_violation "${rule_id}" "${severity}" "${consumer_dir}" "${message}" "${matches_file}"
+    fi
+}
+
 run_checks() {
     print_banner "Running architecture invariants (blocking severities: ${BLOCKING_SEVERITIES})"
 
@@ -616,6 +652,26 @@ run_checks() {
     check_present "INV-M009" "medium" ".github/workflows/ci.yml" \
         'test_service_reporting_manager' \
         "reporting-regression must run dedicated reporting lifecycle tests"
+
+    check_no_cross_include "INV-M041" "medium" "components/app_hal" "components/service/include" \
+        "app_hal must not depend on service layer headers (upward dependency violation)"
+
+    check_no_cross_include "INV-M042" "medium" "components/core" "components/service/include" \
+        "core must not depend on service layer headers (upward dependency violation)"
+
+    check_absent "INV-M043" "medium" "components/core" \
+        '#include[[:space:]]+"hal_[^"]+\.h"' \
+        "core must not depend on HAL layer headers (upward dependency violation)"
+
+    local m044_file="${TMP_DIR}/INV-M044.txt"
+    grep -E -r -n --include='*.cpp' --include='*.hpp' --include='*.h' --include='*.c' \
+        -- '#include[[:space:]]+"core_[^"]+\.hpp"|core::' \
+        "components/matter_bridge" > "${m044_file}" 2>/dev/null || true
+    if [[ -s "${m044_file}" ]]; then
+        report_violation "INV-M044" "medium" "components/matter_bridge" \
+            "Matter bridge must not depend on core headers or core symbols directly" \
+            "${m044_file}"
+    fi
 
     check_present "INV-L001" "low" "components/common/include/log_tags.h" \
         'LOG_TAG_SERVICE_RUNTIME' \
