@@ -529,6 +529,9 @@ run_checks() {
     check_present "INV-M026" "medium" "components/app_hal/hal_mqtt.c" \
         '#include[[:space:]]+"mqtt_client\.h"|esp_mqtt_client_' \
         "HAL MQTT adapter must own ESP-IDF MQTT client integration"
+    check_absent "INV-M026" "medium" "components/app_hal/hal_mqtt.c" \
+        'CONFIG_ZGW_MQTT_KEEPALIVE_SEC|CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS|CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS' \
+        "HAL MQTT adapter must receive transport tunables from caller config, not own Kconfig policy"
     check_absent "INV-M026" "medium" "components/mqtt_bridge" \
         '#include[[:space:]]+"mqtt_client\.h"|esp_mqtt_client_' \
         "MQTT bridge must not use ESP-IDF MQTT client directly"
@@ -538,6 +541,15 @@ run_checks() {
     check_absent "INV-M026" "medium" "components/mqtt_bridge" \
         '#include[[:space:]]+"core_[^"]+\.hpp"|core::' \
         "MQTT bridge adapters must not depend on core headers or core symbols directly"
+    check_present "INV-M026" "medium" "components/mqtt_bridge/mqtt_bridge.cpp" \
+        'hal_mqtt_config_t[[:space:]]+transport_config|hal_mqtt_init[[:space:]]*\(&transport_config\)' \
+        "MQTT bridge must assemble transport policy and pass it into HAL"
+    check_absent "INV-M026" "medium" "components/app_hal/hal_ota.c" \
+        'CONFIG_ZGW_OTA_TLS_TRUST_|CONFIG_ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING' \
+        "HAL OTA adapter must not own OTA trust or HTTP policy directly"
+    check_present "INV-M026" "medium" "components/service/ota_transport_policy.cpp" \
+        'CONFIG_ZGW_OTA_TLS_TRUST_|CONFIG_ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING' \
+        "service-owned OTA transport policy must resolve trust and HTTP settings before calling HAL"
 
     check_present "INV-M027" "medium" "components/service/include/service_runtime_api.hpp" \
         'struct[[:space:]]+MqttStatusSnapshot' \

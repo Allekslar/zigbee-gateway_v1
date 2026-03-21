@@ -19,6 +19,7 @@ idf_component_register(
         "ota_manager.cpp"
         "ota_manifest.cpp"
         "ota_bootstrap.cpp"
+        "ota_transport_policy.cpp"
         "ota_trust_store.cpp"
         "operation_result_store.cpp"
         "persistence_manager.cpp"

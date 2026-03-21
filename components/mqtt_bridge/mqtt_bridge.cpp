@@ -12,6 +12,7 @@
 
 #ifdef ESP_PLATFORM
 #include "hal_mqtt.h"
+#include "sdkconfig.h"
 #endif
 #include "application_command_mapper.hpp"
 #include "log_tags.h"
@@ -29,6 +30,23 @@ namespace {
 
 #ifdef ESP_PLATFORM
 constexpr const char* kTag = LOG_TAG_MQTT_BRIDGE;
+hal_mqtt_config_t build_transport_config() noexcept {
+    hal_mqtt_config_t config{};
+    config.broker_uri = CONFIG_ZGW_MQTT_BROKER_URI;
+    config.client_id = CONFIG_ZGW_MQTT_CLIENT_ID;
+#if defined(CONFIG_ZGW_MQTT_USERNAME)
+    config.username = CONFIG_ZGW_MQTT_USERNAME;
+#endif
+#if defined(CONFIG_ZGW_MQTT_PASSWORD)
+    config.password = CONFIG_ZGW_MQTT_PASSWORD;
+#endif
+    config.keepalive_sec = CONFIG_ZGW_MQTT_KEEPALIVE_SEC;
+    config.network_timeout_ms = CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS;
+    config.reconnect_timeout_ms = CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS;
+    config.auto_reconnect = true;
+    return config;
+}
+
 constexpr const char* kMqttBridgeTaskName = "mqtt_bridge";
 constexpr uint32_t kMqttBridgeTaskStackSize = 6144U;
 constexpr UBaseType_t kMqttBridgeTaskPriority = 4U;
@@ -506,22 +524,13 @@ bool MqttBridge::ensure_task_started() noexcept {
 }
 
 bool MqttBridge::start_transport() noexcept {
-    char broker_summary[service::NetworkApiSnapshot::MqttStatusSnapshot::kBrokerEndpointSummaryMaxLen]{};
-    if (hal_mqtt_get_broker_endpoint_summary(broker_summary, sizeof(broker_summary)) == HAL_MQTT_STATUS_OK) {
-        std::memcpy(
-            runtime_status_cache_.broker_endpoint_summary.data(),
-            broker_summary,
-            sizeof(broker_summary));
-    } else {
-        runtime_status_cache_.broker_endpoint_summary[0] = '\0';
-    }
-
     hal_mqtt_callbacks_t callbacks{};
     callbacks.on_connected = &MqttBridge::on_transport_connected;
     callbacks.on_disconnected = &MqttBridge::on_transport_disconnected;
     callbacks.on_message = &MqttBridge::on_transport_message;
 
-    const hal_mqtt_status_t init_status = hal_mqtt_init();
+    const hal_mqtt_config_t transport_config = build_transport_config();
+    const hal_mqtt_status_t init_status = hal_mqtt_init(&transport_config);
     if (init_status == HAL_MQTT_STATUS_DISABLED) {
         ESP_LOGW(kTag, "MQTT transport disabled in Kconfig; bridge will run without broker transport");
         set_runtime_status(false, false, MqttConnectionError::kDisabled);
@@ -532,6 +541,16 @@ bool MqttBridge::start_transport() noexcept {
         ESP_LOGW(kTag, "MQTT transport init failed status=%d", static_cast<int>(init_status));
         handle_transport_error(MqttConnectionError::kInitFailed);
         return false;
+    }
+
+    char broker_summary[service::NetworkApiSnapshot::MqttStatusSnapshot::kBrokerEndpointSummaryMaxLen]{};
+    if (hal_mqtt_get_broker_endpoint_summary(broker_summary, sizeof(broker_summary)) == HAL_MQTT_STATUS_OK) {
+        std::memcpy(
+            runtime_status_cache_.broker_endpoint_summary.data(),
+            broker_summary,
+            sizeof(broker_summary));
+    } else {
+        runtime_status_cache_.broker_endpoint_summary[0] = '\0';
     }
 
     if (hal_mqtt_register_callbacks(&callbacks, this) != HAL_MQTT_STATUS_OK) {

@@ -40,6 +40,7 @@ set(SERVICE_SOURCES
     ../../components/service/ota_manager.cpp
     ../../components/service/ota_manifest.cpp
     ../../components/service/ota_bootstrap.cpp
+    ../../components/service/ota_transport_policy.cpp
     ../../components/service/ota_trust_store.cpp
     ../../components/service/persistence_manager.cpp
     ../../components/service/read_model_coordinator.cpp

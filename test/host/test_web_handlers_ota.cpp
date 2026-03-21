@@ -107,6 +107,8 @@ extern "C" int hal_ota_platform_perform_https_update(
     assert(out_result != nullptr);
     assert(request->expected_project_name != nullptr);
     assert(std::strcmp(request->expected_project_name, common::kProjectName) == 0);
+    assert(request->timeout_ms == 15000U);
+    assert(!request->allow_plain_http);
     std::memset(out_result, 0, sizeof(*out_result));
     out_result->status = HAL_OTA_HTTPS_STATUS_OK;
     out_result->reboot_required = true;

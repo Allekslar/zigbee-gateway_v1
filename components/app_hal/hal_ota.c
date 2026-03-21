@@ -17,22 +17,16 @@
 #include "esp_ota_ops.h"
 #include "esp_system.h"
 #include "esp_tls_errors.h"
+#include "esp_crt_bundle.h"
 #include "mbedtls/ecdsa.h"
 #include "mbedtls/md.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/sha256.h"
-#if CONFIG_ZGW_OTA_TLS_TRUST_CERT_BUNDLE
-#include "esp_crt_bundle.h"
-#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #endif
 
 #ifdef ESP_PLATFORM
-#if CONFIG_ZGW_OTA_TLS_TRUST_PINNED_CA
-extern const char ota_server_root_ca_pem_start[] asm("_binary_ota_server_root_ca_pem_start");
-extern const char ota_server_root_ca_pem_end[] asm("_binary_ota_server_root_ca_pem_end");
-#endif
 static const char* kOtaTag = "hal_ota";
 static const char* kManifestSignatureAlgo = "ecdsa-p256-sha256";
 #endif
@@ -118,25 +112,27 @@ static bool url_has_prefix(const char* url, const char* prefix) {
     return strncmp(url, prefix, prefix_len) == 0;
 }
 
-static bool configure_tls_trust(esp_http_client_config_t* http_config) {
-    if (http_config == NULL) {
+static bool configure_tls_trust(
+    const hal_ota_https_request_t* request,
+    esp_http_client_config_t* http_config) {
+    if (request == NULL || http_config == NULL) {
         return false;
     }
 
-#if CONFIG_ZGW_OTA_TLS_TRUST_CERT_BUNDLE
-    http_config->crt_bundle_attach = esp_crt_bundle_attach;
-    return true;
-#elif CONFIG_ZGW_OTA_TLS_TRUST_PINNED_CA
-    const size_t cert_len = (size_t)(ota_server_root_ca_pem_end - ota_server_root_ca_pem_start);
-    if (cert_len <= 1U || strstr(ota_server_root_ca_pem_start, "BEGIN CERTIFICATE") == NULL) {
-        return false;
+    switch (request->tls_trust_mode) {
+        case HAL_OTA_TLS_TRUST_CERT_BUNDLE:
+            http_config->crt_bundle_attach = esp_crt_bundle_attach;
+            return true;
+        case HAL_OTA_TLS_TRUST_PINNED_CA:
+            if (request->trusted_root_ca_pem == NULL || strstr(request->trusted_root_ca_pem, "BEGIN CERTIFICATE") == NULL) {
+                return false;
+            }
+            http_config->cert_pem = request->trusted_root_ca_pem;
+            return true;
+        case HAL_OTA_TLS_TRUST_NONE:
+        default:
+            return false;
     }
-
-    http_config->cert_pem = ota_server_root_ca_pem_start;
-    return true;
-#else
-    return false;
-#endif
 }
 
 static uint32_t heap_largest_block_8bit(void) {
@@ -390,16 +386,16 @@ int __attribute__((weak)) hal_ota_platform_perform_https_update(
     }
 
     if (!url_has_prefix(request->url, "https://")) {
-#if !(defined(CONFIG_ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING) && CONFIG_ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING)
+        if (!request->allow_plain_http) {
         out_result->status = HAL_OTA_HTTPS_STATUS_INVALID_ARGUMENT;
         return -1;
-#endif
+        }
     }
 
     ota_http_diag_t http_diag = {0};
     esp_http_client_config_t http_config = {
         .url = request->url,
-        .timeout_ms = 15000,
+        .timeout_ms = (int)request->timeout_ms,
         .buffer_size = 1024,
         .buffer_size_tx = 1024,
         .event_handler = ota_http_event_handler,
@@ -411,7 +407,7 @@ int __attribute__((weak)) hal_ota_platform_perform_https_update(
     http_config.tls_dyn_buf_strategy = HTTP_TLS_DYN_BUF_RX_STATIC;
 #endif
 
-    if (url_has_prefix(request->url, "https://") && !configure_tls_trust(&http_config)) {
+    if (url_has_prefix(request->url, "https://") && !configure_tls_trust(request, &http_config)) {
         out_result->status = HAL_OTA_HTTPS_STATUS_INVALID_ARGUMENT;
         return -1;
     }

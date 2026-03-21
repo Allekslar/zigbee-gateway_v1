@@ -16,6 +16,8 @@ hal_ota_https_status_t g_next_status = HAL_OTA_HTTPS_STATUS_OK;
 char g_last_url[service::kOtaManifestUrlMaxLen]{};
 char g_last_expected_version[service::kOtaManifestVersionMaxLen]{};
 char g_last_expected_project[service::kOtaManifestProjectMaxLen]{};
+uint32_t g_last_timeout_ms = 0U;
+bool g_last_allow_plain_http = false;
 
 extern "C" int hal_ota_platform_perform_https_update(
     const hal_ota_https_request_t* request,
@@ -35,6 +37,8 @@ extern "C" int hal_ota_platform_perform_https_update(
     if (request->expected_project_name != nullptr) {
         std::strncpy(g_last_expected_project, request->expected_project_name, sizeof(g_last_expected_project) - 1U);
     }
+    g_last_timeout_ms = request->timeout_ms;
+    g_last_allow_plain_http = request->allow_plain_http;
 
     std::memset(out_result, 0, sizeof(*out_result));
     out_result->status = g_next_status;
@@ -92,6 +96,8 @@ int main() {
     assert(std::strcmp(g_last_url, first_request.manifest.url.data()) == 0);
     assert(std::strcmp(g_last_expected_version, "2.0.1") == 0);
     assert(std::strcmp(g_last_expected_project, common::kProjectName) == 0);
+    assert(g_last_timeout_ms == 15000U);
+    assert(!g_last_allow_plain_http);
     assert(runtime.get_ota_poll_status(first_request.request_id) == service::OtaPollStatus::kReady);
 
     assert(runtime.build_ota_api_snapshot(&snapshot));

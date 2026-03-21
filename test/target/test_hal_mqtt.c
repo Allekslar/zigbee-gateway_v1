@@ -42,6 +42,16 @@ static void on_message(
 
 void test_hal_mqtt_contract(void) {
     hal_mqtt_capture_t capture = {0};
+    const hal_mqtt_config_t config = {
+        .broker_uri = "mqtt://broker.local:1883",
+        .client_id = "zigbee-gateway-test",
+        .username = "",
+        .password = "",
+        .keepalive_sec = 120U,
+        .network_timeout_ms = 30000U,
+        .reconnect_timeout_ms = 45000U,
+        .auto_reconnect = true,
+    };
     const hal_mqtt_callbacks_t callbacks = {
         .on_connected = on_connected,
         .on_disconnected = on_disconnected,
@@ -50,7 +60,7 @@ void test_hal_mqtt_contract(void) {
 
     TEST_ASSERT_EQUAL_INT(HAL_MQTT_STATUS_INVALID_ARG, hal_mqtt_register_callbacks(NULL, NULL));
 
-    const hal_mqtt_status_t init_status = hal_mqtt_init();
+    const hal_mqtt_status_t init_status = hal_mqtt_init(&config);
     TEST_ASSERT_TRUE(init_status == HAL_MQTT_STATUS_OK || init_status == HAL_MQTT_STATUS_DISABLED);
 
     TEST_ASSERT_EQUAL_INT(HAL_MQTT_STATUS_OK, hal_mqtt_register_callbacks(&callbacks, &capture));

@@ -10,6 +10,7 @@
 #include "hal_nvs.h"
 #include "hal_ota.h"
 #include "log_tags.h"
+#include "ota_transport_policy.hpp"
 #include "service_runtime.hpp"
 #include "version.hpp"
 
@@ -437,10 +438,18 @@ bool OtaManager::process_request(ServiceRuntime& runtime, const OtaStartRequest&
     runtime.note_ota_poll_status(request.request_id, OtaPollStatus::kDownloading);
 
     hal_ota_https_request_t hal_request{};
-    hal_request.url = request.manifest.url.data();
-    hal_request.expected_version = request.manifest.version[0] != '\0' ? request.manifest.version.data() : nullptr;
-    hal_request.expected_project_name =
-        request.manifest.project[0] != '\0' ? request.manifest.project.data() : nullptr;
+    if (!build_ota_transport_request(request, &hal_request)) {
+        OtaResult result{};
+        result.request_id = request.request_id;
+        result.status = OtaOperationStatus::kInvalidArgument;
+        publish_status_finished(result);
+        busy_.store(false, std::memory_order_release);
+        active_request_id_.store(0U, std::memory_order_release);
+        const bool queued = runtime.queue_ota_result(result);
+        persist_ota_debug_breadcrumb(request.request_id, queued ? "result_queued" : "result_drop");
+        OTA_LOGW("OTA worker rejected invalid transport request_id=%" PRIu32, request.request_id);
+        return false;
+    }
 
     hal_ota_https_result_t hal_result{};
     ProgressContext progress_context{};

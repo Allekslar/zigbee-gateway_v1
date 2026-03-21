@@ -31,10 +31,20 @@ typedef enum {
     HAL_OTA_HTTPS_STATUS_INTERNAL_ERROR = 5,
 } hal_ota_https_status_t;
 
+typedef enum {
+    HAL_OTA_TLS_TRUST_NONE = 0,
+    HAL_OTA_TLS_TRUST_CERT_BUNDLE = 1,
+    HAL_OTA_TLS_TRUST_PINNED_CA = 2,
+} hal_ota_tls_trust_mode_t;
+
 typedef struct {
     const char* url;
     const char* expected_version;
     const char* expected_project_name;
+    uint32_t timeout_ms;
+    bool allow_plain_http;
+    hal_ota_tls_trust_mode_t tls_trust_mode;
+    const char* trusted_root_ca_pem;
 } hal_ota_https_request_t;
 
 typedef void (*hal_ota_progress_cb_t)(

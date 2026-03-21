@@ -34,7 +34,18 @@ typedef struct {
     hal_mqtt_on_message_fn on_message;
 } hal_mqtt_callbacks_t;
 
-hal_mqtt_status_t hal_mqtt_init(void);
+typedef struct {
+    const char* broker_uri;
+    const char* client_id;
+    const char* username;
+    const char* password;
+    uint16_t keepalive_sec;
+    uint32_t network_timeout_ms;
+    uint32_t reconnect_timeout_ms;
+    bool auto_reconnect;
+} hal_mqtt_config_t;
+
+hal_mqtt_status_t hal_mqtt_init(const hal_mqtt_config_t* config);
 hal_mqtt_status_t hal_mqtt_register_callbacks(const hal_mqtt_callbacks_t* callbacks, void* context);
 hal_mqtt_status_t hal_mqtt_start(void);
 hal_mqtt_status_t hal_mqtt_stop(void);
