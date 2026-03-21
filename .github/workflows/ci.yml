@@ -51,6 +51,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set target
+        run: . /opt/esp/idf/export.sh && idf.py set-target esp32c6
+
       - name: Build firmware
         run: . /opt/esp/idf/export.sh && idf.py build
 
