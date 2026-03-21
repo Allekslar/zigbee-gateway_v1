@@ -41,6 +41,8 @@ typedef struct {
     char discovered_version[32];
 } hal_rcp_https_result_t;
 
+bool hal_rcp_backend_available(void);
+bool hal_rcp_get_backend_name(char* out, size_t out_len);
 bool hal_rcp_get_running_version(char* out, size_t out_len);
 int hal_rcp_prepare_for_update(void);
 int hal_rcp_update_begin(void);

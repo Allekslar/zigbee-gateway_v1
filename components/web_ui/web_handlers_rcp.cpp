@@ -65,6 +65,8 @@ const char* rcp_status_token(service::RcpUpdateOperationStatus status) noexcept 
             return "probe_failed";
         case service::RcpUpdateOperationStatus::kRecoveryFailed:
             return "recovery_failed";
+        case service::RcpUpdateOperationStatus::kUnsupportedBackend:
+            return "unsupported_backend";
         case service::RcpUpdateOperationStatus::kInternalError:
         default:
             return "internal_error";
@@ -97,6 +99,8 @@ const char* rcp_submit_error_message(service::RcpUpdateSubmitStatus status) noex
             return "transport_mismatch";
         case service::RcpUpdateSubmitStatus::kGatewayVersionMismatch:
             return "gateway_version_mismatch";
+        case service::RcpUpdateSubmitStatus::kUnsupportedBackend:
+            return "unsupported_backend";
         case service::RcpUpdateSubmitStatus::kInvalidRequest:
         case service::RcpUpdateSubmitStatus::kAccepted:
         default:
@@ -113,6 +117,8 @@ const char* rcp_submit_http_status(service::RcpUpdateSubmitStatus status) noexce
         case service::RcpUpdateSubmitStatus::kTransportMismatch:
         case service::RcpUpdateSubmitStatus::kGatewayVersionMismatch:
             return "409 Conflict";
+        case service::RcpUpdateSubmitStatus::kUnsupportedBackend:
+            return "503 Service Unavailable";
         case service::RcpUpdateSubmitStatus::kInvalidRequest:
         case service::RcpUpdateSubmitStatus::kAccepted:
         default:
@@ -190,19 +196,24 @@ esp_err_t rcp_get_handler(httpd_req_t* req) {
 
     char current_version[service::RcpUpdateApiSnapshot::kVersionMaxLen * 2U]{};
     char target_version[service::RcpUpdateApiSnapshot::kVersionMaxLen * 2U]{};
+    char backend_name[service::RcpUpdateApiSnapshot::kBackendNameMaxLen * 2U]{};
     if (!escape_json_string(snapshot.current_version.data(), current_version, sizeof(current_version)) ||
-        !escape_json_string(snapshot.target_version.data(), target_version, sizeof(target_version))) {
+        !escape_json_string(snapshot.target_version.data(), target_version, sizeof(target_version)) ||
+        !escape_json_string(snapshot.backend_name.data(), backend_name, sizeof(backend_name))) {
         return ESP_FAIL;
     }
 
-    char response[384]{};
+    char response[512]{};
     const int written = std::snprintf(
         response,
         sizeof(response),
-        "{\"active_request_id\":%" PRIu32 ",\"busy\":%s,\"stage\":\"%s\",\"last_error\":\"%s\","
-        "\"written_bytes\":%" PRIu32 ",\"current_version\":\"%s\",\"target_version\":\"%s\"}",
+        "{\"active_request_id\":%" PRIu32 ",\"busy\":%s,\"backend_available\":%s,\"backend_name\":\"%s\","
+        "\"stage\":\"%s\",\"last_error\":\"%s\",\"written_bytes\":%" PRIu32 ",\"current_version\":\"%s\","
+        "\"target_version\":\"%s\"}",
         snapshot.active_request_id,
         snapshot.busy ? "true" : "false",
+        snapshot.backend_available ? "true" : "false",
+        backend_name,
         rcp_stage_token(snapshot.stage),
         rcp_status_token(snapshot.last_error),
         snapshot.written_bytes,

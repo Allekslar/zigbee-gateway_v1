@@ -175,6 +175,18 @@ RcpUpdateOperationStatus map_hal_status(hal_rcp_https_status_t status) noexcept 
     }
 }
 
+void fill_backend_snapshot_fields(RcpUpdateApiSnapshot* snapshot) noexcept {
+    if (snapshot == nullptr) {
+        return;
+    }
+
+    snapshot->backend_available = hal_rcp_backend_available();
+    snapshot->backend_name.fill('\0');
+    if (!hal_rcp_get_backend_name(snapshot->backend_name.data(), snapshot->backend_name.size())) {
+        copy_chars(snapshot->backend_available ? "available" : "unconfigured", snapshot->backend_name);
+    }
+}
+
 }  // namespace
 
 RcpUpdateSubmitStatus RcpUpdateManager::enqueue_request(ServiceRuntime& runtime, const RcpUpdateRequest& request) noexcept {
@@ -185,6 +197,9 @@ RcpUpdateSubmitStatus RcpUpdateManager::enqueue_request(ServiceRuntime& runtime,
     const RcpUpdateSubmitStatus validation_status = validate_request(request);
     if (validation_status != RcpUpdateSubmitStatus::kAccepted) {
         return validation_status;
+    }
+    if (!hal_rcp_backend_available()) {
+        return RcpUpdateSubmitStatus::kUnsupportedBackend;
     }
 
     RuntimeLockGuard guard(queue_lock_);
@@ -207,6 +222,7 @@ bool RcpUpdateManager::build_api_snapshot(RcpUpdateApiSnapshot* out) const noexc
 
     RuntimeLockGuard guard(snapshot_lock_);
     *out = snapshot_;
+    fill_backend_snapshot_fields(out);
     if (!hal_rcp_get_running_version(out->current_version.data(), out->current_version.size())) {
         copy_chars(common::kVersion, out->current_version);
     }
@@ -310,6 +326,7 @@ bool RcpUpdateManager::apply_status_update(const StatusUpdate& update) noexcept 
     if (!hal_rcp_get_running_version(snapshot_.current_version.data(), snapshot_.current_version.size())) {
         copy_chars(common::kVersion, snapshot_.current_version);
     }
+    fill_backend_snapshot_fields(&snapshot_);
     return true;
 }
 
@@ -320,6 +337,12 @@ bool RcpUpdateManager::process_request(ServiceRuntime& runtime, const RcpUpdateR
     RcpUpdateResult result{};
     result.request_id = request.request_id;
     result.target_version = request_version_or_empty(request);
+    if (!hal_rcp_backend_available()) {
+        result.status = RcpUpdateOperationStatus::kUnsupportedBackend;
+        busy_.store(false, std::memory_order_release);
+        publish_status_finished(result);
+        return runtime.queue_rcp_update_result(result);
+    }
     hal_rcp_https_request_t hal_request{};
     hal_request.url = request.url.data();
     hal_request.expected_sha256_hex = request.sha256.data();

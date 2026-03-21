@@ -14,6 +14,7 @@ idf_component_register(
         "hal_mdns.c"
         "hal_spiffs.c"
         "hal_rcp.c"
+        "hal_rcp_uart_backend.c"
         "hal_led.c"
     EMBED_TXTFILES
         "ota_server_root_ca.pem"
@@ -35,6 +36,7 @@ idf_component_register(
         mqtt
         nvs_flash
         esp_driver_gpio
+        esp_driver_uart
         espressif__esp-zigbee-lib
         espressif__esp-zboss-lib
         mdns

@@ -18,6 +18,19 @@ int g_prepare_status = 0;
 int g_recover_status = 0;
 uint32_t g_last_write_len = 0U;
 char g_mock_running_version[32] = "rcp-2.0.0";
+bool g_backend_available = true;
+
+extern "C" bool hal_rcp_stack_backend_available(void) {
+    return g_backend_available;
+}
+
+extern "C" bool hal_rcp_stack_get_backend_name(char* out, size_t out_len) {
+    assert(out != nullptr);
+    assert(out_len > 10U);
+    std::strncpy(out, g_backend_available ? "host-mock" : "disabled", out_len - 1U);
+    out[out_len - 1U] = '\0';
+    return true;
+}
 
 extern "C" bool hal_rcp_stack_get_running_version(char* out, size_t out_len) {
     assert(out != nullptr);
@@ -71,6 +84,8 @@ int main() {
     service::RcpUpdateApiSnapshot snapshot{};
     assert(runtime.build_rcp_update_api_snapshot(&snapshot));
     assert(snapshot.stage == service::RcpUpdateStage::kIdle);
+    assert(snapshot.backend_available);
+    assert(std::strcmp(snapshot.backend_name.data(), "host-mock") == 0);
 
     const service::RcpUpdateRequest first_request =
         make_request(51U, "https://updates.local/rcp-v2.bin", "rcp-2.0.0");
@@ -127,6 +142,14 @@ int main() {
         return request;
     }();
     assert(runtime.post_rcp_update_start(wrong_transport_request) == service::RcpUpdateSubmitStatus::kTransportMismatch);
+
+    g_backend_available = false;
+    assert(runtime.build_rcp_update_api_snapshot(&snapshot));
+    assert(!snapshot.backend_available);
+    assert(std::strcmp(snapshot.backend_name.data(), "disabled") == 0);
+    assert(runtime.post_rcp_update_start(make_request(57U, "https://updates.local/rcp-v8.bin", "rcp-8.0.0")) ==
+           service::RcpUpdateSubmitStatus::kUnsupportedBackend);
+    g_backend_available = true;
 
     const service::OtaStartRequest ota_request = [] {
         service::OtaStartRequest request{};

@@ -94,6 +94,18 @@ extern "C" int hal_rcp_stack_update_begin(void) {
     return 0;
 }
 
+extern "C" bool hal_rcp_stack_backend_available(void) {
+    return true;
+}
+
+extern "C" bool hal_rcp_stack_get_backend_name(char* out, size_t out_len) {
+    assert(out != nullptr);
+    assert(out_len > 10U);
+    std::strncpy(out, "host-mock", out_len - 1U);
+    out[out_len - 1U] = '\0';
+    return true;
+}
+
 extern "C" bool hal_rcp_stack_get_running_version(char* out, size_t out_len) {
     assert(out != nullptr);
     assert(out_len > 12U);
@@ -150,6 +162,8 @@ int main() {
     g_last_response.clear();
     assert(web_ui::rcp_get_handler(&req) == ESP_OK);
     assert(g_last_response.find("\"stage\":\"idle\"") != std::string::npos);
+    assert(g_last_response.find("\"backend_available\":true") != std::string::npos);
+    assert(g_last_response.find("\"backend_name\":\"host-mock\"") != std::string::npos);
     assert(g_last_response.find("\"current_version\":\"rcp-1.0.0\"") != std::string::npos);
 
     g_request_body = "{\"target_version\":\"rcp-1.0.0\"}";
