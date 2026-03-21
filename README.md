@@ -328,6 +328,48 @@ MATTER_LOOP_CYCLES=2 \
 scripts/run_gateway_matter_hil_smoke.sh
 ```
 
+Gateway OTA HIL smoke:
+
+```bash
+GATEWAY_BASE_URL=http://192.168.178.171 \
+OTA_URL=https://192.168.178.84:8443/staging/ota-hil-b/zigbee_gateway.bin \
+EXPECTED_VERSION=ota-hil-b \
+scripts/run_gateway_ota_hil_smoke.sh
+```
+
+Gateway OTA staging HIL:
+
+```bash
+GATEWAY_BASE_URL=http://192.168.178.171 \
+OTA_MANIFEST_PATH=dist/ota/staging/ota-hil-b/ota-manifest.json \
+LOG_PATH=gateway-ota-signoff.log \
+scripts/run_gateway_ota_staging_hil.sh
+```
+
+OTA HIL test dependencies:
+- operator machine: `bash`, `curl`, `python3`
+- for local HTTPS artifact hosting: `docker` and `openssl`
+- for reflashing the gateway back to the base test image: ESP-IDF `idf.py` environment plus serial access to the board, typically `/dev/ttyACM0`
+- OTA artifact host reachable from the gateway over HTTPS on the same LAN
+- HTTPS server with HTTP Range support; the documented local setup uses `nginx`, not Python `http.server`
+- OTA server certificate whose SAN matches the exact host IP or hostname used in `OTA_URL` or in the staging manifest
+
+OTA HIL run order:
+1. Flash the base image to the device, for example `ota-hil-a`.
+2. Run `run_gateway_ota_hil_smoke.sh` to validate direct URL download, reboot, and version switch.
+3. Flash the base image again.
+4. Run `run_gateway_ota_staging_hil.sh` with `SCENARIO=success` to validate the signed manifest flow.
+5. Run `run_gateway_ota_staging_hil.sh` with `SCENARIO=tampered-signature` to validate manifest rejection.
+
+OTA HIL notes:
+- For the success path, start from an older image on the device, for example `ota-hil-a`, and only then update to `ota-hil-b`.
+- If the gateway is already running the target version, rerunning the same OTA package is not a meaningful success validation.
+- The artifact host must be reachable from the gateway over HTTPS from the same LAN; validating the URL in a desktop browser alone is not sufficient.
+- The server certificate must match the exact OTA host used by the device, including the IP or hostname in SAN.
+- `run_gateway_ota_hil_smoke.sh` validates the direct firmware URL path.
+- `run_gateway_ota_staging_hil.sh` validates the signed packaged manifest path and is the preferred release-signoff flow.
+- Full OTA HIL setup details, including local HTTPS hosting, are documented in [test/hil/README.md](test/hil/README.md).
+
 Matter Phase 3 focused local gate:
 
 ```bash
