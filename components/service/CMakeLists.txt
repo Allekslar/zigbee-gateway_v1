@@ -37,6 +37,7 @@ idf_component_register(
         "tuya_switch_plugin.cpp"
         "tuya_plugin_registry.cpp"
         "tuya_translator.cpp"
+        "tuya_init_coordinator.cpp"
         "hal_event_adapter.cpp"
     EMBED_TXTFILES
         "../app_hal/ota_release_manifest_pub.pem"

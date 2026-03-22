@@ -45,4 +45,16 @@ TuyaCommandEncodeResult TuyaTranslator::encode_command(
     return result;
 }
 
+bool TuyaTranslator::has_plugin(const TuyaFingerprint& fingerprint) const noexcept {
+    return registry_.resolve(fingerprint) != nullptr;
+}
+
+TuyaInitPlan TuyaTranslator::get_init_plan(const TuyaFingerprint& fingerprint) const noexcept {
+    const TuyaPlugin* plugin = registry_.resolve(fingerprint);
+    if (plugin == nullptr) {
+        return TuyaInitPlan{};
+    }
+    return plugin->init_plan(fingerprint);
+}
+
 }  // namespace service

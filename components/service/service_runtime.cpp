@@ -630,7 +630,31 @@ bool ServiceRuntime::post_zigbee_read_attribute_result(
             str_data);
     }
 
+    maybe_start_tuya_init(result.short_addr);
     return true;
+}
+
+void ServiceRuntime::maybe_start_tuya_init(uint16_t short_addr) noexcept {
+    if (tuya_init_coordinator_.status(short_addr) != TuyaInitStatus::kNotStarted) {
+        return;
+    }
+    const DeviceIdentityEntry* identity = device_identity_store_.find(short_addr);
+    if (identity == nullptr || identity->status != DeviceIdentityStatus::kResolved) {
+        return;
+    }
+    TuyaFingerprint fp{};
+    fp.manufacturer = identity->manufacturer.data();
+    fp.model = identity->model.data();
+    fp.endpoint = 1;
+    if (!tuya_translator_.has_plugin(fp)) {
+        return;
+    }
+    TuyaInitPlan plan = tuya_translator_.get_init_plan(fp);
+    tuya_init_coordinator_.notify_device_resolved(short_addr, plan);
+    SR_LOGI(
+        "Tuya init started short_addr=0x%04x steps=%u",
+        static_cast<unsigned>(short_addr),
+        static_cast<unsigned>(plan.step_count));
 }
 
 bool ServiceRuntime::try_tuya_translate(const ZigbeeRawAttributeReport& report, uint32_t now_ms) noexcept {
@@ -1401,6 +1425,23 @@ std::size_t ServiceRuntime::tick(uint32_t now_ms) noexcept {
         } else {
             (void)stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
             (void)reporting_manager_.set_stale_pending(stale_short_addrs[i], false);
+        }
+    }
+
+    {
+        TuyaInitAction init_action = tuya_init_coordinator_.tick(now_ms);
+        if (init_action.pending) {
+            const bool ok = hal_zigbee_send_tuya_dp(
+                                init_action.correlation_id,
+                                init_action.short_addr,
+                                init_action.endpoint,
+                                init_action.dp_id,
+                                static_cast<uint8_t>(init_action.dp_type),
+                                init_action.value,
+                                init_action.value_len) == HAL_ZIGBEE_STATUS_OK;
+            if (!ok) {
+                tuya_init_coordinator_.notify_ack(init_action.correlation_id, false);
+            }
         }
     }
 

@@ -33,6 +33,10 @@ public:
         const TuyaFingerprint& fingerprint,
         const TuyaCommandRequest& request) const noexcept;
 
+    bool has_plugin(const TuyaFingerprint& fingerprint) const noexcept;
+
+    TuyaInitPlan get_init_plan(const TuyaFingerprint& fingerprint) const noexcept;
+
 private:
     TuyaDpParser parser_{};
     TuyaPluginRegistry registry_{};

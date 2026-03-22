@@ -58,6 +58,7 @@ set(SERVICE_SOURCES
     ../../components/service/tuya_switch_plugin.cpp
     ../../components/service/tuya_plugin_registry.cpp
     ../../components/service/tuya_translator.cpp
+    ../../components/service/tuya_init_coordinator.cpp
     ../../components/service/hal_event_adapter.cpp
 )
 
@@ -570,3 +571,8 @@ add_executable(test_tuya_command_encode test_tuya_command_encode.cpp)
 target_link_libraries(test_tuya_command_encode PRIVATE service_host)
 zg_apply_component_compile_policy(test_tuya_command_encode)
 add_test(NAME test_tuya_command_encode COMMAND test_tuya_command_encode)
+
+add_executable(test_tuya_init_coordinator test_tuya_init_coordinator.cpp)
+target_link_libraries(test_tuya_init_coordinator PRIVATE service_host)
+zg_apply_component_compile_policy(test_tuya_init_coordinator)
+add_test(NAME test_tuya_init_coordinator COMMAND test_tuya_init_coordinator)

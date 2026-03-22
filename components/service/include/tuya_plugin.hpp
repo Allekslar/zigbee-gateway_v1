@@ -60,6 +60,23 @@ struct TuyaDpCommand {
     uint8_t endpoint{1};
 };
 
+struct TuyaInitStep {
+    uint8_t dp_id{0};
+    TuyaDpType dp_type{TuyaDpType::kRaw};
+    uint8_t value[kTuyaDpCommandValueMaxLen]{};
+    uint8_t value_len{0};
+    uint8_t endpoint{1};
+};
+
+inline constexpr std::size_t kTuyaMaxInitSteps = 4U;
+
+struct TuyaInitPlan {
+    uint8_t step_count{0};
+    TuyaInitStep steps[kTuyaMaxInitSteps]{};
+
+    bool empty() const noexcept { return step_count == 0U; }
+};
+
 class TuyaPlugin {
 public:
     virtual ~TuyaPlugin() = default;
@@ -76,6 +93,12 @@ public:
         (void)fingerprint;
         (void)request;
         return TuyaDpCommand{};
+    }
+
+    virtual TuyaInitPlan init_plan(
+        const TuyaFingerprint& fingerprint) const noexcept {
+        (void)fingerprint;
+        return TuyaInitPlan{};
     }
 };
 
