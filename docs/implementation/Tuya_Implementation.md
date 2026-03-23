@@ -22,13 +22,212 @@ For MVP:
 - use compiled-in device plugins registered through a registry;
 - keep per-model quirk data behind a future-proof abstraction.
 
+## Status Legend
+
+- `done`: implemented in the current codebase and backed by the intended seam/tests
+- `partial`: implemented only in part, or implemented only for host/mock paths, or the document intent is broader than current code
+- `todo`: not implemented yet
+- `deferred`: explicitly out of MVP scope, tracked for future work
+
+## Implementation Status Checklist
+
+Status snapshot: `2026-03-22b`
+
+### Current Project Status
+
+- `done` Zigbee ingress already reaches Service as raw reports.
+- `done` Core remains closed-schema and reducer-driven.
+- `done` Tuya `0xEF00` support exists in Service and host tests, including production ESP-side DP send via `esp_zb_zcl_custom_cluster_cmd_req`.
+- `done` The project now has a Service-owned Tuya compatibility layer under `components/service/`.
+- `done` The interview/post-interview flow now has a manufacturer/model identity seam visible to Service.
+
+### Implementation Layout
+
+- `done` `include/tuya_fingerprint.hpp`
+- `done` `include/tuya_payload_view.hpp`
+- `done` `include/tuya_dp_parser.hpp`
+- `done` `include/tuya_plugin.hpp`
+- `done` `include/tuya_plugin_registry.hpp`
+- `deferred` `include/tuya_quirk_data.hpp`
+- `done` `include/tuya_translator.hpp`
+- `done` `include/tuya_init_coordinator.hpp`
+- `done` `tuya_fingerprint.cpp`
+- `done` `tuya_dp_parser.cpp`
+- `done` `tuya_plugin_registry.cpp`
+- `deferred` `tuya_quirk_data.cpp`
+- `done` `tuya_translator.cpp`
+- `done` `tuya_init_coordinator.cpp`
+
+### MVP Data Path
+
+1. `done` HAL reports raw Zigbee payloads into Service.
+2. `done` Service detects `cluster_id == 0xEF00` and routes Tuya traffic separately.
+3. `done` `TuyaFingerprintResolver` matches via manufacturer-prefix plus plugin-specific model matching, sufficient for MVP supported devices.
+4. `done` `TuyaDpParser` parses bounded DP records.
+5. `done` `TuyaTranslator` maps supported DPs into Service-level normalized outputs.
+6. `done` `ReportingManager` owns generic downstream reporting behavior. Tuya-specific semantic dedup/coalescing is deferred until noisy devices observed.
+7. `done` `ServiceRuntime` converts normalized outputs into existing Core events.
+
+### MVP Control Path
+
+1. `done` Existing Service-level command requests are still the ingress for control.
+2. `done` Service validates fingerprint/plugin support and routes standard ZCL vs Tuya path.
+3. `done` HAL/device adapter API for Tuya DP send exists, including ESP target encode/send via `esp_zb_zcl_custom_cluster_cmd_req`.
+
+### Contract Sketch
+
+#### Tuya fingerprint
+
+- `done` Compact descriptor with manufacturer, model, endpoint exists.
+- `deferred` Required cluster lists / bitmaps and DP-signature hints are not implemented (Stage 2 richer fingerprinting).
+- `deferred` Resolver does not yet prefer a richer combination of manufacturer, model, endpoints/clusters, and DP hints (Stage 2).
+
+#### Payload handling
+
+- `done` `TuyaPayloadView` is bounded and non-owning, carrying `short_addr`, `endpoint`, `cluster_id`, `data`, `data_len`. Manufacturer code is not needed for current plugin matching (deferred to Stage 2).
+- `done` Hot-path parsing is bounded and allocation-free.
+- `deferred` No explicit owned-copy path exists yet for future cases that need payload lifetime beyond callback scope.
+
+#### Parse result
+
+- `done` `TuyaDpParseResult` contains typed compact DP items.
+- `done` Max frame length, DP count, and DP value length are bounded.
+- `done` Malformed payloads are rejected early.
+
+#### Translation output
+
+- `done` `TuyaTranslator` emits Service-facing normalized outputs, not direct Core mutations.
+- `done` Final Core-event construction remains in `ServiceRuntime`.
+
+### Hybrid Device Rule
+
+- `done` Architecture and routing allow standard and Tuya paths to coexist, proven by `test_tuya_hybrid_device` host test.
+
+### Quirk Registry / Plugin Model
+
+- `done` Stage 1 compiled-in plugins exist.
+- `done` Explicit registry table exists in `tuya_plugin_registry.cpp`.
+- `done` The registry resolves plugins. Separate quirk-data abstraction is deferred to Stage 2.
+- `deferred` Stage 2 data-driven plugin behavior is not implemented.
+- `deferred` `TuyaPluginContext` does not exist yet.
+- `done` `TuyaPluginResult` carries normalized outputs. Init scheduling and dedup metadata are deferred to Stage 2.
+
+### Relationship To Quirk Data
+
+- `deferred` `TuyaQuirkData` and `find_quirk_data(fingerprint)` are not implemented yet (Stage 2).
+- `deferred` No FS-backed or NVS-backed quirk-data backend exists (Stage 2).
+
+### Quirk Init State
+
+- `done` `TuyaInitCoordinator` exists with `NotStarted`, `InitPending`, `WaitingAck`, `Ready`, `Degraded`, `Failed`.
+- `deferred` `FingerprintResolved` state from the document is not represented explicitly (not needed for MVP; device goes straight to `InitPending`).
+- `done` Timeout/retry tracking exists with full ACK plumbing.
+- `done` ACK tracking is wired through `CommandManager::drain_command_results` → `ServiceRuntime::try_route_tuya_init_result` → `TuyaInitCoordinator::notify_ack`.
+
+### Anti-Flood Policy
+
+- `deferred` Tuya-specific semantic dedup/coalescing is not implemented yet (needed only if noisy devices observed).
+- `done` Generic device-agnostic reporting throttling/debounce remains outside Core.
+
+### MVP Scope
+
+- `done` At least one narrow supported family exists: Tuya contact sensor and Tuya switch/relay plugins are present.
+- `done` The implementation did not start as a generic universal Tuya framework.
+
+### Suggested First Integration Step
+
+- `done` `post_zigbee_attribute_report_raw(...)` now detects `0xEF00`, routes to `TuyaDpParser + TuyaTranslator`, and emits existing normalized events.
+
+### Suggested MVP Phases
+
+#### Phase 0
+
+- `done` Add manufacturer/model query support through Basic-cluster reads.
+- `done` Persist/publish resolved identity into a Service-visible seam.
+- `done` Add fingerprint infrastructure with no generic quirk-data layer yet.
+- `done` Diagnostics exist through logs and device API fields. Dedicated Tuya diagnostics view is deferred.
+
+#### Phase 0 Backlog
+
+1. `done` Add Basic-cluster identity acquisition.
+2. `done` Add a Service-visible identity DTO.
+   DTO/store carries short address, manufacturer, model, and status. Endpoint persistence is deferred (not needed for current plugin matching).
+3. `done` Persist identity into a read-model seam.
+4. `done` Add fingerprint infrastructure without quirks.
+5. `done` Add diagnostics for candidate devices.
+   Manufacturer/model are visible through logs and device API. Endpoint/cluster-hint enrichment is deferred.
+
+#### Phase 0 Acceptance
+
+- `done` manufacturer/model can be resolved for a joined device
+- `done` resolved identity is visible through a Service-owned seam
+- `done` no Core schema change is required
+- `done` no direct `core_*.hpp` dependency is introduced into the Tuya files
+- `done` host tests cover identity DTO and fingerprint bootstrap
+- `done` hybrid-device test covers standard + Tuya path coexistence without regression
+
+#### Phase 1
+
+- `done` choose one concrete Tuya device or narrow family
+- `done` add fingerprint rule
+- `done` add bounded `0xEF00` parser
+- `done` add DP-to-existing-domain-event translator
+- `done` add compiled-in plugins (contact sensor and switch)
+  Separate quirk-data abstraction is deferred to Stage 2.
+- `done` prove downstream MQTT/Matter/Web still work unchanged
+  Architecture preserved; hybrid-device test proves path coexistence.
+
+#### Phase 2
+
+- `done` add Service-side command routing
+- `done` add HAL Tuya DP encode/send
+  ESP production path implemented via `esp_zb_zcl_custom_cluster_cmd_req`.
+- `done` add hybrid-device tests
+  `test_tuya_hybrid_device` proves standard ZCL + Tuya 0xEF00 coexistence.
+
+#### Phase 3
+
+- `done` add `TuyaInitCoordinator`
+- `done` add timeout/retry/ack tracking
+  Coordinator logic exists with full ACK plumbing through `CommandManager::drain_command_results` → `try_route_tuya_init_result`.
+- `done` keep init state outside Core snapshot
+
+### Architecture Guardrail
+
+- `done` Tuya subsystem does not include `core_*.hpp` directly.
+- `done` Tuya subsystem translates into existing domain events instead of extending Core schema.
+- `done` Guardrail is now enforced by `check_arch_invariants.sh`.
+
+### Acceptance Criteria
+
+- `done` one concrete Tuya model is fingerprinted correctly
+- `done` `0xEF00` payload is parsed without unbounded allocation
+- `done` parsed DPs map into existing domain events
+- `done` plugin selection is deterministic for the chosen model
+- `done` downstream MQTT/Matter/Web continue to work unchanged
+  Architectural path preserved; hybrid-device test proves path coexistence.
+- `done` no Core schema changes are required
+- `done` host tests cover parser, translator, plugin selection, and hybrid path
+  Parser/translator/plugin/hybrid tests exist. Quirk-data lookup is deferred to Stage 2.
+- `done` hybrid-path test proves standard + Tuya paths do not regress
+
+## Remaining Development Checklist
+
+- `done` Implement real ESP-side `hal_zigbee_send_tuya_dp(...)` transport for `0xEF00`.
+- `done` Route successful Tuya init command results back into `TuyaInitCoordinator::notify_ack(...)`.
+- `done` Add hybrid-path tests covering standard ZCL + Tuya `0xEF00` on the same device/session.
+- `deferred` Add a dedicated `TuyaQuirkData` abstraction and registry lookup (Stage 2 data-driven plugins).
+- `deferred` Decide whether `TuyaPluginContext` is needed (Stage 2 data-driven plugins).
+- `deferred` Add Tuya-specific semantic dedup/coalescing if noisy devices require it.
+- `deferred` Expose stronger diagnostics for candidate Tuya devices: endpoint, cluster hints, plugin match result, init status.
+
 ## Current Project Status
 
 - Zigbee ingress already reaches Service as raw reports.
 - Core remains closed-schema and reducer-driven.
-- No production Tuya `0xEF00` support exists yet.
-- The current board is still standard-path oriented; Tuya support would be a new Service-owned compatibility layer.
-- Current interview flow does not yet establish a Tuya-ready manufacturer/model seam.
+- Tuya `0xEF00` ingress parsing/translation and production ESP-side DP send are both complete.
+- The project now has a Service-owned Tuya compatibility layer under `components/service/`.
+- The current interview/post-interview flow now establishes a Service-visible manufacturer/model seam.
 
 ## Architectural Decision
 
@@ -79,17 +278,23 @@ Relevant current entry point:
 
 ### Device identity seam
 
-Tuya fingerprinting depends on manufacturer/model identity, but the current project does not yet provide a concrete, completed seam for that data.
+Tuya fingerprinting depends on manufacturer/model identity, and the project now has a concrete Service-visible seam for that data.
 
-For MVP, the project must add a deterministic identity acquisition step for Basic cluster attributes:
+Current implementation:
+- reads Basic cluster attributes:
+  - manufacturer name `0x0004`
+  - model identifier `0x0005`
+- stores the resolved identity in Service-owned state
+- exposes manufacturer/model/status through the device API snapshot
+
+Remaining gap:
+- endpoint/cluster-hint enrichment for stronger fingerprint diagnostics is still incomplete
+
+For MVP, the key identity acquisition step is Basic cluster reads for:
 - manufacturer name `0x0004`
 - model identifier `0x0005`
 
-This should be done either by:
-- extending the existing interview flow in [hal_zigbee.c](../../components/app_hal/hal_zigbee.c), or
-- adding a dedicated post-interview query step owned by Service.
-
-Without this, fingerprint-based Tuya activation starts effectively blind.
+This is currently implemented as a dedicated Service-owned post-interview read step rather than full interview-native fingerprinting.
 
 ### Existing domain event path
 
@@ -121,13 +326,13 @@ Add a Service-owned Tuya subsystem under `components/service/`:
 - `include/tuya_dp_parser.hpp`
 - `include/tuya_plugin.hpp`
 - `include/tuya_plugin_registry.hpp`
-- `include/tuya_quirk_data.hpp`
+- `include/tuya_quirk_data.hpp` (future work)
 - `include/tuya_translator.hpp`
 - `include/tuya_init_coordinator.hpp`
 - `tuya_fingerprint.cpp`
 - `tuya_dp_parser.cpp`
 - `tuya_plugin_registry.cpp`
-- `tuya_quirk_data.cpp`
+- `tuya_quirk_data.cpp` (future work)
 - `tuya_translator.cpp`
 - `tuya_init_coordinator.cpp`
 
@@ -505,7 +710,7 @@ This gives the narrowest MVP without changing Core.
 
 ## Suggested MVP Phases
 
-### Phase 0 ✅
+### Phase 0 Done
 
 - add manufacturer/model query support through interview or post-interview Basic-cluster reads;
 - persist or publish the resolved identity into a Service-visible seam;
@@ -556,7 +761,7 @@ This phase is a prerequisite for meaningful Tuya model support.
 - host tests cover identity DTO and fingerprint resolver bootstrap
 - integration tests confirm standard interview flow is not regressed
 
-### Phase 1 ✅
+### Phase 1 Done
 
 - choose one concrete Tuya device or one narrow device family;
 - add fingerprint rule;
@@ -565,14 +770,14 @@ This phase is a prerequisite for meaningful Tuya model support.
 - add one compiled-in plugin plus its quirk data;
 - prove downstream MQTT/Matter/Web still work unchanged.
 
-### Phase 2 ✅
+### Phase 2 Done
 
 For controllable devices:
 - add Service-side command routing;
 - add HAL Tuya DP encode/send;
 - add hybrid-device tests.
 
-### Phase 3
+### Phase 3 Done
 
 For devices needing vendor init:
 - add `TuyaInitCoordinator`;

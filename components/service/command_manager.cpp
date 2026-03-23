@@ -194,6 +194,9 @@ bool CommandManager::drain_command_results(ServiceRuntime& runtime) noexcept {
 
     while (pop_command_result(&result)) {
         drained = true;
+        if (runtime.try_route_tuya_init_result(result)) {
+            continue;
+        }
         const core::CoreError err = resolve_command_result(runtime, result);
         if (err != core::CoreError::kOk) {
             (void)runtime.stats_.dropped_events.fetch_add(1, std::memory_order_relaxed);
