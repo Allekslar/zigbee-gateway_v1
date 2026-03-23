@@ -206,6 +206,7 @@ private:
     bool try_tuya_translate(const ZigbeeRawAttributeReport& report, uint32_t now_ms) noexcept;
     bool try_execute_tuya_on_off(const core::CoreEffect& effect, bool* routed) noexcept;
     void maybe_start_tuya_init(uint16_t short_addr) noexcept;
+    bool try_route_tuya_init_result(const core::CoreCommandResult& result) noexcept;
     void note_dropped_event() noexcept;
     bool persist_current_core_state() noexcept;
     bool restore_persisted_core_state() noexcept;

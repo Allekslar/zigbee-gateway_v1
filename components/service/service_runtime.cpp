@@ -657,6 +657,14 @@ void ServiceRuntime::maybe_start_tuya_init(uint16_t short_addr) noexcept {
         static_cast<unsigned>(plan.step_count));
 }
 
+bool ServiceRuntime::try_route_tuya_init_result(const core::CoreCommandResult& result) noexcept {
+    if (result.correlation_id < kTuyaInitCorrelationIdBase) {
+        return false;
+    }
+    const bool success = (result.type == core::CoreCommandResultType::kSuccess);
+    return tuya_init_coordinator_.notify_ack(result.correlation_id, success);
+}
+
 bool ServiceRuntime::try_tuya_translate(const ZigbeeRawAttributeReport& report, uint32_t now_ms) noexcept {
     TuyaPayloadView view{};
     view.short_addr = report.short_addr;

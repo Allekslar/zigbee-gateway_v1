@@ -576,3 +576,8 @@ add_executable(test_tuya_init_coordinator test_tuya_init_coordinator.cpp)
 target_link_libraries(test_tuya_init_coordinator PRIVATE service_host)
 zg_apply_component_compile_policy(test_tuya_init_coordinator)
 add_test(NAME test_tuya_init_coordinator COMMAND test_tuya_init_coordinator)
+
+add_executable(test_tuya_hybrid_device test_tuya_hybrid_device.cpp)
+target_link_libraries(test_tuya_hybrid_device PRIVATE service_host)
+zg_apply_component_compile_policy(test_tuya_hybrid_device)
+add_test(NAME test_tuya_hybrid_device COMMAND test_tuya_hybrid_device)
