@@ -24,6 +24,7 @@
 
   const ui = {
     statusLine: byId("status-line"),
+    debugLine: byId("debug-line"),
     toastMessage: byId("toast-message"),
     refreshAllBtn: byId("refresh-all-btn"),
     networkConnected: byId("network-connected"),
@@ -68,6 +69,15 @@
     removeCancelBtn: byId("remove-cancel-btn"),
   };
 
+  function setDebug(message) {
+    const stamp = new Date().toLocaleTimeString();
+    const line = "[" + stamp + "] " + String(message);
+    log("debug:", line);
+    if (ui.debugLine) {
+      ui.debugLine.textContent = line;
+    }
+  }
+
   function bind(element, eventName, handler) {
     if (!element) {
       log("Missing UI element for event:", eventName);
@@ -107,14 +117,21 @@
 
   window.addEventListener("error", function (event) {
     log("window error:", event.message, "at", event.filename + ":" + event.lineno);
+    setStatus("JS error: " + String(event.message || "unknown"), "error");
+    setDebug("window error " + String(event.filename || "?") + ":" + String(event.lineno || 0));
   });
 
   window.addEventListener("unhandledrejection", function (event) {
     log("unhandled rejection:", event.reason);
+    const reason =
+      event && event.reason && event.reason.message ? event.reason.message : String(withDefault(event && event.reason, "unknown"));
+    setStatus("Promise error: " + reason, "error");
+    setDebug("unhandled rejection " + reason);
   });
 
   async function requestJson(url, options) {
     log("request:start", url, options && options.method ? options.method : "GET");
+    setDebug("request:start " + String(options && options.method ? options.method : "GET") + " " + url);
     const requestOptions = Object.assign({ cache: "no-store" }, options || {});
     const timeoutCandidate = Number(withDefault(requestOptions.timeoutMs, defaultHttpTimeoutMs));
     const timeoutMs = Number.isFinite(timeoutCandidate) && timeoutCandidate > 0 ? timeoutCandidate : defaultHttpTimeoutMs;
@@ -142,12 +159,15 @@
       });
       response = await Promise.race([fetchPromise, timeoutPromise]);
       text = await response.text();
+      setDebug("request:response " + String(response.status) + " " + url);
     } catch (error) {
       if (error && error.name === "AbortError") {
         const timeoutError = new Error("request_timeout");
         timeoutError.code = "timeout";
+        setDebug("request:timeout " + url);
         throw timeoutError;
       }
+      setDebug("request:error " + url + " " + String(error && error.message ? error.message : error));
       throw error;
     } finally {
       if (raceTimeoutHandle !== null) {
@@ -543,17 +563,20 @@
 
   async function loadDevices() {
     if (devicesLoadInFlight) {
+      setDebug("loadDevices skipped in-flight");
       return;
     }
     devicesLoadInFlight = true;
     devicesLoadInFlightSince = Date.now();
     log("loadDevices");
+    setDebug("loadDevices start");
     try {
       const data = await requestJson("/api/devices", { method: "GET", timeoutMs: pollHttpTimeoutMs });
       lastDevicesPayload = data;
       reconcilePendingPowerCommands(Array.isArray(data.devices) ? data.devices : []);
       renderDevices(data);
       applyJoinWindowState(data.join_window_open, data.join_window_seconds_left);
+      setDebug("loadDevices ok");
     } finally {
       devicesLoadInFlight = false;
       devicesLoadInFlightSince = 0;
@@ -562,6 +585,7 @@
 
   async function loadNetwork() {
     log("loadNetwork");
+    setDebug("loadNetwork start");
     const data = await requestJson("/api/network", { method: "GET", timeoutMs: pollHttpTimeoutMs });
     const mqtt = data && data.mqtt ? data.mqtt : {};
     ui.networkConnected.textContent = data.connected ? "yes" : "no";
@@ -570,10 +594,12 @@
     ui.mqttConnected.textContent = mqtt.connected ? "yes" : "no";
     ui.mqttLastError.textContent = String(withDefault(mqtt.last_connect_error, "none"));
     ui.mqttBrokerEndpoint.textContent = String(withDefault(mqtt.broker_endpoint, "")) || "-";
+    setDebug("loadNetwork ok");
   }
 
   async function loadCredentialsStatus() {
     log("loadCredentialsStatus");
+    setDebug("loadCredentialsStatus start");
     const accepted = await requestJson("/api/network/credentials/status", { method: "GET", timeoutMs: pollHttpTimeoutMs });
     const requestId = extractRequestId(accepted);
     const data = await pollNetworkResult(requestId, 2000, 100);
@@ -585,6 +611,7 @@
         : "saved (open/no password)"
       : "not saved";
     ui.wifiCredentialsSsid.textContent = saved ? String(data.ssid || "-") : "-";
+    setDebug("loadCredentialsStatus ok");
   }
 
   function renderScanResult(data) {
@@ -619,11 +646,13 @@
 
   async function loadConfig() {
     log("loadConfig");
+    setDebug("loadConfig start");
     const data = await requestJson("/api/config", { method: "GET", timeoutMs: pollHttpTimeoutMs });
     ui.configTimeout.value = String(withDefault(data.command_timeout_ms, ""));
     ui.configRetries.value = String(withDefault(data.max_command_retries, ""));
     ui.configLastStatus.textContent = String(withDefault(data.last_command_status, "-"));
     ui.configRevision.textContent = String(withDefault(data.revision, "-"));
+    setDebug("loadConfig ok");
   }
 
   function renderOta(data) {
@@ -650,26 +679,47 @@
 
   async function loadOta() {
     log("loadOta");
+    setDebug("loadOta start");
     const data = await requestJson("/api/ota", { method: "GET", timeoutMs: pollHttpTimeoutMs });
     renderOta(data);
+    setDebug("loadOta ok");
     return data;
   }
 
   async function refreshAll() {
     log("refreshAll");
+    setDebug("refreshAll start");
     setStatus("Refreshing...", "warn");
-    const settled = await Promise.allSettled([loadDevices(), loadNetwork(), loadCredentialsStatus(), loadConfig(), loadOta()]);
-    const failed = settled.filter(function (entry) {
-      return entry.status === "rejected";
-    });
+    const tasks = [
+      { name: "devices", run: loadDevices },
+      { name: "network", run: loadNetwork },
+      { name: "credentials", run: loadCredentialsStatus },
+      { name: "config", run: loadConfig },
+      { name: "ota", run: loadOta },
+    ];
+    const settled = await Promise.allSettled(tasks.map(function (task) {
+      return task.run();
+    }));
+    const failed = settled
+      .map(function (entry, index) {
+        return { entry: entry, name: tasks[index].name };
+      })
+      .filter(function (item) {
+        return item.entry.status === "rejected";
+      });
     if (failed.length === 0) {
       setStatus("Data updated", "ok");
+      setDebug("refreshAll ok");
       return;
     }
 
-    const firstReason = failed[0] && failed[0].reason ? failed[0].reason : null;
+    const firstReason = failed[0] && failed[0].entry && failed[0].entry.reason ? failed[0].entry.reason : null;
     const firstMessage = firstReason && firstReason.message ? firstReason.message : "partial_refresh_failed";
+    const failedNames = failed.map(function (item) {
+      return item.name;
+    }).join(",");
     setStatus("Partial refresh: " + firstMessage, "warn");
+    setDebug("refreshAll failed " + failedNames + " " + firstMessage);
   }
 
   async function submitNetworkRefresh() {
@@ -1084,6 +1134,7 @@
   });
 
   log("ui initialized");
+  setDebug("ui initialized");
   ensureDeviceListPolling();
   refreshAll();
 })();

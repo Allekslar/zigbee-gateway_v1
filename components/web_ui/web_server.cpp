@@ -3,9 +3,12 @@
 
 #include "web_server.hpp"
 
+#include <chrono>
+
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #endif
 
 #include "log_tags.h"
@@ -16,8 +19,43 @@ namespace web_ui {
 #ifdef ESP_PLATFORM
 namespace {
 constexpr const char* kTag = LOG_TAG_WEB_SERVER;
+std::atomic<uint32_t> g_last_page_load_activity_ms{0U};
+std::atomic<bool> g_page_load_seen{false};
+
+uint32_t monotonic_now_ms() noexcept {
+    return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+}
+}
+#else
+namespace {
+std::atomic<uint32_t> g_last_page_load_activity_ms{0U};
+std::atomic<bool> g_page_load_seen{false};
+
+uint32_t monotonic_now_ms() noexcept {
+    using clock = std::chrono::steady_clock;
+    static const clock::time_point start = clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - start).count();
+    return static_cast<uint32_t>(elapsed);
+}
 }
 #endif
+
+void note_page_load_activity() noexcept {
+    g_page_load_seen.store(true, std::memory_order_relaxed);
+    g_last_page_load_activity_ms.store(monotonic_now_ms(), std::memory_order_relaxed);
+}
+
+bool has_page_load_activity() noexcept {
+    return g_page_load_seen.load(std::memory_order_relaxed);
+}
+
+uint32_t page_load_idle_ms() noexcept {
+    if (!has_page_load_activity()) {
+        return 0U;
+    }
+    const uint32_t last = g_last_page_load_activity_ms.load(std::memory_order_relaxed);
+    return monotonic_now_ms() - last;
+}
 
 WebServer::WebServer(service::ServiceRuntimeApi& runtime) noexcept
     : runtime_(&runtime) {

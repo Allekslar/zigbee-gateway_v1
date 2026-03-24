@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 Alex.K. */
 
-#include "web_routes.hpp"
+#include "web_server.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -20,34 +20,36 @@ namespace {
 // 4KB chunks balance between memory usage and network efficiency for ESP32-C6.
 constexpr std::size_t kStaticAssetChunkSize = 4096U;
 
-extern const uint8_t index_html_start[] asm("_binary_index_html_start");
-extern const uint8_t index_html_end[] asm("_binary_index_html_end");
-extern const uint8_t style_css_start[] asm("_binary_style_css_start");
-extern const uint8_t style_css_end[] asm("_binary_style_css_end");
-extern const uint8_t app_js_start[] asm("_binary_app_js_start");
-extern const uint8_t app_js_end[] asm("_binary_app_js_end");
+extern const uint8_t index_html_gz_start[] asm("_binary_index_html_gz_start");
+extern const uint8_t index_html_gz_end[] asm("_binary_index_html_gz_end");
+extern const uint8_t style_css_gz_start[] asm("_binary_style_css_gz_start");
+extern const uint8_t style_css_gz_end[] asm("_binary_style_css_gz_end");
+extern const uint8_t app_js_gz_start[] asm("_binary_app_js_gz_start");
+extern const uint8_t app_js_gz_end[] asm("_binary_app_js_gz_end");
 
 esp_err_t send_embedded_file(
     httpd_req_t* req,
     const char* content_type,
+    const char* cache_control,
     const uint8_t* start,
     const uint8_t* end) noexcept {
-    if (req == nullptr || content_type == nullptr || start == nullptr || end == nullptr || end < start) {
+    if (req == nullptr || content_type == nullptr || cache_control == nullptr || start == nullptr ||
+        end == nullptr || end < start) {
         return ESP_FAIL;
     }
 
     std::size_t file_size = static_cast<std::size_t>(end - start);
-    if (file_size > 0U && start[file_size - 1U] == '\0') {
-        --file_size;
-    }
     (void)httpd_resp_set_type(req, content_type);
-    // Enable caching for static assets to reduce bandwidth and improve load time.
-    (void)httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=31536000, immutable");
+    (void)httpd_resp_set_hdr(req, "Cache-Control", cache_control);
+    (void)httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    (void)httpd_resp_set_hdr(req, "Vary", "Accept-Encoding");
 
     std::size_t offset = 0U;
     std::size_t chunk_count = 0U;
+#ifdef ESP_PLATFORM
     const std::size_t total_chunks = (file_size + kStaticAssetChunkSize - 1) / kStaticAssetChunkSize;
-    
+#endif
+
     while (offset < file_size) {
         const std::size_t remaining = file_size - offset;
         const std::size_t chunk_size = remaining > kStaticAssetChunkSize ? kStaticAssetChunkSize : remaining;
@@ -70,19 +72,43 @@ esp_err_t send_embedded_file(
 }
 
 esp_err_t root_get_handler(httpd_req_t* req) {
-    return send_embedded_file(req, "text/html; charset=utf-8", index_html_start, index_html_end);
+    note_page_load_activity();
+    return send_embedded_file(
+        req,
+        "text/html; charset=utf-8",
+        "no-store, max-age=0",
+        index_html_gz_start,
+        index_html_gz_end);
 }
 
 esp_err_t index_html_get_handler(httpd_req_t* req) {
-    return send_embedded_file(req, "text/html; charset=utf-8", index_html_start, index_html_end);
+    note_page_load_activity();
+    return send_embedded_file(
+        req,
+        "text/html; charset=utf-8",
+        "no-store, max-age=0",
+        index_html_gz_start,
+        index_html_gz_end);
 }
 
 esp_err_t style_css_get_handler(httpd_req_t* req) {
-    return send_embedded_file(req, "text/css; charset=utf-8", style_css_start, style_css_end);
+    note_page_load_activity();
+    return send_embedded_file(
+        req,
+        "text/css; charset=utf-8",
+        "public, max-age=31536000, immutable",
+        style_css_gz_start,
+        style_css_gz_end);
 }
 
 esp_err_t app_js_get_handler(httpd_req_t* req) {
-    return send_embedded_file(req, "application/javascript; charset=utf-8", app_js_start, app_js_end);
+    note_page_load_activity();
+    return send_embedded_file(
+        req,
+        "application/javascript; charset=utf-8",
+        "public, max-age=31536000, immutable",
+        app_js_gz_start,
+        app_js_gz_end);
 }
 
 esp_err_t favicon_get_handler(httpd_req_t* req) {

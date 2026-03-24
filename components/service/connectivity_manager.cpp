@@ -174,12 +174,19 @@ void ConnectivityManager::mark_wifi_credentials_available() noexcept {
     zigbee_start_allowed_ = true;
 }
 
+void ConnectivityManager::request_zigbee_start() noexcept {
+    zigbee_start_requested_ = true;
+}
+
 bool ConnectivityManager::ensure_zigbee_started(ServiceRuntime& runtime) noexcept {
     if (zigbee_started_) {
         return true;
     }
 
     if (!zigbee_start_allowed_) {
+        return false;
+    }
+    if (!zigbee_start_requested_) {
         return false;
     }
 

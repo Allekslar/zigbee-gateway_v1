@@ -21,6 +21,7 @@ public:
 
     bool has_saved_wifi_credentials() noexcept;
     void mark_wifi_credentials_available() noexcept;
+    void request_zigbee_start() noexcept;
 
     bool ensure_wifi_mode_for_scan() noexcept;
     bool ensure_wifi_mode_for_sta_connect() noexcept;
@@ -37,6 +38,7 @@ private:
     uint32_t next_autoconnect_attempt_ms_{0};
     bool zigbee_started_{false};
     bool zigbee_start_allowed_{false};
+    bool zigbee_start_requested_{false};
 };
 
 }  // namespace service

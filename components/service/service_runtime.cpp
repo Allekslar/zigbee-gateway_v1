@@ -1106,6 +1106,10 @@ void ServiceRuntime::mark_wifi_credentials_available() noexcept {
     connectivity_manager_.mark_wifi_credentials_available();
 }
 
+void ServiceRuntime::request_zigbee_start() noexcept {
+    connectivity_manager_.request_zigbee_start();
+}
+
 bool ServiceRuntime::ensure_zigbee_started() noexcept {
     return connectivity_manager_.ensure_zigbee_started(*this);
 }
