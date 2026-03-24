@@ -8,13 +8,17 @@
 
 #ifdef ESP_PLATFORM
 #include "esp_http_server.h"
+#include "esp_log.h"
+#include "log_tags.h"
 #endif
 
 namespace web_ui {
 
 namespace {
 
-constexpr std::size_t kStaticAssetChunkSize = 1024U;
+// Larger chunk size reduces HTTP transaction overhead and socket pressure.
+// 4KB chunks balance between memory usage and network efficiency for ESP32-C6.
+constexpr std::size_t kStaticAssetChunkSize = 4096U;
 
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
@@ -37,21 +41,29 @@ esp_err_t send_embedded_file(
         --file_size;
     }
     (void)httpd_resp_set_type(req, content_type);
-    (void)httpd_resp_set_hdr(req, "Cache-Control", "no-store, max-age=0");
-    (void)httpd_resp_set_hdr(req, "Pragma", "no-cache");
-    (void)httpd_resp_set_hdr(req, "Expires", "0");
+    // Enable caching for static assets to reduce bandwidth and improve load time.
+    (void)httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=31536000, immutable");
 
     std::size_t offset = 0U;
+    std::size_t chunk_count = 0U;
+    const std::size_t total_chunks = (file_size + kStaticAssetChunkSize - 1) / kStaticAssetChunkSize;
+    
     while (offset < file_size) {
         const std::size_t remaining = file_size - offset;
         const std::size_t chunk_size = remaining > kStaticAssetChunkSize ? kStaticAssetChunkSize : remaining;
-        if (httpd_resp_send_chunk(
+        const esp_err_t send_result = httpd_resp_send_chunk(
                 req,
                 reinterpret_cast<const char*>(start + offset),
-                static_cast<ssize_t>(chunk_size)) != ESP_OK) {
-            return ESP_FAIL;
+                static_cast<ssize_t>(chunk_size));
+        if (send_result != ESP_OK) {
+#ifdef ESP_PLATFORM
+            ESP_LOGW(LOG_TAG_WEB_SERVER, "send_embedded_file chunk %zu/%zu failed: %s",
+                     chunk_count + 1, total_chunks, esp_err_to_name(send_result));
+#endif
+            return send_result;
         }
         offset += chunk_size;
+        ++chunk_count;
     }
 
     return httpd_resp_send_chunk(req, nullptr, 0);

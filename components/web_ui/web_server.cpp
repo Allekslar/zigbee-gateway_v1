@@ -39,27 +39,20 @@ bool WebServer::start() noexcept {
     // Keep headroom for future API additions.
     config.max_uri_handlers = 24;
 #ifdef ESP_PLATFORM
-    // Reserve socket headroom for OTA HTTPS, MQTT reconnects, and system traffic.
-    // A smaller HTTPD ceiling works better than letting UI polling consume most of
-    // the global lwIP socket budget on ESP32-C6.
-    config.max_open_sockets = 4;
-    config.backlog_conn = 8;
+    // Leave socket headroom for MQTT reconnects and system traffic.
+    config.max_open_sockets = 6;
+    config.backlog_conn = 4;
 #endif
     // Some handlers format multi-field JSON responses and can overflow
     // default 4KB HTTPD stack on ESP32-C6 under real traffic.
-    config.stack_size = 12288;
+    // Increased to keep response streaming off the edge of the task stack.
+    config.stack_size = 20480;
 
 #ifdef ESP_PLATFORM
-    // Under repeated UI polling, opening a new TCP connection per request can
-    // quickly exhaust the small lwIP socket budget. Keep-alive reduces socket
-    // churn, while LRU purge and short wait timeouts still reclaim stale peers.
-    config.lru_purge_enable = true;
-    config.recv_wait_timeout = 5;
-    config.send_wait_timeout = 15;
-    config.keep_alive_enable = true;
-    config.keep_alive_idle = 8;
-    config.keep_alive_interval = 4;
-    config.keep_alive_count = 2;
+    config.lru_purge_enable = false;
+    config.recv_wait_timeout = 10;
+    config.send_wait_timeout = 30;
+    config.keep_alive_enable = false;
     ESP_LOGI(kTag, "Starting HTTP server stack_size=%u max_uri_handlers=%u", config.stack_size, config.max_uri_handlers);
 #endif
 
