@@ -19,8 +19,9 @@ int main() {
 
     assert(runtime.initialize_hal_adapter());
     assert(runtime.has_saved_wifi_credentials());
-    assert(runtime.zigbee_started());
+    assert(!runtime.zigbee_started());
     assert(runtime.ensure_zigbee_started());
+    assert(runtime.zigbee_started());
 
     return 0;
 }
