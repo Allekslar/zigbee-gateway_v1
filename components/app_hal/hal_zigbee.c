@@ -184,6 +184,66 @@ static const char* authorization_status_to_string(uint8_t authorization_type, ui
     }
 }
 
+typedef enum {
+    ZIGBEE_SIGNAL_LOG_INFO = 0,
+    ZIGBEE_SIGNAL_LOG_WARN,
+    ZIGBEE_SIGNAL_LOG_ERROR,
+} zigbee_signal_log_level_t;
+
+static zigbee_signal_log_level_t classify_zigbee_signal_log_level(
+    esp_zb_app_signal_type_t signal_type,
+    esp_err_t status) {
+    switch (signal_type) {
+        case ESP_ZB_ZDO_SIGNAL_PRODUCTION_CONFIG_READY:
+            return ZIGBEE_SIGNAL_LOG_INFO;
+        case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
+        case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
+        case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
+            return (status == ESP_OK) ? ZIGBEE_SIGNAL_LOG_INFO : ZIGBEE_SIGNAL_LOG_ERROR;
+        case ESP_ZB_ZDO_SIGNAL_ERROR:
+            return ZIGBEE_SIGNAL_LOG_ERROR;
+        case ESP_ZB_BDB_SIGNAL_FORMATION:
+        case ESP_ZB_BDB_SIGNAL_STEERING:
+        case ESP_ZB_BDB_SIGNAL_TC_REJOIN_DONE:
+        case ESP_ZB_BDB_SIGNAL_STEERING_CANCELLED:
+        case ESP_ZB_BDB_SIGNAL_FORMATION_CANCELLED:
+        case ESP_ZB_BDB_SIGNAL_TOUCHLINK:
+        case ESP_ZB_BDB_SIGNAL_TOUCHLINK_TARGET:
+        case ESP_ZB_BDB_SIGNAL_TOUCHLINK_NWK:
+        case ESP_ZB_NLME_STATUS_INDICATION:
+        case ESP_ZB_NWK_SIGNAL_PANID_CONFLICT_DETECTED:
+        case ESP_ZB_ZDO_DEVICE_UNAVAILABLE:
+            return (status == ESP_OK) ? ZIGBEE_SIGNAL_LOG_INFO : ZIGBEE_SIGNAL_LOG_WARN;
+        default:
+            return (status == ESP_OK) ? ZIGBEE_SIGNAL_LOG_INFO : ZIGBEE_SIGNAL_LOG_WARN;
+    }
+}
+
+static void log_zigbee_app_signal(esp_zb_app_signal_type_t signal_type, esp_err_t status) {
+    const char* signal_name = esp_zb_zdo_signal_to_string(signal_type);
+    if (signal_type == ESP_ZB_ZDO_SIGNAL_PRODUCTION_CONFIG_READY && status == ESP_FAIL) {
+        ESP_LOGI(
+            kTag,
+            "Zigbee app signal: %s (%u), no production config in storage",
+            signal_name,
+            (unsigned)signal_type);
+        return;
+    }
+
+    switch (classify_zigbee_signal_log_level(signal_type, status)) {
+        case ZIGBEE_SIGNAL_LOG_ERROR:
+            ESP_LOGE(kTag, "Zigbee app signal: %s (%u), status=%s", signal_name, (unsigned)signal_type, esp_err_to_name(status));
+            return;
+        case ZIGBEE_SIGNAL_LOG_WARN:
+            ESP_LOGW(kTag, "Zigbee app signal: %s (%u), status=%s", signal_name, (unsigned)signal_type, esp_err_to_name(status));
+            return;
+        case ZIGBEE_SIGNAL_LOG_INFO:
+        default:
+            ESP_LOGI(kTag, "Zigbee app signal: %s (%u), status=%s", signal_name, (unsigned)signal_type, esp_err_to_name(status));
+            return;
+    }
+}
+
 static void log_ieee_addr(const char* prefix, const esp_zb_ieee_addr_t ieee_addr) {
     if (prefix == NULL || !is_valid_ieee_addr(ieee_addr)) {
         return;
@@ -1587,14 +1647,17 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
         (esp_zb_app_signal_type_t)(*signal_s->p_app_signal);
     const esp_err_t status = signal_s->esp_err_status;
 
-    ESP_LOGI(
-        kTag,
-        "Zigbee app signal: %s (%u), status=%s",
-        esp_zb_zdo_signal_to_string(signal_type),
-        (unsigned)signal_type,
-        esp_err_to_name(status));
+    log_zigbee_app_signal(signal_type, status);
 
     switch (signal_type) {
+        case ESP_ZB_ZDO_SIGNAL_PRODUCTION_CONFIG_READY: {
+            if (status == ESP_OK) {
+                ESP_LOGI(kTag, "Zigbee production config loaded from storage");
+            } else {
+                ESP_LOGI(kTag, "Zigbee production config absent; continuing with built-in/default settings");
+            }
+            return;
+        }
         case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP: {
             if (status != ESP_OK) {
                 ESP_LOGE(kTag, "Skip startup failed: %s", esp_err_to_name(status));

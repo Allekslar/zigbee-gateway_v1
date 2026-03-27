@@ -16,7 +16,7 @@ Focus: stable layered architecture, business-logic isolation from HAL, host-side
 - provides a Web UI and HTTP API for control;
 - uses separated layers `core -> service -> app_hal`;
 - includes an active MQTT bridge transport/command/discovery path (Phase 2 completed);
-- includes a Matter bridge runtime path (Phase 3 completed);
+- includes a Matter bridge runtime path (Phase 3 bridge/runtime contract completed; target-side Matter stack integration pending);
 - includes production-grade gateway firmware OTA with signed manifests, staged packaging, and HIL validation;
 - keeps `RCP update` as a separate follow-up track, not mixed into gateway OTA.
 
@@ -26,7 +26,7 @@ Focus: stable layered architecture, business-logic isolation from HAL, host-side
 |------|-------------------|----------------|
 | Phase 1 | Completed | Zigbee, HTTP, mDNS |
 | Phase 2 | Completed: MQTT transport, topics, commands, status path, Home Assistant discovery, and broker HIL smoke | MQTT |
-| Phase 3 | Completed: runtime contract, snapshot semantics, command/update loop, robustness gates, and Matter host/HIL smoke | Matter-over-Thread/Wi-Fi |
+| Phase 3 | Completed for bridge/runtime contract, snapshot semantics, command/update loop, robustness gates, and host/HAL-shim checks; target-side Matter stack integration remains pending | Matter bridge runtime (future Matter-over-Thread/Wi-Fi integration) |
 | Phase 4 | Completed for gateway OTA: signed manifest flow, staging bundle packaging, promotion tooling, direct-URL and staged HIL sign-off | HTTPS OTA |
 
 ## Current Status
@@ -48,7 +48,7 @@ scripts/run_blocking_local_checks.sh
 # 2) Focused Matter Phase 3 regression gate
 scripts/run_matter_phase3_checks.sh
 
-# 3) Real-gateway Matter HIL smoke
+# 3) Real-gateway Matter bridge runtime smoke
 GW_BASE_URL=http://192.168.178.171 \
 JOIN_SECONDS=30 \
 MATTER_LOOP_CYCLES=2 \
@@ -89,7 +89,7 @@ components/service/   - use-case managers, orchestration
 components/app_hal/   - adapters to ESP-IDF/stacks (C ABI)
 components/web_ui/    - web server, routes, handlers, assets
 components/mqtt_bridge/   - MQTT bridge (Phase 2)
-components/matter_bridge/ - Matter bridge (Phase 3 completed runtime path)
+components/matter_bridge/ - Matter bridge (Phase 3 bridge/runtime path)
 test/host/            - core/service unit tests on host
 test/integration/     - integration host tests for web/platform shims
 test/target/          - target HAL tests for ESP32-C6
@@ -325,7 +325,7 @@ idf.py -C test/target -B build-target-tests build
 - HIL smoke/full: run in CI on a self-hosted runner.
 - Gateway Zigbee HIL smoke (`test/hil`): real gateway reboot/join/on-off/remove scenario.
 - Gateway MQTT HIL smoke (`test/hil`): real broker publish/subscribe + join/power/remove scenario.
-- Gateway Matter runtime HIL smoke (`test/hil`): real join/command loop/remove path with Matter bridge runtime feed active.
+- Gateway Matter bridge runtime HIL smoke (`test/hil`): real join/command loop/remove path through Zigbee + HTTP with Matter bridge runtime feed active; this is not a target-side Matter stack smoke.
 
 Host integration:
 
@@ -348,7 +348,7 @@ Gateway Zigbee HIL smoke:
 GW_BASE_URL=http://192.168.178.171 scripts/run_gateway_zigbee_smoke.sh
 ```
 
-Gateway Matter runtime HIL smoke:
+Gateway Matter bridge runtime HIL smoke:
 
 ```bash
 GW_BASE_URL=http://192.168.178.171 \

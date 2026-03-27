@@ -18,7 +18,7 @@ The application evolves through three phases:
 |------|--------|-------------|-----------|
 | **Phase 1** | Completed | Zigbee Gateway + Web UI | Zigbee, HTTP, mDNS |
 | **Phase 2** | Completed | + Zigbee2MQTT | + MQTT |
-| **Phase 3** | Completed | + Matter Bridge | + Matter-over-Thread/Wi‑Fi |
+| **Phase 3** | Bridge/runtime completed; platform stack pending | + Matter Bridge | + Matter bridge runtime (future Matter-over-Thread/Wi‑Fi integration) |
 
 ---
 
@@ -206,7 +206,7 @@ zigbee-gateway/
 │   │   │   ├── hal_rcp.h
 │   │   │   └── hal_led.h
 │   │   ├── hal_zigbee.c             # C wrapper
-│   │   ├── hal_matter.c             # C wrapper (Phase 3)
+│   │   ├── hal_matter.c             # C wrapper / platform seam (Phase 3)
 │   │   ├── hal_nvs.c
 │   │   ├── hal_wifi.c
 │   │   ├── hal_mdns.c
@@ -366,7 +366,7 @@ The adapter in Service Layer converts callback data into `Event` for Core.
 | Event Bus (queue 32 events) | ~5 KB |
 | Command Dispatcher (pending table) | ~2 KB |
 | MQTT Client (Phase 2) | ~16 KB |
-| Matter SDK (Phase 3) | ~100 KB |
+| Future Matter SDK integration (not linked in current target build) | ~100 KB |
 | NVS temp buffers | ~2 KB |
 | **Free** | **~130–150 KB** |
 
