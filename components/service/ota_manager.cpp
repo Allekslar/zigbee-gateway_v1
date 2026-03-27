@@ -118,7 +118,11 @@ void load_ota_debug_breadcrumb(OtaApiSnapshot* out) noexcept {
 
     out->debug_request_id = 0U;
     clear_chars(out->debug_breadcrumb);
-    (void)hal_nvs_get_u32(kOtaDebugRequestIdKey, &out->debug_request_id);
+    const hal_nvs_status_t request_id_status =
+        hal_nvs_get_u32(kOtaDebugRequestIdKey, &out->debug_request_id);
+    if (request_id_status != HAL_NVS_STATUS_OK || out->debug_request_id == 0U) {
+        return;
+    }
     (void)hal_nvs_get_str(
         kOtaDebugBreadcrumbKey,
         out->debug_breadcrumb.data(),
