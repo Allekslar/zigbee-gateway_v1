@@ -21,11 +21,12 @@ namespace web_ui {
 
 namespace {
 
+constexpr std::size_t kStaticChunkedThresholdBytes = 4096U;
+constexpr std::size_t kStaticChunkSizeBytes = 1024U;
+
 #ifdef ESP_PLATFORM
 constexpr TickType_t kStaticSendRetryDelayTicks = pdMS_TO_TICKS(25);
 constexpr uint32_t kStaticSendTimeoutRetryLimit = 4U;
-constexpr std::size_t kStaticChunkedThresholdBytes = 4096U;
-constexpr std::size_t kStaticChunkSizeBytes = 1024U;
 
 int static_asset_send_with_retry(httpd_handle_t hd, int sockfd, const char* buf, size_t buf_len, int flags) {
     if (buf == nullptr) {
@@ -85,6 +86,7 @@ esp_err_t send_embedded_file_chunked(
     const uint8_t* start,
     std::size_t file_size,
     int sockfd) noexcept {
+    (void)sockfd;
     const std::size_t total_chunks =
         (file_size + kStaticChunkSizeBytes - 1U) / kStaticChunkSizeBytes;
 
@@ -129,8 +131,9 @@ esp_err_t send_embedded_file(
     }
 
     std::size_t file_size = static_cast<std::size_t>(end - start);
+    int sockfd = -1;
 #ifdef ESP_PLATFORM
-    const int sockfd = httpd_req_to_sockfd(req);
+    sockfd = httpd_req_to_sockfd(req);
     if (sockfd >= 0) {
         const esp_err_t override_result =
             httpd_sess_set_send_override(req->handle, sockfd, &static_asset_send_with_retry);

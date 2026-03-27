@@ -50,6 +50,14 @@ set(SERVICE_SOURCES
     ../../components/service/scan_manager.cpp
     ../../components/service/service_runtime.cpp
     ../../components/service/state_persistence_coordinator.cpp
+    ../../components/service/device_identity_store.cpp
+    ../../components/service/tuya_fingerprint.cpp
+    ../../components/service/tuya_dp_parser.cpp
+    ../../components/service/tuya_contact_sensor_plugin.cpp
+    ../../components/service/tuya_switch_plugin.cpp
+    ../../components/service/tuya_plugin_registry.cpp
+    ../../components/service/tuya_translator.cpp
+    ../../components/service/tuya_init_coordinator.cpp
     ../../components/service/hal_event_adapter.cpp
     ../../components/service/zigbee_lifecycle_coordinator.cpp
 )
