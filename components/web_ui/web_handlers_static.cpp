@@ -5,72 +5,209 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <inttypes.h>
 
 #ifdef ESP_PLATFORM
+#include <cerrno>
+#include <sys/socket.h>
 #include "esp_http_server.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "log_tags.h"
 #endif
 
 namespace web_ui {
 
 namespace {
 
-constexpr std::size_t kStaticAssetChunkSize = 1024U;
+constexpr std::size_t kStaticChunkedThresholdBytes = 4096U;
+constexpr std::size_t kStaticChunkSizeBytes = 1024U;
 
-extern const uint8_t index_html_start[] asm("_binary_index_html_start");
-extern const uint8_t index_html_end[] asm("_binary_index_html_end");
-extern const uint8_t style_css_start[] asm("_binary_style_css_start");
-extern const uint8_t style_css_end[] asm("_binary_style_css_end");
-extern const uint8_t app_js_start[] asm("_binary_app_js_start");
-extern const uint8_t app_js_end[] asm("_binary_app_js_end");
+#ifdef ESP_PLATFORM
+constexpr TickType_t kStaticSendRetryDelayTicks = pdMS_TO_TICKS(25);
+constexpr uint32_t kStaticSendTimeoutRetryLimit = 4U;
 
-esp_err_t send_embedded_file(
-    httpd_req_t* req,
-    const char* content_type,
-    const uint8_t* start,
-    const uint8_t* end) noexcept {
-    if (req == nullptr || content_type == nullptr || start == nullptr || end == nullptr || end < start) {
-        return ESP_FAIL;
+int static_asset_send_with_retry(httpd_handle_t hd, int sockfd, const char* buf, size_t buf_len, int flags) {
+    if (buf == nullptr) {
+        return HTTPD_SOCK_ERR_INVALID;
     }
 
-    std::size_t file_size = static_cast<std::size_t>(end - start);
-    if (file_size > 0U && start[file_size - 1U] == '\0') {
-        --file_size;
-    }
-    (void)httpd_resp_set_type(req, content_type);
-    (void)httpd_resp_set_hdr(req, "Cache-Control", "no-store, max-age=0");
-    (void)httpd_resp_set_hdr(req, "Pragma", "no-cache");
-    (void)httpd_resp_set_hdr(req, "Expires", "0");
-
-    std::size_t offset = 0U;
-    while (offset < file_size) {
-        const std::size_t remaining = file_size - offset;
-        const std::size_t chunk_size = remaining > kStaticAssetChunkSize ? kStaticAssetChunkSize : remaining;
-        if (httpd_resp_send_chunk(
-                req,
-                reinterpret_cast<const char*>(start + offset),
-                static_cast<ssize_t>(chunk_size)) != ESP_OK) {
-            return ESP_FAIL;
+    for (uint32_t attempt = 0; attempt <= kStaticSendTimeoutRetryLimit; ++attempt) {
+        const int ret = send(sockfd, buf, buf_len, flags);
+        if (ret >= 0) {
+            if (attempt > 0) {
+                ESP_LOGI(
+                    LOG_TAG_WEB_SERVER,
+                    "static asset send recovered after retry sockfd=%d attempt=%" PRIu32,
+                    sockfd,
+                    attempt);
+            }
+            return ret;
         }
-        offset += chunk_size;
+
+        if (errno == EAGAIN || errno == EINTR) {
+            if (attempt == kStaticSendTimeoutRetryLimit) {
+                ESP_LOGW(
+                    LOG_TAG_WEB_SERVER,
+                    "static asset send retry budget exhausted sockfd=%d errno=%d",
+                    sockfd,
+                    errno);
+                return HTTPD_SOCK_ERR_TIMEOUT;
+            }
+            vTaskDelay(kStaticSendRetryDelayTicks);
+            continue;
+        }
+
+        switch (errno) {
+            case EINVAL:
+            case EBADF:
+            case EFAULT:
+            case ENOTSOCK:
+                return HTTPD_SOCK_ERR_INVALID;
+            default:
+                return HTTPD_SOCK_ERR_FAIL;
+        }
+    }
+
+    return HTTPD_SOCK_ERR_FAIL;
+}
+#endif
+
+extern const uint8_t index_html_gz_start[] asm("_binary_index_html_gz_start");
+extern const uint8_t index_html_gz_end[] asm("_binary_index_html_gz_end");
+extern const uint8_t style_css_gz_start[] asm("_binary_style_css_gz_start");
+extern const uint8_t style_css_gz_end[] asm("_binary_style_css_gz_end");
+extern const uint8_t app_js_gz_start[] asm("_binary_app_js_gz_start");
+extern const uint8_t app_js_gz_end[] asm("_binary_app_js_gz_end");
+
+esp_err_t send_embedded_file_chunked(
+    httpd_req_t* req,
+    const uint8_t* start,
+    std::size_t file_size,
+    int sockfd) noexcept {
+    (void)sockfd;
+    const std::size_t total_chunks =
+        (file_size + kStaticChunkSizeBytes - 1U) / kStaticChunkSizeBytes;
+
+    for (std::size_t chunk_index = 0U; chunk_index < total_chunks; ++chunk_index) {
+        const std::size_t offset = chunk_index * kStaticChunkSizeBytes;
+        const std::size_t chunk_size = ((file_size - offset) < kStaticChunkSizeBytes)
+            ? (file_size - offset)
+            : kStaticChunkSizeBytes;
+        const esp_err_t chunk_result = httpd_resp_send_chunk(
+            req,
+            reinterpret_cast<const char*>(start + offset),
+            static_cast<ssize_t>(chunk_size));
+        if (chunk_result != ESP_OK) {
+#ifdef ESP_PLATFORM
+            ESP_LOGW(
+                LOG_TAG_WEB_SERVER,
+                "send_embedded_file chunk failed uri=%s sockfd=%d chunk=%zu/%zu offset=%zu size=%zu err=%s",
+                req->uri != nullptr ? req->uri : "?",
+                sockfd,
+                chunk_index + 1U,
+                total_chunks,
+                offset,
+                chunk_size,
+                esp_err_to_name(chunk_result));
+#endif
+            return chunk_result;
+        }
     }
 
     return httpd_resp_send_chunk(req, nullptr, 0);
 }
 
+esp_err_t send_embedded_file(
+    httpd_req_t* req,
+    const char* content_type,
+    const char* cache_control,
+    const uint8_t* start,
+    const uint8_t* end) noexcept {
+    if (req == nullptr || content_type == nullptr || cache_control == nullptr || start == nullptr ||
+        end == nullptr || end < start) {
+        return ESP_FAIL;
+    }
+
+    std::size_t file_size = static_cast<std::size_t>(end - start);
+    int sockfd = -1;
+#ifdef ESP_PLATFORM
+    sockfd = httpd_req_to_sockfd(req);
+    if (sockfd >= 0) {
+        const esp_err_t override_result =
+            httpd_sess_set_send_override(req->handle, sockfd, &static_asset_send_with_retry);
+        if (override_result != ESP_OK) {
+            ESP_LOGW(
+                LOG_TAG_WEB_SERVER,
+                "failed to install static send override uri=%s sockfd=%d err=%s",
+                req->uri != nullptr ? req->uri : "?",
+                sockfd,
+                esp_err_to_name(override_result));
+        }
+    }
+#endif
+    (void)httpd_resp_set_type(req, content_type);
+    (void)httpd_resp_set_hdr(req, "Cache-Control", cache_control);
+    (void)httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    (void)httpd_resp_set_hdr(req, "Vary", "Accept-Encoding");
+    const bool use_chunked_send = file_size > kStaticChunkedThresholdBytes;
+    const esp_err_t send_result = use_chunked_send
+        ? send_embedded_file_chunked(req, start, file_size, sockfd)
+        : httpd_resp_send(
+              req,
+              reinterpret_cast<const char*>(start),
+              static_cast<ssize_t>(file_size));
+    if (send_result != ESP_OK) {
+#ifdef ESP_PLATFORM
+        ESP_LOGW(
+            LOG_TAG_WEB_SERVER,
+            "send_embedded_file uri=%s sockfd=%d size=%zu mode=%s failed: %s",
+            req->uri != nullptr ? req->uri : "?",
+            sockfd,
+            file_size,
+            use_chunked_send ? "chunked" : "single",
+            esp_err_to_name(send_result));
+#endif
+        return send_result;
+    }
+    return ESP_OK;
+}
+
 esp_err_t root_get_handler(httpd_req_t* req) {
-    return send_embedded_file(req, "text/html; charset=utf-8", index_html_start, index_html_end);
+    return send_embedded_file(
+        req,
+        "text/html; charset=utf-8",
+        "no-store, max-age=0",
+        index_html_gz_start,
+        index_html_gz_end);
 }
 
 esp_err_t index_html_get_handler(httpd_req_t* req) {
-    return send_embedded_file(req, "text/html; charset=utf-8", index_html_start, index_html_end);
+    return send_embedded_file(
+        req,
+        "text/html; charset=utf-8",
+        "no-store, max-age=0",
+        index_html_gz_start,
+        index_html_gz_end);
 }
 
 esp_err_t style_css_get_handler(httpd_req_t* req) {
-    return send_embedded_file(req, "text/css; charset=utf-8", style_css_start, style_css_end);
+    return send_embedded_file(
+        req,
+        "text/css; charset=utf-8",
+        "public, max-age=31536000, immutable",
+        style_css_gz_start,
+        style_css_gz_end);
 }
 
 esp_err_t app_js_get_handler(httpd_req_t* req) {
-    return send_embedded_file(req, "application/javascript; charset=utf-8", app_js_start, app_js_end);
+    return send_embedded_file(
+        req,
+        "application/javascript; charset=utf-8",
+        "public, max-age=31536000, immutable",
+        app_js_gz_start,
+        app_js_gz_end);
 }
 
 esp_err_t favicon_get_handler(httpd_req_t* req) {

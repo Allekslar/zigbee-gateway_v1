@@ -673,6 +673,16 @@ run_checks() {
             "${m044_file}"
     fi
 
+    local m045_file="${TMP_DIR}/INV-M045.txt"
+    grep -E -r -n --include='*.cpp' --include='*.hpp' \
+        -- '#include[[:space:]]+"core_[^"]+\.hpp"|core::' \
+        "components/service" | grep -E '/tuya_' > "${m045_file}" 2>/dev/null || true
+    if [[ -s "${m045_file}" ]]; then
+        report_violation "INV-M045" "medium" "components/service (tuya)" \
+            "Tuya subsystem must not depend on core headers or core symbols directly" \
+            "${m045_file}"
+    fi
+
     check_present "INV-L001" "low" "components/common/include/log_tags.h" \
         'LOG_TAG_SERVICE_RUNTIME' \
         "log tag registry should include ServiceRuntime tag"

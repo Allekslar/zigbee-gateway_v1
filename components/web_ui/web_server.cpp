@@ -4,6 +4,7 @@
 #include "web_server.hpp"
 
 #ifdef ESP_PLATFORM
+#include <cstddef>
 #include "esp_http_server.h"
 #include "esp_log.h"
 #endif
@@ -39,26 +40,28 @@ bool WebServer::start() noexcept {
     // Keep headroom for future API additions.
     config.max_uri_handlers = 24;
 #ifdef ESP_PLATFORM
-    // Reserve socket headroom for OTA HTTPS, MQTT reconnects, and system traffic.
-    // A smaller HTTPD ceiling works better than letting UI polling consume most of
-    // the global lwIP socket budget on ESP32-C6.
+    // Keep the HTTPD socket ceiling modest so MQTT and other system paths still
+    // retain headroom in the tiny ESP32-C6 socket budget.
     config.max_open_sockets = 4;
     config.backlog_conn = 8;
 #endif
-    // Some handlers format multi-field JSON responses and can overflow
-    // default 4KB HTTPD stack on ESP32-C6 under real traffic.
-    config.stack_size = 12288;
+    // Devices/network snapshots grew after Phase 3 (OTA + Tuya identity fields),
+    // so the 12KB HTTPD stack is no longer sufficient under real UI polling.
+    // Keep the runtime behavior close to the rollback candidate, but restore a
+    // safer stack budget to avoid mixing stack faults with Zigbee regressions.
+    config.stack_size = 20480;
 
 #ifdef ESP_PLATFORM
-    // Under repeated UI polling, opening a new TCP connection per request can
-    // quickly exhaust the small lwIP socket budget. Keep-alive reduces socket
-    // churn, while LRU purge and short wait timeouts still reclaim stale peers.
+    // Keep the HTTP socket lifecycle simple under mixed static-asset fetches and
+    // API polling: prefer short-lived connections over long keep-alive reuse so
+    // browser-held idle sockets do not consume most of the tiny ESP32-C6 budget.
     config.lru_purge_enable = true;
     config.recv_wait_timeout = 5;
     config.send_wait_timeout = 15;
+    config.enable_so_linger = false;
     config.keep_alive_enable = true;
-    config.keep_alive_idle = 8;
-    config.keep_alive_interval = 4;
+    config.keep_alive_idle = 5;
+    config.keep_alive_interval = 5;
     config.keep_alive_count = 2;
     ESP_LOGI(kTag, "Starting HTTP server stack_size=%u max_uri_handlers=%u", config.stack_size, config.max_uri_handlers);
 #endif

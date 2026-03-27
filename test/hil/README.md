@@ -22,11 +22,14 @@ Additional MQTT broker smoke covers:
 3. `power/set` sent through the broker changes retained device state;
 4. force-removing the device publishes retained `availability=offline`.
 
-Additional Matter runtime smoke covers:
+Additional Matter bridge runtime smoke covers:
 
 1. join-window -> first-device auto-close path with Matter bridge runtime feed active;
 2. bounded ON/OFF command-update loop on the joined device;
 3. remove path and device disappearance verification.
+
+This smoke validates the gateway-side Matter bridge runtime feed on a real device path.
+It does not validate a target-side Matter SDK/stack session on the ESP32-C6 itself.
 
 ## Runner
 
@@ -46,7 +49,7 @@ MQTT_PASS=... \
 scripts/run_gateway_mqtt_hil_smoke.sh
 ```
 
-Matter runtime HIL smoke:
+Matter bridge runtime HIL smoke:
 
 ```bash
 GW_BASE_URL=http://192.168.178.171 \
@@ -84,7 +87,7 @@ FORCE_REMOVE_TIMEOUT_MS=15000 \
 scripts/run_gateway_mqtt_hil_smoke.sh
 ```
 
-Useful environment variables for Matter runtime smoke:
+Useful environment variables for Matter bridge runtime smoke:
 
 ```bash
 GW_BASE_URL=http://192.168.178.171 \
@@ -110,11 +113,11 @@ The MQTT runner pauses only when physical interaction is required:
 
 - put one new Zigbee end device into pairing mode.
 
-The Matter runner pauses only when physical interaction is required:
+The Matter bridge runner pauses only when physical interaction is required:
 
 - put one new Zigbee end device into pairing mode.
 
-Everything else is verified through public HTTP API plus MQTT broker topics.
+Everything else is verified through the public HTTP API.
 
 ## Preconditions
 
