@@ -340,14 +340,7 @@ bool init_hal_event_adapter(ServiceRuntime& runtime) noexcept {
 
     if (runtime_ptr->has_saved_wifi_credentials()) {
         runtime_ptr->mark_wifi_credentials_available();
-        const bool zigbee_started = runtime_ptr->ensure_zigbee_started();
-#ifdef ESP_PLATFORM
-        HAL_ADAPTER_LOGI(
-            "Saved Wi-Fi credentials found, Zigbee %s",
-            zigbee_started ? "started" : "start attempt failed");
-#else
-        (void)zigbee_started;
-#endif
+        HAL_ADAPTER_LOGI("Saved Wi-Fi credentials found, Zigbee startup deferred until service/network path");
     } else {
         HAL_ADAPTER_LOGI("Zigbee startup deferred: no Wi-Fi credentials");
     }

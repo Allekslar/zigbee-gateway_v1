@@ -52,6 +52,8 @@ constexpr UBaseType_t kOtaWorkerTaskPriority = 5U;
 constexpr const char* kRcpWorkerTaskName = "rcp_worker";
 constexpr uint32_t kRcpWorkerTaskStackSize = 4096U;
 constexpr UBaseType_t kRcpWorkerTaskPriority = 5U;
+constexpr bool kTemporarilyDisableOtaWorkerForZigbeeIsolation = true;
+constexpr bool kTemporarilyDisableRcpWorkerForZigbeeIsolation = true;
 #endif
 
 CommandSubmitStatus map_core_submit_status(core::CoreError error) noexcept {
@@ -1106,10 +1108,6 @@ void ServiceRuntime::mark_wifi_credentials_available() noexcept {
     connectivity_manager_.mark_wifi_credentials_available();
 }
 
-void ServiceRuntime::request_zigbee_start() noexcept {
-    connectivity_manager_.request_zigbee_start();
-}
-
 bool ServiceRuntime::ensure_zigbee_started() noexcept {
     return connectivity_manager_.ensure_zigbee_started(*this);
 }
@@ -1165,45 +1163,53 @@ bool ServiceRuntime::start() noexcept {
 
     scan_worker_task_handle_ = scan_worker_task;
 
-    TaskHandle_t ota_worker_task = nullptr;
-    const BaseType_t ota_task_ok = xTaskCreate(
-        &OtaManager::worker_task_entry,
-        kOtaWorkerTaskName,
-        kOtaWorkerTaskStackSize,
-        this,
-        kOtaWorkerTaskPriority,
-        &ota_worker_task);
-    if (ota_task_ok != pdPASS) {
-        vTaskDelete(scan_worker_task);
-        vTaskDelete(runtime_task);
-        scan_worker_task_handle_ = nullptr;
-        runtime_task_handle_ = nullptr;
-        SR_LOGI("Failed to create OTA worker task");
-        return false;
+    if (!kTemporarilyDisableOtaWorkerForZigbeeIsolation) {
+        TaskHandle_t ota_worker_task = nullptr;
+        const BaseType_t ota_task_ok = xTaskCreate(
+            &OtaManager::worker_task_entry,
+            kOtaWorkerTaskName,
+            kOtaWorkerTaskStackSize,
+            this,
+            kOtaWorkerTaskPriority,
+            &ota_worker_task);
+        if (ota_task_ok != pdPASS) {
+            vTaskDelete(scan_worker_task);
+            vTaskDelete(runtime_task);
+            scan_worker_task_handle_ = nullptr;
+            runtime_task_handle_ = nullptr;
+            SR_LOGI("Failed to create OTA worker task");
+            return false;
+        }
+        ota_worker_task_handle_ = ota_worker_task;
+    } else {
+        SR_LOGI("OTA worker temporarily disabled for Zigbee isolation");
     }
 
-    ota_worker_task_handle_ = ota_worker_task;
-
-    TaskHandle_t rcp_worker_task = nullptr;
-    const BaseType_t rcp_task_ok = xTaskCreate(
-        &RcpUpdateManager::worker_task_entry,
-        kRcpWorkerTaskName,
-        kRcpWorkerTaskStackSize,
-        this,
-        kRcpWorkerTaskPriority,
-        &rcp_worker_task);
-    if (rcp_task_ok != pdPASS) {
-        vTaskDelete(ota_worker_task);
-        vTaskDelete(scan_worker_task);
-        vTaskDelete(runtime_task);
-        ota_worker_task_handle_ = nullptr;
-        scan_worker_task_handle_ = nullptr;
-        runtime_task_handle_ = nullptr;
-        SR_LOGI("Failed to create RCP update worker task");
-        return false;
+    if (!kTemporarilyDisableRcpWorkerForZigbeeIsolation) {
+        TaskHandle_t rcp_worker_task = nullptr;
+        const BaseType_t rcp_task_ok = xTaskCreate(
+            &RcpUpdateManager::worker_task_entry,
+            kRcpWorkerTaskName,
+            kRcpWorkerTaskStackSize,
+            this,
+            kRcpWorkerTaskPriority,
+            &rcp_worker_task);
+        if (rcp_task_ok != pdPASS) {
+            if (ota_worker_task_handle_ != nullptr) {
+                vTaskDelete(static_cast<TaskHandle_t>(ota_worker_task_handle_));
+                ota_worker_task_handle_ = nullptr;
+            }
+            vTaskDelete(scan_worker_task);
+            vTaskDelete(runtime_task);
+            scan_worker_task_handle_ = nullptr;
+            runtime_task_handle_ = nullptr;
+            SR_LOGI("Failed to create RCP update worker task");
+            return false;
+        }
+        rcp_update_worker_task_handle_ = rcp_worker_task;
+    } else {
+        SR_LOGI("RCP worker temporarily disabled for Zigbee isolation");
     }
-
-    rcp_update_worker_task_handle_ = rcp_worker_task;
     SR_LOGI("Service runtime task started");
     return true;
 #else

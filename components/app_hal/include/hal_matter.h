@@ -26,6 +26,7 @@ typedef struct {
 } hal_matter_attribute_update_t;
 
 int hal_matter_init(void);
+bool hal_matter_available(void);
 int hal_matter_publish_state(uint16_t endpoint_id, bool on);
 int hal_matter_publish_attribute_update(const hal_matter_attribute_update_t* update);
 

@@ -133,7 +133,9 @@ bool MatterBridge::started() const noexcept {
 void MatterBridge::attach_runtime(service::MatterRuntimeApi* runtime) noexcept {
     runtime_ = runtime;
 #ifdef ESP_PLATFORM
-    (void)ensure_task_started();
+    if (started()) {
+        (void)ensure_task_started();
+    }
 #endif
 }
 

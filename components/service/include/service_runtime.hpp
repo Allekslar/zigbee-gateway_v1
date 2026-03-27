@@ -142,7 +142,6 @@ public:
     BootAutoconnectResult autoconnect_from_saved_credentials() noexcept override;
     bool has_saved_wifi_credentials() noexcept;
     void mark_wifi_credentials_available() noexcept;
-    void request_zigbee_start() noexcept;
     bool ensure_zigbee_started() noexcept;
     bool zigbee_started() const noexcept;
     bool start() noexcept override;

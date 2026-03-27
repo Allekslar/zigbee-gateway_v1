@@ -3,12 +3,10 @@
 
 #include "web_server.hpp"
 
-#include <chrono>
-
 #ifdef ESP_PLATFORM
+#include <cstddef>
 #include "esp_http_server.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #endif
 
 #include "log_tags.h"
@@ -19,43 +17,8 @@ namespace web_ui {
 #ifdef ESP_PLATFORM
 namespace {
 constexpr const char* kTag = LOG_TAG_WEB_SERVER;
-std::atomic<uint32_t> g_last_page_load_activity_ms{0U};
-std::atomic<bool> g_page_load_seen{false};
-
-uint32_t monotonic_now_ms() noexcept {
-    return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-}
-}
-#else
-namespace {
-std::atomic<uint32_t> g_last_page_load_activity_ms{0U};
-std::atomic<bool> g_page_load_seen{false};
-
-uint32_t monotonic_now_ms() noexcept {
-    using clock = std::chrono::steady_clock;
-    static const clock::time_point start = clock::now();
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - start).count();
-    return static_cast<uint32_t>(elapsed);
-}
 }
 #endif
-
-void note_page_load_activity() noexcept {
-    g_page_load_seen.store(true, std::memory_order_relaxed);
-    g_last_page_load_activity_ms.store(monotonic_now_ms(), std::memory_order_relaxed);
-}
-
-bool has_page_load_activity() noexcept {
-    return g_page_load_seen.load(std::memory_order_relaxed);
-}
-
-uint32_t page_load_idle_ms() noexcept {
-    if (!has_page_load_activity()) {
-        return 0U;
-    }
-    const uint32_t last = g_last_page_load_activity_ms.load(std::memory_order_relaxed);
-    return monotonic_now_ms() - last;
-}
 
 WebServer::WebServer(service::ServiceRuntimeApi& runtime) noexcept
     : runtime_(&runtime) {
@@ -77,20 +40,29 @@ bool WebServer::start() noexcept {
     // Keep headroom for future API additions.
     config.max_uri_handlers = 24;
 #ifdef ESP_PLATFORM
-    // Leave socket headroom for MQTT reconnects and system traffic.
-    config.max_open_sockets = 6;
-    config.backlog_conn = 4;
+    // Keep the HTTPD socket ceiling modest so MQTT and other system paths still
+    // retain headroom in the tiny ESP32-C6 socket budget.
+    config.max_open_sockets = 4;
+    config.backlog_conn = 8;
 #endif
-    // Some handlers format multi-field JSON responses and can overflow
-    // default 4KB HTTPD stack on ESP32-C6 under real traffic.
-    // Increased to keep response streaming off the edge of the task stack.
+    // Devices/network snapshots grew after Phase 3 (OTA + Tuya identity fields),
+    // so the 12KB HTTPD stack is no longer sufficient under real UI polling.
+    // Keep the runtime behavior close to the rollback candidate, but restore a
+    // safer stack budget to avoid mixing stack faults with Zigbee regressions.
     config.stack_size = 20480;
 
 #ifdef ESP_PLATFORM
-    config.lru_purge_enable = false;
-    config.recv_wait_timeout = 10;
-    config.send_wait_timeout = 30;
-    config.keep_alive_enable = false;
+    // Keep the HTTP socket lifecycle simple under mixed static-asset fetches and
+    // API polling: prefer short-lived connections over long keep-alive reuse so
+    // browser-held idle sockets do not consume most of the tiny ESP32-C6 budget.
+    config.lru_purge_enable = true;
+    config.recv_wait_timeout = 5;
+    config.send_wait_timeout = 15;
+    config.enable_so_linger = false;
+    config.keep_alive_enable = true;
+    config.keep_alive_idle = 5;
+    config.keep_alive_interval = 5;
+    config.keep_alive_count = 2;
     ESP_LOGI(kTag, "Starting HTTP server stack_size=%u max_uri_handlers=%u", config.stack_size, config.max_uri_handlers);
 #endif
 

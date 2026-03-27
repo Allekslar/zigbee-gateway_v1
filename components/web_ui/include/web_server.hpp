@@ -13,10 +13,6 @@ class ServiceRuntimeApi;
 
 namespace web_ui {
 
-void note_page_load_activity() noexcept;
-bool has_page_load_activity() noexcept;
-uint32_t page_load_idle_ms() noexcept;
-
 class WebServer {
 public:
     explicit WebServer(service::ServiceRuntimeApi& runtime) noexcept;

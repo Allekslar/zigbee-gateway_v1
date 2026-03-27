@@ -10,6 +10,10 @@ int __attribute__((weak)) hal_matter_stack_init(void) {
     return -1;
 }
 
+bool __attribute__((weak)) hal_matter_stack_available(void) {
+    return false;
+}
+
 int __attribute__((weak)) hal_matter_stack_publish_state(uint16_t endpoint_id, bool on) {
     (void)endpoint_id;
     (void)on;
@@ -27,6 +31,14 @@ int hal_matter_init(void) {
     return hal_matter_stack_init();
 #else
     return 0;
+#endif
+}
+
+bool hal_matter_available(void) {
+#ifdef ESP_PLATFORM
+    return hal_matter_stack_available();
+#else
+    return true;
 #endif
 }
 

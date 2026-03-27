@@ -108,8 +108,11 @@ ConnectivityAutoconnectResult ConnectivityManager::autoconnect_from_saved_creden
         password[0] = '\0';
     }
 
-    if (!ensure_wifi_mode_for_sta_connect()) {
-        CM_LOGI("Auto-connect failed: unable to prepare Wi-Fi mode for STA connect");
+    // For the boot-time autoconnect experiment we must explicitly normalize the
+    // driver back to STA-only. Otherwise persisted Wi-Fi driver state can keep
+    // the device in APSTA even when app_main skips provisioning AP startup.
+    if (hal_wifi_set_mode(HAL_WIFI_MODE_STA) != HAL_WIFI_STATUS_OK) {
+        CM_LOGI("Auto-connect failed: unable to force Wi-Fi mode to STA before connect");
         return ConnectivityAutoconnectResult::kConnectFailed;
     }
 
@@ -153,13 +156,8 @@ ConnectivityAutoconnectResult ConnectivityManager::autoconnect_from_saved_creden
     next_autoconnect_attempt_ms_ = 0;
     runtime.stats_.current_backoff_ms.store(0U, std::memory_order_relaxed);
     mark_wifi_credentials_available();
-    const bool zigbee_started_ok = ensure_zigbee_started(runtime);
 #ifdef ESP_PLATFORM
-    CM_LOGI(
-        "Auto-connect: Wi-Fi connected, Zigbee %s",
-        zigbee_started_ok ? "started" : "start failed");
-#else
-    (void)zigbee_started_ok;
+    CM_LOGI("Auto-connect: Wi-Fi connect requested, Zigbee start deferred until network up");
 #endif
 
     return ConnectivityAutoconnectResult::kConnectStarted;
@@ -174,19 +172,12 @@ void ConnectivityManager::mark_wifi_credentials_available() noexcept {
     zigbee_start_allowed_ = true;
 }
 
-void ConnectivityManager::request_zigbee_start() noexcept {
-    zigbee_start_requested_ = true;
-}
-
 bool ConnectivityManager::ensure_zigbee_started(ServiceRuntime& runtime) noexcept {
     if (zigbee_started_) {
         return true;
     }
 
     if (!zigbee_start_allowed_) {
-        return false;
-    }
-    if (!zigbee_start_requested_) {
         return false;
     }
 
