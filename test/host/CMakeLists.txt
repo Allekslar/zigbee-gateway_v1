@@ -71,16 +71,23 @@ set(APP_HAL_SOURCES
     ../../components/app_hal/hal_zigbee.c
 )
 
-add_library(service_host STATIC ${SERVICE_SOURCES} ${APP_HAL_SOURCES})
+add_library(app_hal_host STATIC ${APP_HAL_SOURCES})
+target_include_directories(app_hal_host
+    PUBLIC
+        ../../components/app_hal/include
+        ../../components/common/include
+)
+zg_apply_component_compile_policy(app_hal_host)
+
+add_library(service_host STATIC ${SERVICE_SOURCES})
 target_include_directories(service_host
     PUBLIC
         ../../components/service/include
-        ../../components/app_hal/include
         ../../components/common/include
         ../../components/core/include
 )
 target_compile_definitions(service_host PUBLIC SERVICE_RUNTIME_TEST_HOOKS=1)
-target_link_libraries(service_host PUBLIC core_host)
+target_link_libraries(service_host PUBLIC core_host app_hal_host)
 zg_apply_component_compile_policy(service_host)
 
 add_library(web_ui_host STATIC 

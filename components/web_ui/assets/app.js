@@ -21,6 +21,7 @@
   const pendingPowerFeedbackMs = 8000;
   const defaultHttpTimeoutMs = 8000;
   const pollHttpTimeoutMs = 4000;
+  const otaPollTimeoutMs = 20 * 60 * 1000;
 
   const ui = {
     statusLine: byId("status-line"),
@@ -686,6 +687,10 @@
     return data;
   }
 
+  function otaStageIsActive(stage) {
+    return stage === "queued" || stage === "downloading" || stage === "switch_pending" || stage === "reboot_pending";
+  }
+
   async function refreshAll() {
     log("refreshAll");
     setDebug("refreshAll start");
@@ -1038,7 +1043,7 @@
         }),
       });
       const requestId = extractRequestId(accepted);
-      const result = await pollOtaResult(requestId, 30000, 500, function (snapshot) {
+      const result = await pollOtaResult(requestId, otaPollTimeoutMs, 500, function (snapshot) {
         const stage = String(withDefault(snapshot && snapshot.stage, "queued"));
         if (stage === "queued") {
           setStatus("OTA queued...", "warn");
@@ -1061,7 +1066,20 @@
         "ok"
       );
     } catch (error) {
-      await loadOta().catch(function () {});
+      let snapshot = null;
+      try {
+        snapshot = await loadOta();
+      } catch (ignored) {
+        snapshot = null;
+      }
+      if (error && error.message === "operation_timeout") {
+        const activeRequestId = Number(withDefault(snapshot && snapshot.active_request_id, 0));
+        const activeStage = String(withDefault(snapshot && snapshot.stage, "idle"));
+        if (activeRequestId === Number(requestId) && otaStageIsActive(activeStage)) {
+          setStatus("OTA still in progress. Use Refresh to monitor progress.", "warn");
+          return;
+        }
+      }
       setStatus("OTA failed: " + error.message, "error");
     } finally {
       otaSubmitInFlight = false;
