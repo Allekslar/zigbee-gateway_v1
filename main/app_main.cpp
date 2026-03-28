@@ -24,6 +24,7 @@ constexpr const char* kGatewayHostName = "zigbee-gateway";
 constexpr const char* kProvisioningApPassword = "12345678";
 constexpr bool kTemporarilyDisableMqttForWifiBootSanity = false;
 constexpr bool kTemporarilyDisableMatterForWifiBootSanity = false;
+constexpr bool kTemporarilyDisableZigbeeForOtaRfIsolation = true;
 constexpr TickType_t kDeferredZigbeeStartDelayTicks = pdMS_TO_TICKS(15000);
 constexpr const char* kDeferredZigbeeTaskName = "zigbee_start";
 constexpr uint32_t kDeferredZigbeeTaskStackSize = 4096U;
@@ -162,17 +163,21 @@ extern "C" void app_main(void) {
         }
     }
 
-    TaskHandle_t deferred_zigbee_task = nullptr;
-    if (xTaskCreate(
-            &deferred_zigbee_start_task,
-            kDeferredZigbeeTaskName,
-            kDeferredZigbeeTaskStackSize,
-            &g_runtime,
-            kDeferredZigbeeTaskPriority,
-            &deferred_zigbee_task) != pdPASS) {
-        ESP_LOGE(kTag, "Deferred Zigbee start task creation failed");
-        while (true) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
+    if (kTemporarilyDisableZigbeeForOtaRfIsolation) {
+        ESP_LOGW(kTag, "Zigbee/coexistence temporarily disabled for OTA RF isolation");
+    } else {
+        TaskHandle_t deferred_zigbee_task = nullptr;
+        if (xTaskCreate(
+                &deferred_zigbee_start_task,
+                kDeferredZigbeeTaskName,
+                kDeferredZigbeeTaskStackSize,
+                &g_runtime,
+                kDeferredZigbeeTaskPriority,
+                &deferred_zigbee_task) != pdPASS) {
+            ESP_LOGE(kTag, "Deferred Zigbee start task creation failed");
+            while (true) {
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
         }
     }
 
