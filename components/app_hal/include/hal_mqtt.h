@@ -49,6 +49,8 @@ hal_mqtt_status_t hal_mqtt_init(const hal_mqtt_config_t* config);
 hal_mqtt_status_t hal_mqtt_register_callbacks(const hal_mqtt_callbacks_t* callbacks, void* context);
 hal_mqtt_status_t hal_mqtt_start(void);
 hal_mqtt_status_t hal_mqtt_stop(void);
+hal_mqtt_status_t hal_mqtt_release_resources(void);
+hal_mqtt_status_t hal_mqtt_restore_resources(void);
 bool hal_mqtt_is_connected(void);
 bool hal_mqtt_is_enabled(void);
 hal_mqtt_status_t hal_mqtt_get_broker_endpoint_summary(char* out, size_t out_size);

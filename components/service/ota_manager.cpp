@@ -462,6 +462,7 @@ bool OtaManager::process_request(ServiceRuntime& runtime, const OtaStartRequest&
 
 #ifdef ESP_PLATFORM
     bool mqtt_paused_for_ota = false;
+    bool mqtt_resources_released = false;
     if (hal_mqtt_is_enabled()) {
         const hal_mqtt_status_t mqtt_stop_status = hal_mqtt_stop();
         OTA_LOGI(
@@ -471,6 +472,15 @@ bool OtaManager::process_request(ServiceRuntime& runtime, const OtaStartRequest&
         if (mqtt_stop_status == HAL_MQTT_STATUS_OK) {
             mqtt_paused_for_ota = true;
             persist_ota_debug_breadcrumb(request.request_id, "mqtt_paused");
+            const hal_mqtt_status_t mqtt_release_status = hal_mqtt_release_resources();
+            OTA_LOGI(
+                "OTA worker mqtt release request_id=%" PRIu32 " status=%d",
+                request.request_id,
+                static_cast<int>(mqtt_release_status));
+            if (mqtt_release_status == HAL_MQTT_STATUS_OK) {
+                mqtt_resources_released = true;
+                persist_ota_debug_breadcrumb(request.request_id, "mqtt_released");
+            }
             vTaskDelay(kOtaWorkerPreflightDelayTicks);
         }
     }
@@ -524,6 +534,13 @@ bool OtaManager::process_request(ServiceRuntime& runtime, const OtaStartRequest&
                 request.request_id,
                 static_cast<unsigned>(CONFIG_ZGW_MQTT_RESUME_AFTER_OTA_DELAY_MS));
             vTaskDelay(kOtaWorkerMqttResumeDelayTicks);
+        }
+        if (mqtt_resources_released) {
+            const hal_mqtt_status_t mqtt_restore_status = hal_mqtt_restore_resources();
+            OTA_LOGI(
+                "OTA worker mqtt restore request_id=%" PRIu32 " status=%d",
+                request.request_id,
+                static_cast<int>(mqtt_restore_status));
         }
         const hal_mqtt_status_t mqtt_start_status = hal_mqtt_start();
         OTA_LOGI(

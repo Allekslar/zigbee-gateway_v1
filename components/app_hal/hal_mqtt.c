@@ -43,8 +43,11 @@ typedef struct {
 
 static hal_mqtt_state_t g_hal_mqtt = {0};
 
+static void hal_mqtt_reset_runtime_flags(void);
+
 #ifdef ESP_PLATFORM
 static const char* kTag = LOG_TAG_HAL_MQTT;
+static void hal_mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event_id, void* event_data);
 
 static const char* hal_mqtt_configured_uri(void) {
     return g_hal_mqtt.broker_uri[0] != '\0' ? g_hal_mqtt.broker_uri : "<empty>";
@@ -52,6 +55,55 @@ static const char* hal_mqtt_configured_uri(void) {
 
 static const char* hal_mqtt_username_present(void) {
     return g_hal_mqtt.username[0] != '\0' ? "yes" : "no";
+}
+
+static hal_mqtt_status_t hal_mqtt_create_client_from_state(void) {
+    esp_mqtt_client_config_t client_config = {};
+    client_config.broker.address.uri = g_hal_mqtt.broker_uri;
+    client_config.credentials.client_id = g_hal_mqtt.client_id;
+    if (g_hal_mqtt.username[0] != '\0') {
+        client_config.credentials.username = g_hal_mqtt.username;
+    }
+    if (g_hal_mqtt.password[0] != '\0') {
+        client_config.credentials.authentication.password = g_hal_mqtt.password;
+    }
+    client_config.session.keepalive = g_hal_mqtt.keepalive_sec;
+    client_config.network.timeout_ms = g_hal_mqtt.network_timeout_ms;
+    client_config.network.reconnect_timeout_ms = g_hal_mqtt.reconnect_timeout_ms;
+    client_config.network.disable_auto_reconnect = !g_hal_mqtt.auto_reconnect;
+
+    ESP_LOGI(
+        kTag,
+        "Initializing MQTT transport uri=%s client_id=%s keepalive_sec=%d timeout_ms=%d reconnect_backoff_ms=%d username_present=%s",
+        hal_mqtt_configured_uri(),
+        g_hal_mqtt.client_id,
+        g_hal_mqtt.keepalive_sec,
+        g_hal_mqtt.network_timeout_ms,
+        g_hal_mqtt.reconnect_timeout_ms,
+        hal_mqtt_username_present());
+
+    g_hal_mqtt.client = esp_mqtt_client_init(&client_config);
+    if (g_hal_mqtt.client == NULL) {
+        ESP_LOGE(kTag, "MQTT client init failed uri=%s", hal_mqtt_configured_uri());
+        return HAL_MQTT_STATUS_FAILED;
+    }
+
+    esp_err_t err = esp_mqtt_client_register_event(
+        g_hal_mqtt.client,
+        MQTT_EVENT_ANY,
+        &hal_mqtt_event_handler,
+        NULL);
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "MQTT event registration failed uri=%s err=0x%x", hal_mqtt_configured_uri(), (unsigned int)err);
+        esp_mqtt_client_destroy(g_hal_mqtt.client);
+        g_hal_mqtt.client = NULL;
+        return HAL_MQTT_STATUS_FAILED;
+    }
+
+    g_hal_mqtt.initialized = true;
+    hal_mqtt_reset_runtime_flags();
+    ESP_LOGI(kTag, "MQTT transport initialized uri=%s", hal_mqtt_configured_uri());
+    return HAL_MQTT_STATUS_OK;
 }
 #endif
 
@@ -246,52 +298,7 @@ hal_mqtt_status_t hal_mqtt_init(const hal_mqtt_config_t* config) {
         return HAL_MQTT_STATUS_OK;
     }
 
-    esp_mqtt_client_config_t client_config = {};
-    client_config.broker.address.uri = g_hal_mqtt.broker_uri;
-    client_config.credentials.client_id = g_hal_mqtt.client_id;
-    if (g_hal_mqtt.username[0] != '\0') {
-        client_config.credentials.username = g_hal_mqtt.username;
-    }
-    if (g_hal_mqtt.password[0] != '\0') {
-        client_config.credentials.authentication.password = g_hal_mqtt.password;
-    }
-    client_config.session.keepalive = g_hal_mqtt.keepalive_sec;
-    client_config.network.timeout_ms = g_hal_mqtt.network_timeout_ms;
-    client_config.network.reconnect_timeout_ms = g_hal_mqtt.reconnect_timeout_ms;
-    client_config.network.disable_auto_reconnect = !g_hal_mqtt.auto_reconnect;
-
-    ESP_LOGI(
-        kTag,
-        "Initializing MQTT transport uri=%s client_id=%s keepalive_sec=%d timeout_ms=%d reconnect_backoff_ms=%d username_present=%s",
-        hal_mqtt_configured_uri(),
-        g_hal_mqtt.client_id,
-        g_hal_mqtt.keepalive_sec,
-        g_hal_mqtt.network_timeout_ms,
-        g_hal_mqtt.reconnect_timeout_ms,
-        hal_mqtt_username_present());
-
-    g_hal_mqtt.client = esp_mqtt_client_init(&client_config);
-    if (g_hal_mqtt.client == NULL) {
-        ESP_LOGE(kTag, "MQTT client init failed uri=%s", hal_mqtt_configured_uri());
-        return HAL_MQTT_STATUS_FAILED;
-    }
-
-    esp_err_t err = esp_mqtt_client_register_event(
-        g_hal_mqtt.client,
-        MQTT_EVENT_ANY,
-        &hal_mqtt_event_handler,
-        NULL);
-    if (err != ESP_OK) {
-        ESP_LOGE(kTag, "MQTT event registration failed uri=%s err=0x%x", hal_mqtt_configured_uri(), (unsigned int)err);
-        esp_mqtt_client_destroy(g_hal_mqtt.client);
-        g_hal_mqtt.client = NULL;
-        return HAL_MQTT_STATUS_FAILED;
-    }
-
-    g_hal_mqtt.initialized = true;
-    hal_mqtt_reset_runtime_flags();
-    ESP_LOGI(kTag, "MQTT transport initialized uri=%s", hal_mqtt_configured_uri());
-    return HAL_MQTT_STATUS_OK;
+    return hal_mqtt_create_client_from_state();
 #else
     const hal_mqtt_status_t config_status = hal_mqtt_apply_config(config);
     if (config_status != HAL_MQTT_STATUS_OK) {
@@ -366,6 +373,58 @@ hal_mqtt_status_t hal_mqtt_stop(void) {
     g_hal_mqtt.started = false;
     g_hal_mqtt.connected = false;
     hal_mqtt_dispatch_disconnected();
+    return HAL_MQTT_STATUS_OK;
+#endif
+}
+
+hal_mqtt_status_t hal_mqtt_release_resources(void) {
+#ifdef ESP_PLATFORM
+    if (!hal_mqtt_transport_enabled()) {
+        return HAL_MQTT_STATUS_DISABLED;
+    }
+    if (!g_hal_mqtt.initialized && g_hal_mqtt.client == NULL) {
+        return HAL_MQTT_STATUS_OK;
+    }
+    if (g_hal_mqtt.client == NULL) {
+        g_hal_mqtt.initialized = false;
+        hal_mqtt_reset_runtime_flags();
+        return HAL_MQTT_STATUS_OK;
+    }
+    if (g_hal_mqtt.started && esp_mqtt_client_stop(g_hal_mqtt.client) != ESP_OK) {
+        return HAL_MQTT_STATUS_FAILED;
+    }
+    if (esp_mqtt_client_destroy(g_hal_mqtt.client) != ESP_OK) {
+        return HAL_MQTT_STATUS_FAILED;
+    }
+    g_hal_mqtt.client = NULL;
+    g_hal_mqtt.initialized = false;
+    hal_mqtt_reset_runtime_flags();
+    ESP_LOGI(kTag, "MQTT transport resources released uri=%s", hal_mqtt_configured_uri());
+    return HAL_MQTT_STATUS_OK;
+#else
+    g_hal_mqtt.started = false;
+    g_hal_mqtt.connected = false;
+    g_hal_mqtt.initialized = false;
+    return HAL_MQTT_STATUS_OK;
+#endif
+}
+
+hal_mqtt_status_t hal_mqtt_restore_resources(void) {
+#ifdef ESP_PLATFORM
+    if (!hal_mqtt_transport_enabled()) {
+        return HAL_MQTT_STATUS_DISABLED;
+    }
+    if (g_hal_mqtt.initialized && g_hal_mqtt.client != NULL) {
+        return HAL_MQTT_STATUS_OK;
+    }
+    if (g_hal_mqtt.broker_uri[0] == '\0' || g_hal_mqtt.client_id[0] == '\0' ||
+        g_hal_mqtt.keepalive_sec == 0U || g_hal_mqtt.network_timeout_ms == 0U ||
+        g_hal_mqtt.reconnect_timeout_ms == 0U) {
+        return HAL_MQTT_STATUS_NOT_INITIALIZED;
+    }
+    return hal_mqtt_create_client_from_state();
+#else
+    g_hal_mqtt.initialized = true;
     return HAL_MQTT_STATUS_OK;
 #endif
 }
