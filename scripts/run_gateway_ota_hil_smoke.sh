@@ -148,6 +148,7 @@ test -n "${request_id}" || {
 
 deadline=$(( $(date +%s) + OTA_POLL_TIMEOUT_SEC ))
 result=""
+result_ready="false"
 while (( $(date +%s) <= deadline )); do
   snapshot="$(json_get_http "${GATEWAY_BASE_URL}/api/ota" || true)"
   if [[ -n "${snapshot}" ]]; then
@@ -159,6 +160,7 @@ while (( $(date +%s) <= deadline )); do
     echo "OTA result: ${result}"
     ready="$(json_get "${result}" "ready")"
     if [[ "${ready}" == "true" ]]; then
+      result_ready="true"
       ok="$(json_get "${result}" "ok")"
       if [[ "${ok}" != "true" ]]; then
         echo "OTA failed: ${result}" >&2
@@ -176,38 +178,47 @@ test -n "${result}" || {
   exit 1
 }
 
-reboot_required="$(json_get "${result}" "reboot_required")"
-if [[ "${reboot_required}" == "true" ]]; then
-  echo "Waiting for OTA reboot/recovery..."
-  reboot_deadline=$(( $(date +%s) + REBOOT_TIMEOUT_SEC ))
-  while (( $(date +%s) <= reboot_deadline )); do
-    post_snapshot="$(json_get_http "${GATEWAY_BASE_URL}/api/ota" || true)"
-    if [[ -z "${post_snapshot}" ]]; then
-      sleep 2
-      continue
-    fi
-
-    echo "Post-reboot OTA snapshot: ${post_snapshot}"
-    if [[ -n "${EXPECTED_VERSION:-}" ]]; then
-      current_version="$(json_get "${post_snapshot}" "current_version")"
-      if [[ "${current_version}" == "${EXPECTED_VERSION}" ]]; then
-        echo "Observed expected version after reboot: ${current_version}"
-        echo "Gateway OTA HIL smoke PASSED"
-        exit 0
-      fi
-    else
-      current_stage="$(json_get "${post_snapshot}" "stage")"
-      if [[ "${current_stage}" != "failed" ]]; then
-        echo "Gateway OTA HIL smoke PASSED"
-        exit 0
-      fi
-    fi
-
-    sleep 2
-  done
-
-  echo "Gateway did not come back with the expected OTA state before timeout" >&2
+if [[ "${result_ready}" != "true" ]]; then
+  echo "OTA result was observed but not ready before timeout: ${result}" >&2
   exit 1
 fi
 
-echo "Gateway OTA HIL smoke PASSED"
+reboot_required="$(json_get "${result}" "reboot_required")"
+if [[ "${reboot_required}" != "true" ]]; then
+  echo "Expected reboot_required=true for successful OTA, got: ${result}" >&2
+  exit 1
+fi
+
+echo "Waiting for OTA reboot/recovery..."
+reboot_deadline=$(( $(date +%s) + REBOOT_TIMEOUT_SEC ))
+while (( $(date +%s) <= reboot_deadline )); do
+  post_snapshot="$(json_get_http "${GATEWAY_BASE_URL}/api/ota" || true)"
+  if [[ -z "${post_snapshot}" ]]; then
+    sleep 2
+    continue
+  fi
+
+  echo "Post-reboot OTA snapshot: ${post_snapshot}"
+  current_version="$(json_get "${post_snapshot}" "current_version")"
+  current_stage="$(json_get "${post_snapshot}" "stage")"
+  current_request_id="$(json_get "${post_snapshot}" "active_request_id")"
+  current_busy="$(json_get "${post_snapshot}" "busy")"
+
+  if [[ -n "${EXPECTED_VERSION:-}" ]]; then
+    if [[ "${current_version}" == "${EXPECTED_VERSION}" && "${current_request_id}" == "0" && "${current_busy}" == "false" ]]; then
+      echo "Observed expected version after reboot: ${current_version}"
+      echo "Gateway OTA HIL smoke PASSED"
+      exit 0
+    fi
+  else
+    if [[ "${current_stage}" == "idle" && "${current_request_id}" == "0" && "${current_busy}" == "false" ]]; then
+      echo "Gateway OTA HIL smoke PASSED"
+      exit 0
+    fi
+  fi
+
+  sleep 2
+done
+
+echo "Gateway did not come back with the expected OTA state before timeout" >&2
+exit 1
