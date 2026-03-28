@@ -197,6 +197,9 @@ private:
     bool drain_rcp_update_requests() noexcept;
     bool drain_rcp_update_status_update() noexcept;
     uint32_t monotonic_now_ms() const noexcept;
+#ifdef ESP_PLATFORM
+    bool ensure_ota_worker_started() noexcept;
+#endif
     bool ensure_wifi_mode_for_scan() noexcept;
     bool ensure_wifi_mode_for_sta_connect() noexcept;
     bool request_join_window_open(uint16_t duration_seconds) noexcept;
@@ -270,6 +273,7 @@ private:
     std::size_t queue_count_{0};
 
     mutable RuntimeLock ingress_lock_{};
+    mutable RuntimeLock worker_start_lock_{};
     OperationResultStore operation_result_store_{};
     ReadModelCoordinator read_model_coordinator_;
     StatePersistenceCoordinator state_persistence_coordinator_;

@@ -16,6 +16,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
 #endif
 
 #include "hal_zigbee.h"
@@ -52,8 +53,15 @@ constexpr UBaseType_t kOtaWorkerTaskPriority = 5U;
 constexpr const char* kRcpWorkerTaskName = "rcp_worker";
 constexpr uint32_t kRcpWorkerTaskStackSize = 4096U;
 constexpr UBaseType_t kRcpWorkerTaskPriority = 5U;
-constexpr bool kTemporarilyDisableOtaWorkerForZigbeeIsolation = true;
 constexpr bool kTemporarilyDisableRcpWorkerForZigbeeIsolation = true;
+
+bool should_start_ota_worker() noexcept {
+#if CONFIG_ZGW_OTA_ENABLED
+    return true;
+#else
+    return false;
+#endif
+}
 #endif
 
 CommandSubmitStatus map_core_submit_status(core::CoreError error) noexcept {
@@ -485,6 +493,12 @@ OtaSubmitStatus ServiceRuntime::post_ota_start(const OtaStartRequest& request) n
     if (rcp_update_manager_.has_pending_or_busy()) {
         return OtaSubmitStatus::kBusy;
     }
+#ifdef ESP_PLATFORM
+    if (!ensure_ota_worker_started()) {
+        SR_LOGW("OTA request rejected: worker start failed");
+        return OtaSubmitStatus::kBusy;
+    }
+#endif
     return ota_manager_.enqueue_request(*this, request);
 }
 
@@ -1163,26 +1177,10 @@ bool ServiceRuntime::start() noexcept {
 
     scan_worker_task_handle_ = scan_worker_task;
 
-    if (!kTemporarilyDisableOtaWorkerForZigbeeIsolation) {
-        TaskHandle_t ota_worker_task = nullptr;
-        const BaseType_t ota_task_ok = xTaskCreate(
-            &OtaManager::worker_task_entry,
-            kOtaWorkerTaskName,
-            kOtaWorkerTaskStackSize,
-            this,
-            kOtaWorkerTaskPriority,
-            &ota_worker_task);
-        if (ota_task_ok != pdPASS) {
-            vTaskDelete(scan_worker_task);
-            vTaskDelete(runtime_task);
-            scan_worker_task_handle_ = nullptr;
-            runtime_task_handle_ = nullptr;
-            SR_LOGI("Failed to create OTA worker task");
-            return false;
-        }
-        ota_worker_task_handle_ = ota_worker_task;
+    if (should_start_ota_worker()) {
+        SR_LOGI("OTA worker deferred until first request");
     } else {
-        SR_LOGI("OTA worker temporarily disabled for Zigbee isolation");
+        SR_LOGI("OTA worker not started: OTA disabled in config");
     }
 
     if (!kTemporarilyDisableRcpWorkerForZigbeeIsolation) {
@@ -1219,6 +1217,39 @@ bool ServiceRuntime::start() noexcept {
     return true;
 #endif
 }
+
+#ifdef ESP_PLATFORM
+bool ServiceRuntime::ensure_ota_worker_started() noexcept {
+    if (!should_start_ota_worker()) {
+        return false;
+    }
+    if (ota_worker_task_handle_ != nullptr) {
+        return true;
+    }
+
+    RuntimeLockGuard guard(worker_start_lock_);
+    if (ota_worker_task_handle_ != nullptr) {
+        return true;
+    }
+
+    TaskHandle_t ota_worker_task = nullptr;
+    const BaseType_t ota_task_ok = xTaskCreate(
+        &OtaManager::worker_task_entry,
+        kOtaWorkerTaskName,
+        kOtaWorkerTaskStackSize,
+        this,
+        kOtaWorkerTaskPriority,
+        &ota_worker_task);
+    if (ota_task_ok != pdPASS) {
+        SR_LOGI("Failed to create OTA worker task on demand");
+        return false;
+    }
+
+    ota_worker_task_handle_ = ota_worker_task;
+    SR_LOGI("OTA worker created on demand");
+    return true;
+}
+#endif
 
 void ServiceRuntime::apply_managers(const core::CoreEvent& event) noexcept {
     if (event.type == core::CoreEventType::kAttributeReported &&
