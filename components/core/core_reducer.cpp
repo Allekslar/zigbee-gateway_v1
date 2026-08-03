@@ -7,18 +7,44 @@ namespace core {
 
 namespace {
 
-int find_device_index(const CoreState& state, uint16_t short_addr) noexcept {
+// Authoritative lookup by durable DeviceId (FD-01), with an explicit,
+// narrowly-scoped legacy fallback for call sites that do not yet resolve a
+// DeviceId before posting into Core (Service-layer identity resolution wiring
+// -- HAL EUI-64 plumbing, join-candidate/interview/bind/reporting pipelines --
+// remains a tracked follow-up; see docs/architecture/DEVICE_IDENTITY.md).
+//
+// When device_id is valid, it is the ONLY key consulted: a resolved record
+// can never be matched, mutated or displaced by a short_addr-only event
+// (INV-ID-03 holds unconditionally for any record that owns a real identity).
+// When device_id is invalid, matching falls back to short_addr, but only
+// against OTHER identity-less records, so a legacy event can never touch a
+// record that already has a resolved identity.
+int find_device_index(const CoreState& state, const DeviceId& device_id, uint16_t short_addr) noexcept {
+    if (device_id.valid()) {
+        for (std::size_t i = 0; i < state.devices.size(); ++i) {
+            if (state.devices[i].device_id == device_id) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
+
+    if (short_addr == kUnknownDeviceShortAddr) {
+        return -1;
+    }
     for (std::size_t i = 0; i < state.devices.size(); ++i) {
-        if (state.devices[i].short_addr == short_addr) {
+        if (!state.devices[i].device_id.valid() && state.devices[i].short_addr == short_addr) {
             return static_cast<int>(i);
         }
     }
     return -1;
 }
 
+// A slot is free only when it holds neither a resolved identity nor a
+// legacy locator (i.e. it has never been assigned by either path).
 int find_free_slot(const CoreState& state) noexcept {
     for (std::size_t i = 0; i < state.devices.size(); ++i) {
-        if (state.devices[i].short_addr == kUnknownDeviceShortAddr) {
+        if (!state.devices[i].device_id.valid() && state.devices[i].short_addr == kUnknownDeviceShortAddr) {
             return static_cast<int>(i);
         }
     }
@@ -55,7 +81,7 @@ void apply_onoff_attribute(CoreReduceResult* out, const CoreEvent& event, bool* 
         return;
     }
 
-    const int index = find_device_index(out->next, event.device_short_addr);
+    const int index = find_device_index(out->next, event.device_id, event.device_short_addr);
     if (index < 0) {
         return;
     }
@@ -69,14 +95,11 @@ void apply_onoff_attribute(CoreReduceResult* out, const CoreEvent& event, bool* 
 }
 
 bool apply_reporting_state(CoreReduceResult* out,
+                           const DeviceId& device_id,
                            uint16_t short_addr,
                            CoreReportingState reporting_state,
                            bool stale) noexcept {
-    if (short_addr == kUnknownDeviceShortAddr) {
-        return false;
-    }
-
-    const int index = find_device_index(out->next, short_addr);
+    const int index = find_device_index(out->next, device_id, short_addr);
     if (index < 0) {
         return false;
     }
@@ -95,12 +118,7 @@ bool apply_reporting_state(CoreReduceResult* out,
 }
 
 bool apply_telemetry_update(CoreReduceResult* out, const CoreEvent& event) noexcept {
-    const uint16_t short_addr = event.device_short_addr;
-    if (short_addr == kUnknownDeviceShortAddr) {
-        return false;
-    }
-
-    const int index = find_device_index(out->next, short_addr);
+    const int index = find_device_index(out->next, event.device_id, event.device_short_addr);
     if (index < 0) {
         return false;
     }
@@ -238,20 +256,29 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
 
     switch (event.type) {
         case CoreEventType::kDeviceJoined: {
-            if (event.device_short_addr == kUnknownDeviceShortAddr) {
+            // A join with neither a resolved identity nor a locator carries
+            // no information and is dropped. FD-01's full "identity-only"
+            // enforcement (never create a record from a legacy short_addr
+            // event) activates once every Service-layer join path supplies a
+            // resolved device_id; see the find_device_index() legacy-fallback
+            // note above for current transitional scope.
+            if (!event.device_id.valid() && event.device_short_addr == kUnknownDeviceShortAddr) {
                 break;
             }
 
-            int index = find_device_index(out.next, event.device_short_addr);
+            bool became_online = false;
+            int index = find_device_index(out.next, event.device_id, event.device_short_addr);
             if (index < 0) {
                 index = find_free_slot(out.next);
                 if (index >= 0) {
                     CoreDeviceRecord& device = out.next.devices[static_cast<std::size_t>(index)];
+                    device.device_id = event.device_id;
                     device.short_addr = event.device_short_addr;
                     device.online = true;
                     device.power_on = false;
                     ++out.next.device_count;
                     state_changed = true;
+                    became_online = true;
                 }
             } else {
                 CoreDeviceRecord& device = out.next.devices[static_cast<std::size_t>(index)];
@@ -260,28 +287,38 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
                     device.online = true;
                     ++out.next.device_count;
                     state_changed = true;
+                    became_online = true;
+                } else if (device.short_addr != event.device_short_addr) {
+                    // INV-ID-01: the same DeviceId reported a new locator
+                    // while still marked online (short-address remap without
+                    // an intervening leave). Refresh the locator only; this
+                    // does not restart the interview/reporting lifecycle.
+                    device.short_addr = event.device_short_addr;
+                    state_changed = true;
                 }
             }
 
             if (state_changed) {
                 push_state_persist_and_telemetry(&out);
-                out.effects.push(CoreEffect{
-                    CoreEffectType::kZigbeeInterview,
-                    kNoCorrelationId,
-                    event.device_short_addr,
-                    0,
-                    false,
-                });
+                if (became_online) {
+                    out.effects.push(CoreEffect{
+                        CoreEffectType::kZigbeeInterview,
+                        kNoCorrelationId,
+                        event.device_short_addr,
+                        0,
+                        false,
+                    });
+                }
             }
             break;
         }
 
         case CoreEventType::kDeviceLeft: {
-            if (event.device_short_addr == kUnknownDeviceShortAddr) {
+            if (!event.device_id.valid() && event.device_short_addr == kUnknownDeviceShortAddr) {
                 break;
             }
 
-            const int index = find_device_index(out.next, event.device_short_addr);
+            const int index = find_device_index(out.next, event.device_id, event.device_short_addr);
             if (index >= 0) {
                 CoreDeviceRecord& device = out.next.devices[static_cast<std::size_t>(index)];
                 if (device.online && out.next.device_count > 0) {
@@ -379,6 +416,7 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
         case CoreEventType::kDeviceInterviewCompleted:
             state_changed = apply_reporting_state(
                 &out,
+                event.device_id,
                 event.device_short_addr,
                 CoreReportingState::kInterviewCompleted,
                 false);
@@ -397,6 +435,7 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
         case CoreEventType::kDeviceBindingReady:
             state_changed = apply_reporting_state(
                 &out,
+                event.device_id,
                 event.device_short_addr,
                 CoreReportingState::kBindingReady,
                 false);
@@ -415,6 +454,7 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
         case CoreEventType::kDeviceReportingConfigured:
             state_changed = apply_reporting_state(
                 &out,
+                event.device_id,
                 event.device_short_addr,
                 CoreReportingState::kReportingConfigured,
                 false);
@@ -440,6 +480,7 @@ CoreReduceResult core_reduce(const CoreState& prev, const CoreEvent& event) noex
         case CoreEventType::kDeviceStale:
             state_changed = apply_reporting_state(
                 &out,
+                event.device_id,
                 event.device_short_addr,
                 CoreReportingState::kStale,
                 true);

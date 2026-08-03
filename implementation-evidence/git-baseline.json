@@ -1,0 +1,35 @@
+{
+  "baseline_kind": "existing_clean_git_checkout",
+  "remote_url": "https://github.com/Allekslar/zigbee-gateway_v1.git",
+  "branch": "main",
+  "tracking_status": "up to date with origin/main",
+  "commit_sha": "800fe939c7a17abfbf2f0fe6549df73ffcb89d65",
+  "commit_subject": "Fix host test linking and web OTA UX",
+  "commit_count": 194,
+  "sole_author": "Alleks-k",
+  "ancestry_claim": "This is real upstream Git history, not a locally-initialized archive-baseline commit. No 'reviewed-baseline' commit was created because a genuine tracked history already exists.",
+  "source_inventory_hash": "934c11c4179a8338aaa4d2f1a7d314ff2bcb4b8696598761fa8ba8536d78b394",
+  "tree_sha256": "b33f4547bf51a56291727d142311dc8360aa55c328905f00b4fe2bbfb244e4c9",
+  "working_tree_clean_at_s0_start": false,
+  "uncommitted_paths_at_s0_start": [
+    {
+      "path": "README.md",
+      "change": "modified, +1 line: adds a link to docs/implementation/PRODUCTION_HARDENING_PLAN.md"
+    },
+    {
+      "path": "docs/implementation/PRODUCTION_HARDENING_PLAN.md",
+      "change": "untracked (new): the plan document itself, transcribed/encoding-fixed and updated with a simplification patch in a prior session"
+    },
+    {
+      "path": "implementation-evidence/",
+      "change": "untracked (new): S0 evidence directory being populated by this stage"
+    },
+    {
+      "path": "tools/",
+      "change": "untracked (new): tools/extract_repository_inventory.py, referenced as a companion artifact by the plan"
+    }
+  ],
+  "included_excluded_paths": "N/A — this is not an archive-without-.git baseline; no manual include/exclude path selection was performed. The existing .gitignore governs what is tracked.",
+  "no_product_code_mutated": true,
+  "verification": "git diff --name-only reports only README.md; no file under components/, main/, test/ was modified during this stage."
+}

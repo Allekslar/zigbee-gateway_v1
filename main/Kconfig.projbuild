@@ -7,6 +7,15 @@ config ZGW_ENABLE_DEBUG_LOGS
     bool "Enable debug logs"
     default y
 
+config ZGW_ZIGBEE_ENABLED
+    bool "Enable Zigbee radio/coexistence startup"
+    default y
+    help
+        Keep this enabled for the normal gateway profile. Disable only for an
+        explicit development/RF-isolation build profile (for example, an OTA
+        HIL isolation test) that intentionally must not start the deferred
+        Zigbee task. Production builds must not ship with this disabled.
+
 menu "OTA"
 
 config ZGW_OTA_ENABLED

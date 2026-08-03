@@ -9,6 +9,7 @@ idf_component_register(
         "core_registry.cpp"
         "core_reducer.cpp"
         "core_command_dispatcher.cpp"
+        "device_id.cpp"
     INCLUDE_DIRS "include"
 )
 

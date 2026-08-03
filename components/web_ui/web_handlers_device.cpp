@@ -66,15 +66,15 @@ const char* contact_state_to_string(service::DeviceContactState state) noexcept 
     }
 }
 
-const char* identity_status_to_string(service::DeviceIdentityStatus status) noexcept {
+const char* identity_status_to_string(service::DeviceDescriptorStatus status) noexcept {
     switch (status) {
-        case service::DeviceIdentityStatus::kPending:
+        case service::DeviceDescriptorStatus::kPending:
             return "pending";
-        case service::DeviceIdentityStatus::kResolved:
+        case service::DeviceDescriptorStatus::kResolved:
             return "resolved";
-        case service::DeviceIdentityStatus::kFailed:
+        case service::DeviceDescriptorStatus::kFailed:
             return "failed";
-        case service::DeviceIdentityStatus::kUnknown:
+        case service::DeviceDescriptorStatus::kUnknown:
         default:
             return "unknown";
     }
@@ -190,8 +190,8 @@ esp_err_t devices_get_handler(httpd_req_t* req) {
         }
 
         const char* identity_status = identity_status_to_string(device.identity_status);
-        char manufacturer_buf[service::kDeviceIdentityManufacturerMaxLen]{};
-        char model_buf[service::kDeviceIdentityModelMaxLen]{};
+        char manufacturer_buf[service::kDeviceDescriptorManufacturerMaxLen]{};
+        char model_buf[service::kDeviceDescriptorModelMaxLen]{};
         if (device.manufacturer[0] != '\0') {
             std::snprintf(manufacturer_buf, sizeof(manufacturer_buf), "%s", device.manufacturer.data());
         }

@@ -10,7 +10,7 @@
 #include "application_requests.hpp"
 #include "config_manager.hpp"
 #include "connectivity_manager.hpp"
-#include "device_identity_store.hpp"
+#include "device_descriptor_store.hpp"
 #include "matter_runtime_api.hpp"
 #include "network_manager.hpp"
 #include "ota_manifest.hpp"
@@ -46,6 +46,20 @@ struct ZigbeeReadAttributeResult {
     bool success{false};
     const uint8_t* value{nullptr};
     uint8_t value_len{0};
+};
+
+// Service-owned, host-testable projection of which optional subsystems are
+// actually usable. Values are computed once at the composition root (app_main,
+// which has access to Kconfig and app_hal weak-symbol probes) and injected via
+// ServiceRuntimeApi::set_capabilities() before start(). Core/Service never read
+// Kconfig or HAL directly (INV-ARCH-01); adapters must consult this projection
+// instead of querying HAL/weak symbols on their own.
+struct RuntimeCapabilities {
+    bool zigbee_available{false};
+    bool mqtt_available{false};
+    bool matter_target_available{false};
+    bool ota_available{false};
+    bool rcp_update_available{false};
 };
 
 struct RuntimeStats {
@@ -327,9 +341,9 @@ struct DevicesApiDeviceSnapshot {
     int8_t rssi_dbm{0};
     bool force_remove_armed{false};
     uint32_t force_remove_ms_left{0};
-    DeviceIdentityStatus identity_status{DeviceIdentityStatus::kUnknown};
-    std::array<char, kDeviceIdentityManufacturerMaxLen> manufacturer{};
-    std::array<char, kDeviceIdentityModelMaxLen> model{};
+    DeviceDescriptorStatus identity_status{DeviceDescriptorStatus::kUnknown};
+    std::array<char, kDeviceDescriptorManufacturerMaxLen> manufacturer{};
+    std::array<char, kDeviceDescriptorModelMaxLen> model{};
 };
 
 struct DevicesApiSnapshot {
@@ -371,6 +385,9 @@ struct MqttBridgeSnapshot {
 class ServiceRuntimeApi : public MatterRuntimeApi {
 public:
     virtual ~ServiceRuntimeApi() = default;
+
+    virtual void set_capabilities(const RuntimeCapabilities& capabilities) noexcept = 0;
+    virtual RuntimeCapabilities capabilities() const noexcept = 0;
 
     virtual uint32_t next_operation_request_id() noexcept override = 0;
     virtual CommandSubmitStatus post_device_power_request(

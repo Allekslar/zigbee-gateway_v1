@@ -1,0 +1,122 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S2",
+  "stage_name": "Introduce stable DeviceId and locator lifecycle",
+  "input_commit_sha": "800fe939c7a17abfbf2f0fe6549df73ffcb89d65",
+  "output_commit_sha": "800fe939c7a17abfbf2f0fe6549df73ffcb89d65",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. All S2 work is uncommitted on top of the S0/S1 working tree.",
+  "changed_files": [
+    "components/core/include/device_id.hpp (new)",
+    "components/core/device_id.cpp (new)",
+    "components/core/include/core_state.hpp",
+    "components/core/include/core_events.hpp",
+    "components/core/include/core_commands.hpp",
+    "components/core/core_reducer.cpp",
+    "components/core/core_command_dispatcher.cpp",
+    "components/core/CMakeLists.txt",
+    "components/service/include/device_locator_registry.hpp (new)",
+    "components/service/device_locator_registry.cpp (new)",
+    "components/service/CMakeLists.txt",
+    "components/service/device_descriptor_store.cpp (renamed from device_identity_store.cpp)",
+    "components/service/include/device_descriptor_store.hpp (renamed from device_identity_store.hpp)",
+    "components/service/include/service_runtime.hpp",
+    "components/service/include/service_runtime_api.hpp",
+    "components/service/service_runtime.cpp",
+    "components/service/include/tuya_fingerprint.hpp",
+    "components/service/include/devices_api_snapshot_builder.hpp",
+    "components/service/read_model_coordinator.cpp",
+    "components/service/devices_api_snapshot_builder.cpp",
+    "components/service/include/read_model_coordinator.hpp",
+    "components/web_ui/web_handlers_device.cpp",
+    "test/host/test_core_device_id.cpp (new)",
+    "test/host/test_device_locator_registry.cpp (new)",
+    "test/host/test_core_reducer_device_id.cpp (new)",
+    "test/host/test_device_descriptor_store.cpp (renamed from test_device_identity_store.cpp)",
+    "test/host/test_read_model_coordinator.cpp",
+    "test/host/CMakeLists.txt",
+    "test/integration/CMakeLists.txt",
+    "check_arch_invariants.sh",
+    "docs/architecture/ARCH_COMPLIANCE_MATRIX.md",
+    "docs/architecture/DEVICE_IDENTITY.md (new)"
+  ],
+  "frozen_decisions_applied": [
+    "FD-01: core::DeviceId (EUI-64, 16 lowercase hex, all-zero/all-ff invalid) is the canonical durable identity type. short_addr remains a mutable locator only.",
+    "FD-02: core owns DeviceId; service owns the mutable locator registry (DeviceLocatorRegistry).",
+    "Section 7.2 remap algorithm steps 1-5 implemented exactly in DeviceLocatorRegistry::remap(); steps 6-8 (domain event, persist, resync) are explicitly the caller's responsibility, not yet wired (see deviations).",
+    "S2 required change #11: DeviceIdentityStore renamed to DeviceDescriptorStore so 'identity' refers only to core::DeviceId in this codebase.",
+    "S2 required change #15: architecture rule INV-H005 added, forbidding CoreDeviceRecord/CoreEvent/CoreCommand from existing without a DeviceId field.",
+    "Plan Section 9 item #14 dual-field/compatibility philosophy (documented for bridge/API snapshots) was explicitly extended to the Core reducer's own matching logic for this transitional stage -- see deviations below for why and its exact, invariant-preserving scope."
+  ],
+  "work_summary": {
+    "1_device_id_type": {
+      "status": "COMPLETE, TESTED",
+      "detail": "components/core/include/device_id.hpp + device_id.cpp. Fixed std::array<uint8_t,8>, canonical MSB-first order, no heap allocation. parse()/format() round-trip exactly 16 lowercase hex chars (uppercase/wrong-length/non-hex all rejected). valid() rejects all-zero and all-0xff. operator==/!=/< provided (not constexpr: std::array::operator== is not constexpr until C++20 and this project targets C++17). Test: test/host/test_core_device_id.cpp."
+    },
+    "2_device_locator_registry": {
+      "status": "COMPLETE, TESTED, NOT YET WIRED INTO ServiceRuntime",
+      "detail": "components/service/include/device_locator_registry.hpp + .cpp. Bounded (kServiceMaxDevices=64) bidirectional DeviceId<->short_addr index, single array (no separate reverse-index reconciliation needed), monotonic mapping_revision. remap() returns kInserted/kUpdated/kDisplaced/kInvalidArgument/kNoCapacity. Displacement marks the previous owner OFFLINE without erasing its record (INV-ID-03); offline entries are excluded from short_addr lookups so they can never be matched again while offline. Test: test/host/test_device_locator_registry.cpp -- covers INV-ID-01 (same id, new short_addr updates one record), INV-ID-02/03 (different id reusing a short_addr creates a distinct, non-inheriting record; displacement), mark_offline/remove, invalid-argument non-mutation, and exact capacity boundary (kMaxEntries then kNoCapacity, count unchanged)."
+    },
+    "3_core_wiring": {
+      "status": "COMPLETE, TESTED",
+      "detail": "CoreDeviceRecord/CoreEvent/CoreCommand each gained a DeviceId device_id field. core_reducer.cpp's find_device_index() is DeviceId-primary: when device_id is valid it is the ONLY key consulted, so a resolved record can never be matched/mutated/displaced by a short_addr-only event (INV-ID-03 holds unconditionally once a device has a real identity). When device_id is invalid, matching falls back to short_addr, but only among OTHER identity-less records -- see deviations for why this fallback exists and exactly what it does and does not weaken. kDeviceJoined distinguishes a locator-refresh (same DeviceId, new short_addr, still online -- INV-ID-01) from a first join; only a first join triggers the kZigbeeInterview effect. core_command_dispatcher.cpp propagates device_id through command_to_event/resolve/expire_timeouts alongside device_short_addr.",
+      "tests": {
+        "existing_69_plus_1_host_tests": "all pass unmodified (legacy short_addr-only path exercised, unaffected in observable behavior)",
+        "test_core_reducer_device_id.cpp (new)": "join creates one record + triggers interview; same-DeviceId rejoin at new short_addr is a locator-only refresh (one device, no second interview); different DeviceId reusing a vacated short_addr creates an independent, non-inheriting record; a resolved record is immune to a legacy event sharing its current short_addr; duplicate join is idempotent; kDeviceLeft by DeviceId frees the record for reuse."
+      }
+    },
+    "4_device_descriptor_store_rename": {
+      "status": "COMPLETE, VERIFIED (clean rebuild, no compile errors, all tests pass)",
+      "detail": "DeviceIdentityStore/DeviceIdentityEntry/DeviceIdentityStatus/kDeviceIdentityManufacturerMaxLen/kDeviceIdentityModelMaxLen -> DeviceDescriptorStore/DeviceDescriptorEntry/DeviceDescriptorStatus/kDeviceDescriptorManufacturerMaxLen/kDeviceDescriptorModelMaxLen across 16 files, plus physical file renames (device_identity_store.{hpp,cpp} -> device_descriptor_store.{hpp,cpp}, test file likewise). The external JSON field name \"identity_status\" in /api/devices (components/web_ui/web_handlers_device.cpp) was deliberately left untouched -- that is an external contract change reserved for S4, not S2 internal-contract scope. DeviceDescriptorStore remains keyed by short_addr; re-keying by DeviceId depends on the same Service-layer wiring gap as item 5."
+    },
+    "5_architecture_and_docs": {
+      "status": "COMPLETE",
+      "detail": "New rule INV-H005 (check_arch_invariants.sh, docs/architecture/ARCH_COMPLIANCE_MATRIX.md) asserts CoreDeviceRecord/CoreEvent/CoreCommand each declare a DeviceId device_id field. docs/architecture/DEVICE_IDENTITY.md written, documenting exactly what is implemented/tested versus explicitly deferred, including the precise multi-layer chain discovered between HAL callbacks and Core event construction."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "core_reducer.cpp's find_device_index() uses DeviceId-primary matching WITH an explicit short_addr fallback for identity-less records, rather than unconditionally rejecting every event without a valid device_id (plan Section 9 S2 required change #4/#10 read as an unconditional 'change reducer lookup/update/removal to DeviceId').",
+      "why": "Investigating the wiring needed to make every Service-layer event carry a real device_id revealed a materially larger dependency chain than the plan's stage description suggested: HAL callback signature (hal_zigbee_callbacks_t), a host mock layer, hal_event_adapter.cpp, ZigbeeLifecycleCoordinator::handle_join_candidate(), and three separate ServiceRuntime::post_zigbee_*_result() methods -- none of which currently have access to an EUI-64. A first attempt at the unconditional/strict version was implemented and tested; it broke 17 of 72 host tests (every test that creates a device via HAL-mock join simulation or via post_event without a synthesized identity), because none of those call sites resolve identity yet. Reverting to a compatibility-preserving state was the only option that did not require either (a) grinding through the full multi-layer wiring chain in this session with reduced review rigor, including C code that cannot be compiled/verified here, or (b) synthesizing a fake DeviceId from short_addr inside PRODUCTION code paths, which would have reintroduced exactly the identity-confusion anti-pattern FD-01 exists to close, just one layer further down.",
+      "invariant_preservation": "The fallback is narrowly scoped so it can never violate INV-ID-01/02/03 once a device has a resolved identity: a record with a valid device_id is matched ONLY by device_id, never by short_addr, so a legacy/unresolved event can never mutate, displace, or read config into an identity-resolved record. The fallback only ever matches OTHER identity-less records against each other, exactly reproducing pre-S2 behavior for the (currently: all) call sites that have not been updated. This was proven, not assumed: test_core_reducer_device_id.cpp includes an explicit test posting a legacy attribute-report event that shares a resolved device's current short_addr and asserts the resolved device's state is untouched.",
+      "consequence": "The real running system does NOT yet close the short-address-reuse vulnerability end-to-end -- only the Core contract and DeviceLocatorRegistry are ready. This is recorded prominently in docs/architecture/DEVICE_IDENTITY.md Section 3.1 as the concrete next increment, not hidden as if the vulnerability were already closed in production."
+    },
+    {
+      "deviation": "hal_zigbee.h/.c (HAL callback EUI-64 plumbing, item #6-7 of S2 required changes) and the Service-layer wiring (item #9-10) were NOT implemented this stage.",
+      "why": "Discovered scope: hal_zigbee.c already contains a working internal IEEE-address table and remap-detection (s_known_device_identities, notify_join_with_identity) but does not expose it through the public callback struct; extending that struct touches ESP-Zigbee SDK-facing code under #ifdef ESP_PLATFORM that cannot be compiled or verified without the real ESP-IDF/esp-zigbee-lib toolchain (BLOCKED_TOOLCHAIN, consistent with S0/S1 findings). Threading identity through the Service-layer join-candidate/interview/bind/reporting pipeline touches 5+ methods across zigbee_lifecycle_coordinator.cpp and service_runtime.cpp and was judged too large to complete with adequate review rigor in the same pass as the Core/DeviceLocatorRegistry foundation.",
+      "consequence": "Tracked explicitly in docs/architecture/DEVICE_IDENTITY.md Section 3.1 as the next concrete increment."
+    },
+    {
+      "deviation": "NetworkGenerationId and LegacyIdentityEvidenceSnapshot (FD-15, S2 required changes #16-21) were not implemented this stage.",
+      "why": "These are naturally sequenced with S3's migration/evidence-capture work (join windows, network mutations and command ingress disabled during capture) rather than the S2 identity-type foundation, and depend on the Service-layer wiring gap above to have real EUI-64 evidence to capture in the first place.",
+      "consequence": "Tracked in docs/architecture/DEVICE_IDENTITY.md Section 3.2; S3 cannot begin migration against this evidence contract until it exists."
+    }
+  ],
+  "inventories_recomputed": {
+    "device_id_test_count": 1,
+    "device_locator_registry_test_count": 1,
+    "core_reducer_device_id_test_count": 1,
+    "host_tests_total": 73,
+    "integration_tests_total": 7,
+    "device_identity_terminology_occurrences_renamed": 16
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0; includes new INV-H005 rule, verified to actually fire on a violation during development (not just verified passing)." },
+    "host_tests": { "result": "PASSED", "detail": "73/73 (100%) -- 70 from S1 baseline + test_core_device_id + test_device_locator_registry + test_core_reducer_device_id." },
+    "integration_tests": { "result": "PASSED", "detail": "7/7 (100%), unaffected by S2 scope." },
+    "sanitizer_tests": { "result": "PASSED", "detail": "73/73 (100%) under ASan+UBSan." }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround from S0/S1 (zgw-host-tools:s0). ESP-IDF/idf.py remains unavailable. main/app_main.cpp is unaffected by S2 (no changes this stage). Any future hal_zigbee.h/.c EUI-64 plumbing work will be BLOCKED_TOOLCHAIN for its ESP_PLATFORM-guarded portions in this environment, exactly as flagged for S0/S1.",
+  "unresolved_deviations": [
+    "Service-layer identity resolution wiring (HAL EUI-64 plumbing, join-candidate/interview/bind/reporting pipeline) is open -- see deviations above and docs/architecture/DEVICE_IDENTITY.md Section 3.1.",
+    "NetworkGenerationId / LegacyIdentityEvidenceSnapshot (FD-15) not started -- see docs/architecture/DEVICE_IDENTITY.md Section 3.2.",
+    "Matter/MQTT bridge and Web/API DTOs remain short_addr-keyed by design (deferred to S3/S4 per plan Section 7.2) -- unchanged, not a new deviation."
+  ],
+  "unresolved_blockers": [
+    {
+      "status": "BLOCKED_TOOLCHAIN",
+      "scope": "Any future hal_zigbee.c ESP_PLATFORM-guarded EUI-64 plumbing",
+      "detail": "No ESP-IDF/esp-zigbee-lib toolchain available in this environment; unlike the generic C++ toolchain gap solved via Docker in S0, this is a proprietary Espressif component registry dependency that cannot be substituted the same way."
+    }
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

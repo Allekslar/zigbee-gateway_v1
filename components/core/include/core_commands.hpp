@@ -22,6 +22,9 @@ enum class CoreCommandType : uint8_t {
 struct CoreCommand {
     CoreCommandType type{CoreCommandType::kUnknown};
     uint32_t correlation_id{kNoCorrelationId};
+    // Authoritative durable identity (FD-01); device_short_addr below is only
+    // the locator resolved immediately before HAL dispatch.
+    DeviceId device_id{};
     uint16_t device_short_addr{kUnknownDeviceShortAddr};
     bool desired_power_on{false};
     uint32_t issued_at_ms{0};

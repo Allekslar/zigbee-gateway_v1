@@ -1,0 +1,830 @@
+{
+  "build_info": {
+    "esp_idf": {
+      "entry": null
+    }
+  },
+  "ci_jobs": [
+    "architecture-invariants",
+    "deploy-pages",
+    "firmware-build",
+    "host-tests",
+    "ota-staging-bundle",
+    "pull_request",
+    "push",
+    "reporting-regression",
+    "schedule",
+    "static-analysis",
+    "target-hal-tests-build",
+    "target-hal-tests-hil",
+    "target-hal-tests-hil-smoke",
+    "workflow_dispatch"
+  ],
+  "cmake_tests": [
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_application_command_mapper"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_config_manager_migration"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_core_effects"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_core_event_bus"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_core_reducer"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_core_registry"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_device_identity_store"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_hal_wifi_scan"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/integration/CMakeLists.txt",
+      "name": "test_integration_hal_platform_shims"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/integration/CMakeLists.txt",
+      "name": "test_integration_web_handlers_device"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/integration/CMakeLists.txt",
+      "name": "test_integration_web_handlers_ota"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/integration/CMakeLists.txt",
+      "name": "test_integration_web_handlers_rcp"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/integration/CMakeLists.txt",
+      "name": "test_integration_web_handlers_static"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/integration/CMakeLists.txt",
+      "name": "test_integration_web_routes"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/integration/CMakeLists.txt",
+      "name": "test_integration_web_server"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_matter_bridge"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_matter_device_map"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_matter_runtime_attach_contract"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_matter_runtime_command_loop"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_matter_runtime_feed"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_matter_runtime_robustness"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_matter_snapshot_semantics"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_mqtt_bridge_commands"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_mqtt_device_sync"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_mqtt_discovery"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_mqtt_runtime_feed"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_mqtt_serializer"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_mqtt_status_runtime_feed"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_mqtt_topics"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_operation_result_store"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_ota_bootstrap"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_ota_manifest"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_read_model_coordinator"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_config_bootstrap"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_force_remove"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_hal_adapter"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_join_policy"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_network_autoconnect_limit"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_network_connect"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_network_no_reconnect"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_network_policy_state_access"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_network_reconnect"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_network_scan"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_network_timeout"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_ota"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_rcp"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_remove_device"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_reporting_faults"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_reporting_flow"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_reporting_manager"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_reporting_profiles"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_reporting_retry"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_reporting_semantics"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_reporting_stale"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_runtime"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_runtime_lifecycle"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_saved_credentials_zigbee_start"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_scan_status"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_service_zigbee_formation_retry"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_state_persistence_coordinator"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_tuya_command_encode"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_tuya_contact_sensor_plugin"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_tuya_dp_parser"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_tuya_fingerprint"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_tuya_hybrid_device"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_tuya_init_coordinator"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_tuya_switch_plugin"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_tuya_translator"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_web_handlers_config"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_web_handlers_config_post"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_web_handlers_network"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_web_handlers_network_routes"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_web_handlers_ota"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_web_handlers_rcp"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_web_json_helpers"
+    },
+    {
+      "cmake": "/home/aleks/dev/zigbee-gateway_v1/test/host/CMakeLists.txt",
+      "name": "test_zigbee_lifecycle_coordinator"
+    }
+  ],
+  "components": [
+    "app_hal",
+    "common",
+    "core",
+    "matter_bridge",
+    "mqtt_bridge",
+    "service",
+    "web_ui"
+  ],
+  "hil_files": [
+    "README.md"
+  ],
+  "http_routes": [
+    "/api/config",
+    "/api/config/reporting",
+    "/api/devices",
+    "/api/devices/join",
+    "/api/devices/power",
+    "/api/devices/remove",
+    "/api/network",
+    "/api/network/connect",
+    "/api/network/credentials/status",
+    "/api/network/refresh",
+    "/api/network/result",
+    "/api/network/result?request_id=",
+    "/api/network/scan",
+    "/api/ota",
+    "/api/ota/result",
+    "/api/ota/result?request_id=",
+    "/api/rcp-update",
+    "/api/rcp-update/result"
+  ],
+  "inventory_sha256": "934c11c4179a8338aaa4d2f1a7d314ff2bcb4b8696598761fa8ba8536d78b394",
+  "kconfig_symbols": [
+    {
+      "config": "ZGW_ENABLE_DEBUG_LOGS",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_MQTT_BROKER_URI",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_MQTT_CLIENT_ID",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_MQTT_KEEPALIVE_SEC",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_MQTT_NETWORK_TIMEOUT_MS",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_MQTT_PASSWORD",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_MQTT_RECONNECT_TIMEOUT_MS",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_MQTT_RESUME_AFTER_OTA_DELAY_MS",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_MQTT_TRANSPORT_ENABLED",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_MQTT_USERNAME",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_OTA_ALLOW_HTTP_URLS_FOR_TESTING",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_OTA_AUTO_REBOOT_ENABLED",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_OTA_BOOT_CONFIRM_ENABLED",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_OTA_BOOT_CONFIRM_TIMEOUT_MS",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_OTA_ENABLED",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_OTA_REBOOT_DELAY_MS",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_OTA_TLS_TRUST_CERT_BUNDLE",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_OTA_TLS_TRUST_PINNED_CA",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_TARGET_BACKEND_NONE",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_TARGET_BACKEND_UART",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_UART_BAUDRATE",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_UART_BOOT_ACTIVE_HIGH",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_UART_BOOT_GPIO",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_UART_ENTER_UPDATE_DELAY_MS",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_UART_PORT",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_UART_RESET_ACTIVE_HIGH",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_UART_RESET_GPIO",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_UART_RESET_PULSE_MS",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_UART_RX_GPIO",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    },
+    {
+      "config": "ZGW_RCP_UART_TX_GPIO",
+      "file": "/home/aleks/dev/zigbee-gateway_v1/main/Kconfig.projbuild"
+    }
+  ],
+  "mqtt_topics": [
+    "zigbee-gateway/devices",
+    "zigbee-gateway/devices/+/config",
+    "zigbee-gateway/devices/+/power/set",
+    "zigbee-gateway/state"
+  ],
+  "persisted_versions": {
+    "kCurrentSchemaVersion": 3,
+    "persisted_keys": [
+      "core_state_v1"
+    ]
+  },
+  "plan": "docs/implementation/PRODUCTION_HARDENING_PLAN.md",
+  "repository": {
+    "source_file_count": 298,
+    "source_files": {
+      ".clang-tidy": "8e7f5c1a3d044b138590a44fad26dd1547a94ae825ed2bb9cee4e3165306ad9b",
+      "CMakeLists.txt": "e104933b0e3f1ae9f63de6316f720dce8882c0ed6dbd1227ac6ee8b830094eea",
+      "LICENSE": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "README.md": "2e8a10157c13ea358de1f1fda37eddd0c8008e467f5fef067f646f0e73e21fc2",
+      "check_arch_invariants.sh": "c266f5a83c0e6d2841029eac3b60beb505f20a044d0a0143e94aef0b4b75b291",
+      "cmake/ProjectCompileOptions.cmake": "42a930fcd059841cca6427f6eae2f31e399eba6035ba83074026993a3cf4e779",
+      "components/app_hal/CMakeLists.txt": "99ea0de6f80459fa8e9fffcb914274383f5b7d21ae1429016608f66813943aa7",
+      "components/app_hal/hal_led.c": "d788d137293aaf3819841741e08af82bc7f81d6b215b2c145ff527c92f5fcdda",
+      "components/app_hal/hal_matter.c": "4ab72ebde22b912ffba5870a65e52322a0ca5bb96781f11b7dd7bdb4486ae6ce",
+      "components/app_hal/hal_mdns.c": "31fd4e76b31211db1230a8671d84d1a477f93c1d629c82e292e0937c14efe347",
+      "components/app_hal/hal_mqtt.c": "937b168d964fc0e5177f7e330ed121333791fd85014a237e70a6364fc2458633",
+      "components/app_hal/hal_nvs.c": "8bea7f4253ddc1e96bb576ed08bd99a05660a6c5a7c7b606b51c1ba59b979177",
+      "components/app_hal/hal_ota.c": "9681fe044e1741870710d50076a767120eab035e021ea10fd90f66c797fe1783",
+      "components/app_hal/hal_rcp.c": "bcda1a1d56a00a5666668143b822be783a9e042dc24a63e90cb36f406826cdb3",
+      "components/app_hal/hal_rcp_uart_backend.c": "a1564eb3f622eed32af7068f5ec7f4dddb69b950cf81289ebf8d02df79e69074",
+      "components/app_hal/hal_spiffs.c": "564bf5284131ac84525a08631941b0b4b1ea7c87450b98dda36ec576e17f6df3",
+      "components/app_hal/hal_wifi.c": "8464efebd3e227ce1023f51cbe891b06d90883932a9e279789c09b81b4c004c5",
+      "components/app_hal/hal_zigbee.c": "1f93a28af60648150046461f55473d6a80faacc457c4ceea8646f21d932aee02",
+      "components/app_hal/idf_component.yml": "206e41034af72a6177554a5e23f71f3d3228d7b2ae075eec2d0319521e7f1502",
+      "components/app_hal/include/hal_led.h": "bdc40fd7a6b7e23e24fe4117c70108d1eabd714bd0dce9203b2077f994df1157",
+      "components/app_hal/include/hal_matter.h": "53a7838df2f62be3d64dbdd9d4f99ac6a5b71ab5e14eff0ca5c46edb085992fc",
+      "components/app_hal/include/hal_mdns.h": "af9ea7b13071db11374a3ad5fa9bd31b7231c10e6ef3922e93543ee26b11f5f4",
+      "components/app_hal/include/hal_mqtt.h": "ac734d1400cc7c31c7417aeebdda7cd95a41ea86a3aa760540f4300999f81184",
+      "components/app_hal/include/hal_nvs.h": "05741bc9fb20cac209253021575ae59bfa21c70408a87e63fb025c5486381236",
+      "components/app_hal/include/hal_ota.h": "017a4211369a8344a229adbcc3b9bd1f0e0be8b18e63b4cb36a13a81e5eecd49",
+      "components/app_hal/include/hal_rcp.h": "35c5e0fbb20a49cba14068b39a6927eca55a5564501182424b6d1f763c71a88e",
+      "components/app_hal/include/hal_spiffs.h": "656c45eabd64356be42e800b50e2c1dda9ef9e22d001ecbdfc99daf275ad259c",
+      "components/app_hal/include/hal_wifi.h": "dbc299d2a1bc950847ebd3889711b4253f54b995a6b8afde80cb4aac51efde08",
+      "components/app_hal/include/hal_zigbee.h": "3cb4b510598cb476e6c9bb1abee091a83fdf5739c00f2c9291d9211d42cfca8b",
+      "components/app_hal/include/hal_zigbee_test.h": "9f9d1ae7bb72904450d572dda1a8215351d56a5e0b275074bede190cda9a22e6",
+      "components/app_hal/ota_release_manifest_pub.pem": "f9711ea8b712e755072e03ad61316d26915ea1ed6ad4b7b99a8dcebafd0d5252",
+      "components/app_hal/ota_release_manifest_pub_next.pem": "1671bf69de46e32e8bfee1fc7eedc39dbe509118154bdc9e814b1d454f018d53",
+      "components/app_hal/ota_server_root_ca.pem": "c64506a78f2fcaf6e387b40696a2553eaae1ee7fbc28b3bfefde8288791cf60b",
+      "components/common/CMakeLists.txt": "cafa13998749a398237be692eb926c399755b2bdc76e6b09b9a9e97195f24ae4",
+      "components/common/include/log_tags.h": "87bf2dd74ca781e0dd087f4de077ad7a941daaaceb9d2a24dce48351679ceb26",
+      "components/common/include/utils.hpp": "8d49966b91fd961189e246fbcc7fe75fe56fcc722cf9ce4bd403224fe0f9728a",
+      "components/common/include/version.hpp": "5c5d425660177d236dc32d0c30c437fb0bda51f9ac2a5f019add2735b5b2d1ef",
+      "components/common/utils.cpp": "1112691bce3c2893256b54074f62f5aa674a1700d30e6e2e2a1c6542f264e05e",
+      "components/core/CMakeLists.txt": "ec105a7f5f165e7d6127f94dd660c9f9e9e34ba9be12d3d336c1b99e30045bcd",
+      "components/core/core_command_dispatcher.cpp": "33d6eb67ff9e09772ae8439db63159bdd41d7f9a87358f212c6ba8a555faf3b0",
+      "components/core/core_event_bus.cpp": "3a0673babd46e9ffd8e075bdff1172ddc61a723cf50d578d87cbec33b343e4a5",
+      "components/core/core_reducer.cpp": "18cdbb5975381fba512b0c3ba7df067b76b73ee5783132a471fc6e7d1b5fb607",
+      "components/core/core_registry.cpp": "3b8e6e6463bfe4c06c394f3711fdae92016cb0eaad09c72c2f1fb79a2d2464b4",
+      "components/core/include/core_commands.hpp": "8cecb59a23dd33055612d52bc7d21e5143ed776e0189e0d8670e53cdc4bc732f",
+      "components/core/include/core_effects.hpp": "8a07546f608d07a3969ff1127f9624270778a55d3b6f2f5fd90b56a3718daa14",
+      "components/core/include/core_errors.hpp": "9da8ba7eeef6bf1c39baababb73ef1fe81ae049b0d3998d30d3b790918cdc614",
+      "components/core/include/core_event_bus.hpp": "97ea6ebd2bc5780e02c06c3813092168c894359d42c54f4547d1cbca50f90ffc",
+      "components/core/include/core_events.hpp": "916533f8f4bd9b06b1cfcb0d6c24ab2e239e17b71a0ca08b47871836558fc53f",
+      "components/core/include/core_registry.hpp": "bb5186d9ffb7397788c1fc025e649b5e98618588c7f0bdaabe40b91d0f5c53ec",
+      "components/core/include/core_state.hpp": "3f246eabfb413b19354994bac5609eee23ccf506b9d228328b28edd4e6e3b69d",
+      "components/matter_bridge/CMakeLists.txt": "4c02d0792a85a023b8f725049ee1c2ecdc47febaf27c80bc50fc71bcbba1d629",
+      "components/matter_bridge/README.md": "434984165c7ff560587c85217ecf77f0f91718bf5d50d5ccb49657d88f5fadad",
+      "components/matter_bridge/include/matter_bridge.hpp": "f5fdefe109d79b693648f2ff79042848e1b3e8a17ac333c39acf4b006e53c587",
+      "components/matter_bridge/include/matter_endpoint_map.hpp": "f6e100beaa7bd8e1e3d21b39c905a9c389f43c7f716745fcec9ddf67bdf1e5e1",
+      "components/matter_bridge/matter_bridge.cpp": "eaa5bdb3f1bd89690d9a11ae3bf9d1287cc1bd22324bfcaee3ad6a8a24ae1acd",
+      "components/matter_bridge/matter_device_map.cpp": "bfa2a7b7df63a8029fb9a4497d02a5cd8cd0936bf72c48ed79ce35feb9deee4f",
+      "components/mqtt_bridge/CMakeLists.txt": "85410ab0f2fe7493e74ea74572a846e428b0cd00f5a916864a5c396d37446c16",
+      "components/mqtt_bridge/include/mqtt_bridge.hpp": "2980159baaef8cd7ae4dd33cda136f91dd536e7610f68900b8577f00d4ad5a07",
+      "components/mqtt_bridge/include/mqtt_bridge_test_access.hpp": "dbb7c5a2afce70ca02777a06436f9cd4f66fcf7c2c39b84abb668ccea5c198b5",
+      "components/mqtt_bridge/include/mqtt_discovery.hpp": "31d46e7c86c2bb166231efc9089510fc8721e8a4288837e84899ec1901d3fbb4",
+      "components/mqtt_bridge/include/mqtt_serializer.hpp": "6bfdf6f5550b93800124809918ceeb04f6362054499eeada99a15f8e47fb0098",
+      "components/mqtt_bridge/include/mqtt_topics.hpp": "055436f624f48d0f4f9d6b7fa2d80da762ecc5d0075fea91acc221bcd50fc647",
+      "components/mqtt_bridge/mqtt_bridge.cpp": "e3b13b1dbdad27e6ec4daa1972b4583a900d1139cfe2f61cfaf45600a929c263",
+      "components/mqtt_bridge/mqtt_device_sync.cpp": "81cdc4c68d61e7e94ab4a2555819cb31c3dbda196939f47a83e381f8245fec14",
+      "components/mqtt_bridge/mqtt_discovery.cpp": "7fa5f21c12764f294860e6fc8f2e5236a91e8d79c791f96849dad1d29b625c3a",
+      "components/mqtt_bridge/mqtt_serializer.cpp": "d2f0b0349b2a83c0653d4b4b397f40f2f90e126e93670f0bb4123c40f5fe2a17",
+      "components/mqtt_bridge/mqtt_topics.cpp": "71d0df33e50fbe22e8c907b974271a5cc9551bada176926b2fe20284db8c1928",
+      "components/service/CMakeLists.txt": "9d37f26d3b6fdfe75594fbbcd3979c49e7f420eeddd273545dda736dfd4457d9",
+      "components/service/application_command_mapper.cpp": "2208dd4fcf9c7c2a53a42bbf3f1c5d8c324b089c5fccd8170f993df65a69791b",
+      "components/service/bridge_snapshot_builder.cpp": "da31450763cd4590f57911c2ae992c0f6d8078b91dc6746cdca86cef363047cb",
+      "components/service/command_manager.cpp": "770d569188dbef241fb961aefc703302a809353c8401f312e2199afbb698998e",
+      "components/service/config_manager.cpp": "81a4919cf9786f958a93e9ebc8ea77586e73ea1f0c2468fd99d1ba9ce6ce9209",
+      "components/service/connectivity_manager.cpp": "f61a74030ccf0ff17d5e6a5151b75011a7a4b2b7178c464be8882e6a659ca112",
+      "components/service/device_identity_store.cpp": "c6c5a25eb442a69165a5313ff65ae487e4a2bc646e85562bb25b8ac59504e51a",
+      "components/service/device_manager.cpp": "04d77fe273caeabce4807cad915d23a8c6af5d2a10dffcf0104820c81fa09dea",
+      "components/service/devices_api_snapshot_builder.cpp": "b73250bc0fc9795f6f8f6bedbb459f57e7e4b7c6389fa756cb72e5642a1ccc98",
+      "components/service/effect_executor.cpp": "9963bd91a97b788a9afc6f7094caf40346cb869dc260c2ed3a8730fadb76991a",
+      "components/service/hal_event_adapter.cpp": "de0b3eda702448fb364e84aa7839cf744eae75a9190a9de67d0c02851530960e",
+      "components/service/hal_event_adapter_internal.hpp": "2327e3838e570a63afcfca288133f15ae3983fd39f01f2e264a791c7c6b69b43",
+      "components/service/include/application_command_mapper.hpp": "815cd3cb6ad783b5f62b69732d179df0b32b65c496478e490070c582538b3c8c",
+      "components/service/include/application_requests.hpp": "bdc3b95aa90f670408cb8007da2e00d2fcb2ec9c46758bac3e81ad75fb7f4cbf",
+      "components/service/include/bridge_snapshot_builder.hpp": "f89ccac26fbfc48a35ebe1984931a1400124c6541f5bce62ac11aa9ab224ed90",
+      "components/service/include/command_manager.hpp": "11a9c61eedda35e5ee2397e8bcbec649d81bf6166c7fa2c4e9e9eaf25dcd141c",
+      "components/service/include/config_manager.hpp": "0a4ecda7b94c681d28b6740b9eb5b027de074e8b84c61784bccf8212924e2663",
+      "components/service/include/connectivity_manager.hpp": "d3c94524491c629ca0b5771bdb87ff1354d3b8f9e5ffeaa87796932b68e27344",
+      "components/service/include/device_identity_store.hpp": "5926dbaf69307624716c0d1e3a82b517aaca6b5d6411ba7c562bf4d66695a354",
+      "components/service/include/device_manager.hpp": "757a65a5e93d772c6dea48e20773a700879014d1dbd9a470214100d24e8a4788",
+      "components/service/include/devices_api_snapshot_builder.hpp": "731a9bed8e6b92c2117daa4dab6bb1afea17305772f020ee1880ea241050a28d",
+      "components/service/include/effect_executor.hpp": "a62b13f7d578a4c94e4226d67b8f38e9b2a6768e19d04e1014422382f8098fb5",
+      "components/service/include/matter_runtime_api.hpp": "b94714309ab89e9f754a8f954b9bc945033c099c2359466bbc9a6ecdec6b2a22",
+      "components/service/include/network_manager.hpp": "1068f7b265fe2e6dcd40554127f291403b19bf55bc2a046d7c5d474ed6f8aa23",
+      "components/service/include/network_policy_manager.hpp": "df5c809ea193eef679c02a872cfde9835780c9a26830b570472c3bc0a0ef833a",
+      "components/service/include/operation_result_store.hpp": "61bb0032c61546455d1d5146448b18a03beb48c9e5c0f5befea8c31d8f1a06f1",
+      "components/service/include/ota_bootstrap.hpp": "28eac8f0f4b535826cbd62e55ca9d9df9040bc10e2c2f92d4a906e931fa99041",
+      "components/service/include/ota_manager.hpp": "900567c51c09a2e8ed6ff2e7faee02cced731b115430bd3ced0f4f5e921e15c0",
+      "components/service/include/ota_manifest.hpp": "77485d84381bc235dd94f20f7d92d90b857d95ae19103026b0f3c0be9e3d367b",
+      "components/service/include/ota_transport_policy.hpp": "e3e21a9107cfeaf0ffe605c1cbcc2356b0133c623531ac43c8665226d9828439",
+      "components/service/include/ota_trust_store.hpp": "a0ccf2e3e66b83d0c19c622c02b66fc77f13b3eba616df95bdae67dc4e4c6c51",
+      "components/service/include/persistence_manager.hpp": "97002782ae55a331294fcca0588c2bbcc023cb36b2bc0815c62355d63cb89f98",
+      "components/service/include/rcp_transport_policy.hpp": "302908914ae7f436ba6956a7e8e40af02ac6fb192b5fb17c6556cd4d56f818a8",
+      "components/service/include/rcp_update_manager.hpp": "0b6ca3afe4290ee329fc5623d9366d47ab78f7457e3b8c30427291c71ac73ffe",
+      "components/service/include/read_model_coordinator.hpp": "8c8ce1a4a9e2d709e8cebdde13f8fedd46ff1a918852dfa89d61399ed727d951",
+      "components/service/include/reporting_manager.hpp": "c9437f26eb47e9ac507e9a6980c7bb1fc14063f6b33ea69118e97d6b874a70d0",
+      "components/service/include/runtime_lock.hpp": "999879eb12bf1b0d0a8b6d4c58c45dcbbde745ade8324b12ae5af685328fec61",
+      "components/service/include/scan_manager.hpp": "ab6230a802ca427b5d18d7af672c41e5ae207ccddf1e2898863f0f2b17bae604",
+      "components/service/include/service_public_types.hpp": "a20cb9b99691a69e9bf9c955c9e553b4163547e51f83069919364cafd8a13346",
+      "components/service/include/service_runtime.hpp": "aad6be4cd2c90739de5e77d51265523d6ea0e45d3fe3fd8cf011bd14641e49e8",
+      "components/service/include/service_runtime_api.hpp": "969ea87b2a4f1930d3c37dd0fc8ef67c94676c3434a3af06ab5474f3db4d5a79",
+      "components/service/include/service_runtime_test_access.hpp": "93de9fb082b88c6928f3aad74da848ecedcfe1a5e74f6f33643cce73745c9001",
+      "components/service/include/state_persistence_coordinator.hpp": "3615fbf39317c56828f4c77febc25c5aca1ccc8d55c1d41ef59c8cb78ac90a09",
+      "components/service/include/tuya_contact_sensor_plugin.hpp": "5b5d10e3b2ae368d9e2d9b0411fcb23dea2cb91094eb3c91b147f72457bf7c96",
+      "components/service/include/tuya_dp_parser.hpp": "baf979bc8c302950c83052cefd1ba449d06a7ab2e3be40316810e4736f9df66d",
+      "components/service/include/tuya_fingerprint.hpp": "0cf50e424557bd4312e9c0b4d10ead12c8f62850bdf0d080e3f5403c3f022e3a",
+      "components/service/include/tuya_init_coordinator.hpp": "d7829b78cafcf421f30a6908aa011fe3fb9f0ce302b99fcf0de4cd4f8ad3c9d1",
+      "components/service/include/tuya_payload_view.hpp": "bbc22c55cac908603a67351a77f5ba974c79a1d79aebcb4961020c3a41a4777b",
+      "components/service/include/tuya_plugin.hpp": "ae2da3d15b411bacc8fa93233dc9e1e2cbb7ba89e36d7f7b15ecd6c241ba7441",
+      "components/service/include/tuya_plugin_registry.hpp": "8e9da2e9e149710a2f94c8df2f70e7eaec3ba08c9cd9cf2dbdb9e3d9cae94b36",
+      "components/service/include/tuya_switch_plugin.hpp": "96e17bffdd830de54a0ac9c0d066de9535bd5d80a27ee80ed486477239f8a026",
+      "components/service/include/tuya_translator.hpp": "92a8539a4ffe5df4b235507ac376dce63325fbec37e478e41253ade14048cb2a",
+      "components/service/include/zigbee_lifecycle_coordinator.hpp": "e808b370324b24abd5fac876277f8c7cd78967c63bb663b3d1309e41ab7540e4",
+      "components/service/network_manager.cpp": "8b2a08bc7a55e258ed4a7f1ec4d7cf604510f65b54b154689ed9f2a4c8290656",
+      "components/service/network_policy_manager.cpp": "c7987cded4444a7f424733aca22bea914ae69a19c58b21f7327f1425628d8617",
+      "components/service/operation_result_store.cpp": "da493c350017947bb6b767ca28c8937cc6d92a6985f527496c4a9af6286a8f14",
+      "components/service/ota_bootstrap.cpp": "e207fd4c6f490da20e3f6cbfb53d500b44e0ef8d1eee995091fbf3edcb919fe7",
+      "components/service/ota_manager.cpp": "0f2ade1f3002e9fba5385476c45a6b60ef37660398a549f21e33715d31ffd1b9",
+      "components/service/ota_manifest.cpp": "65e0e9d8d13fb329c6cd07f99946752f037c621034289c81a0eafaa199e8a51a",
+      "components/service/ota_transport_policy.cpp": "2933d095bcb91e26d06e93dadf45cb2be1a0ca316344424fdd71e0404c948aea",
+      "components/service/ota_trust_store.cpp": "1e380d4ac2fa1c56f75e8449ade311262eeb385d6d78d887ebf292fc8a9c8692",
+      "components/service/persistence_manager.cpp": "18be1dbc8d3266e4e13db52b6f415c154a1ec2dbb0c00b73a2255d082efa3fbc",
+      "components/service/rcp_transport_policy.cpp": "a829251b9d2fe3352068a76becae94d35e49f68cf2a79f09ac42deb12f479cf5",
+      "components/service/rcp_update_manager.cpp": "28801d2b6b17aaa0c62e772fd9f699cd82f7d5b30b64d2db595b764c36492ada",
+      "components/service/read_model_coordinator.cpp": "144013a77cbdc0b1a4016cef561e81937a9762fb2ef949d6a189339c21c4b8cd",
+      "components/service/reporting_manager.cpp": "23b664be3e7db87513cc5220b55f89c52c21348c911d3bf01a060fe7442a6bbc",
+      "components/service/scan_manager.cpp": "b00ea278734cd5ce4732687ccc454916cb31ccd2b0f7a3d13805a9ebf4435e0e",
+      "components/service/service_runtime.cpp": "c0936bb830154fce3ee2c30d159235e4557e713eac590efbba6610701a74221e",
+      "components/service/state_persistence_coordinator.cpp": "f34f8ca0102faaf9fb6545a841d968534ce03b457c66ce0020a7f6a190f7ca5a",
+      "components/service/tuya_contact_sensor_plugin.cpp": "d0a0475b85f19e5d186a3f6edf61df8dc58d0b0a7e86ddd8210de6365723f1f1",
+      "components/service/tuya_dp_parser.cpp": "4631d381c801201f989ab405358ca7da33938ad65a81a6bfdffd3b6ee02b5880",
+      "components/service/tuya_fingerprint.cpp": "7f916ef5a1b7f9b81b310dcc9268488863648f685955fc6cec85c449a7747167",
+      "components/service/tuya_init_coordinator.cpp": "e01d5e7fa8fae51d70d97a138066a635c2193b93a8e8680dfceec6123dc71775",
+      "components/service/tuya_plugin_registry.cpp": "8d6cc21a3a2d265c37afe1084c5bcd4265ed20661cf54b088dc6431aaefd44fa",
+      "components/service/tuya_switch_plugin.cpp": "e9ccd8577749025e740814fc41d23f04703a26984940f059000bacdf2580e54a",
+      "components/service/tuya_translator.cpp": "49e47a1f449fdc18a8c20c72830b678a17407a815acb7a40fe0a1683154d8735",
+      "components/service/zigbee_lifecycle_coordinator.cpp": "c0dd0df6efaf24bf4e5096f8ae038307729fedfaf5fb0be025d444c95d017e45",
+      "components/web_ui/CMakeLists.txt": "5b9e5fda34734927f3586c820ccb5065aa6b93259511ab4f177828fd27fe3cb0",
+      "components/web_ui/assets/app.js": "a47aea8868ddddaa6b2ef8bb63e293dd4ee27b82efa71d241f02c43e945ac7f9",
+      "components/web_ui/assets/index.html": "204a66c75262300eb923617b0ec3858e6cf52b3f4c4e85da18b98c152c6551a5",
+      "components/web_ui/assets/style.css": "0dcbba9272ba2fc3922d6dcea086636025093ed72df42eddb4dc8a8fb3c0b6dc",
+      "components/web_ui/include/web_dto.hpp": "dee6ac5db9002d45e5cb13a25b6116efadaf9786874af8ae82feefc6badd756e",
+      "components/web_ui/include/web_routes.hpp": "392b9f623236a72132226d22a9c6d315c9177d4e6149a2bd07477af8a76f9e8c",
+      "components/web_ui/include/web_server.hpp": "2ca79f595611794e3a1cadbe84e67d6ea9b2364dccaac778475d339ec6148ccf",
+      "components/web_ui/web_handler_common.cpp": "aeb8a38a2112cd1670e32941ac6d68318db79bf96f280d6fd6c232115d53e4d9",
+      "components/web_ui/web_handler_common.hpp": "f5434f7fc952ef9081a220b7de651b772e592282e670d65a290fbb436d200db6",
+      "components/web_ui/web_handlers_config.cpp": "56b56bc8c8b4c9b44289819818c5cc33773e99455a600076f210c3e356b90076",
+      "components/web_ui/web_handlers_device.cpp": "fbf00d326a5798063528a1585cbacf09339d996e03c5aa6a7a23bbb977070b78",
+      "components/web_ui/web_handlers_network.cpp": "5eebf0ce0f06fc854eaec17f0e901ad1f87074c9217bc685932b7fd16415ff8f",
+      "components/web_ui/web_handlers_ota.cpp": "b3ddc173019a6d8a82ca42315c8697e831beb17b54aaf03cb000c3a40794d7f0",
+      "components/web_ui/web_handlers_rcp.cpp": "4a04e0aba69b260df5c0e28b75f3e0b19884e7c054543072844ab721cc032375",
+      "components/web_ui/web_handlers_static.cpp": "034258b160cd5b25be4a7ea764104a7b6dd3141fb7794799b39fa0f9f25d253a",
+      "components/web_ui/web_routes.cpp": "4d09ea253f04c1172df338ab05fe9a6940c67173709ab991c824f1b576a9a875",
+      "components/web_ui/web_server.cpp": "330a25a730e037003e72e7a21a10f665821e6ea32fec38ad54fa5367e7637224",
+      "dependencies.lock": "c1dc47753a4c4f6c9ea2497d5bc8dbd8467895aa6c8a7f57adc1cbd5fedd54c2",
+      "docs/architecture/ADR_EXCEPTIONS.md": "c5332a1a27834dc8b7a11937e53634082c69cbcd8be3f116b32097546ed69fac",
+      "docs/architecture/ARCHITECTURE.md": "309dfa52c3c64c0e5117ae100903561daa272d91387d2329d867ebfd03c8cf62",
+      "docs/architecture/ARCH_COMPLIANCE_MATRIX.md": "7116be77128053b769dfd678817c1210a82363bf71499890951d1aaf720b58bf",
+      "docs/architecture/CODING_GUIDELINES.md": "ecb711b4d2fb70c62d3e157214e9c4cb56a1afe72bc50cb34b93310825158fd0",
+      "docs/implementation/OTA_Implementation.md": "fe812db495019380ac6eea5c1e622b8fdb7da4a4bec350e826eb96f70a2b4aa2",
+      "docs/implementation/PRODUCTION_HARDENING_PLAN.md": "82a6b0fe71bd770603c8f04951d7010af2fe7fb819488d0dae2f681f4d7d2715",
+      "docs/implementation/RCP.md": "c93e49c12668b72a6fd669a1bf818a11b2a013bd8379e11e8d6f5f057bc71838",
+      "docs/implementation/Tuya_Implementation.md": "8a76c2997f5a0c4c17dd0d163fa533f6dbdc59d62d4d274a61c728e0341bd520",
+      "docs/implementation/Tuya_Implementation_Architecture.svg": "324352c60b0614c8c6233944ced85442bf21693ba8d251994a3da5b785c40c16",
+      "docs/process/TEAM_WORKFLOW.md": "8c1360dc8caccd528bade1692d622c9a8f1782f4b03f37d86b9a0c2e74ce6631",
+      "docs/releases/OTA_RELEASE.md": "43023e31b8d8cd03538b4ae431a462938f23caa8ad605f88fd55ead338bf676d",
+      "main/CMakeLists.txt": "71accd29dd22ea2699e5f69f794ae3e20281bf211f34f1b9c57f01293e692209",
+      "main/Kconfig.projbuild": "02bbb03be7d9f604ac1c570bdd43bdeeb3345dfcbd7a87166df291664be4a074",
+      "main/app_main.cpp": "2efee76f5478f62af531acb4ff69dd1aff450f10e7177f8aa4ba23cab39b7753",
+      "main/idf_component.yml": "3cbc049d3d933436852d1255e13e4d460816c4aef6c69ffa45acc3032d90006f",
+      "partitions.csv": "610b7dd60f8b0f1c978c3ff4a515303a72bd5fd0672bd72a82b7135947155a1b",
+      "scripts/check_ota_slot_size.sh": "87206c74196597a0bc45a81ca0b238992a74ece7b6da27b28ff060cb98eb25f7",
+      "scripts/check_ota_trust_config.sh": "abd0c9941b356c71dfd834e2b2ac9b344a8e67e7f20bddea5a6f74714ac196b7",
+      "scripts/generate_ota_manifest.py": "4483474a951d60ba258fec716a6d632bf1f985ee51af38fd2cfe5aa7d8f62cf2",
+      "scripts/gzip_asset.py": "2eb17a2c7524d1fe3afe665a3b357ccd9474cf5fbd14503a6f9de9381d6b5013",
+      "scripts/package_ota_release.py": "c0125cfd5a6fc0d09bdfed204e0678855e6e222e4f14e48411b2e69c15e08f64",
+      "scripts/prepare_ota_pending_verify.py": "8d0e8b4524bc8194569e62e02277ef1a52d2bd2d95d08af35d9768a184dc3786",
+      "scripts/promote_ota_release.py": "8fe682527ee6a5c69e057b0053d817e0f8f730158dd230d8d89b84b368d9505f",
+      "scripts/run_blocking_local_checks.sh": "5520800ac314a9171ca0dc400a859759818ddddcc762b7c6a5a083645b23a68e",
+      "scripts/run_gateway_matter_hil_smoke.sh": "38e5ceda704d94b221b600ed012768e08ad27bddff24cf694a35e607847b677e",
+      "scripts/run_gateway_mqtt_hil_smoke.sh": "69f9a65664ae3b468a197eedacf10b8ea51b901c9f5e8acfba828fb45e29c33c",
+      "scripts/run_gateway_ota_hil_smoke.sh": "4294fc63518a0d72db89d12ea33d6013c5a650aed55a905382f2ade78a859064",
+      "scripts/run_gateway_ota_staging_hil.sh": "1053de7e7082bf8cb8b9c4fbcc44171f37598b5da368b6f3d524e505edd2a78f",
+      "scripts/run_gateway_zigbee_smoke.sh": "0a63f8b47735b9bd332b53b9b32f6f41e213189d2a025bc7da930db7ca456585",
+      "scripts/run_hil_local.sh": "8cb3d0e19d168dbafeaf4de12ae4a28fb051a02c553761edd13a48ac92a7fe84",
+      "scripts/run_matter_phase3_checks.sh": "3359b14da93dc490c6fd8318b59a10eacb934a948feae58dc64f2999cf5d4a6d",
+      "scripts/serve_https_directory.py": "380b9661997dfb77f8dd168f2edac84d6198aef6f939b2f16f7e107fcd887e8c",
+      "scripts/serve_https_range_server.py": "cb7efac6a0df94974e9b4c1c2e7fa49119bf770ea2e9b39f013ddceb34597895",
+      "sdkconfig.defaults": "dc98c0e682505a8b81a8db92a48d968bde3881999a0bf4990d335ec5db0fee6d",
+      "sdkconfig.defaults.esp32c6": "12cbdf1b10fea345fa0f9211532c130d517135a453d946ad790089f899ea461e",
+      "test/fixtures/ota_manifest_test_private.pem": "c28f1a337970b078e248f373479eb28c208df65d69797866b439d38fa1517a65",
+      "test/fixtures/ota_manifest_test_private_next.pem": "e84918bbe6d1ea03ef84c877b93fd041d0c528d3ae85d79ea54f5e1459ca2f44",
+      "test/hil/README.md": "d0fce16880a8a4d7f0c4ce6dbc1e3b31881271e51c66a596d21f8792b514cef4",
+      "test/host/CMakeLists.txt": "fbfc0c2f0bd0c503c0bd96312b7fcb77a01ef319ddf5d4d29c35f98e36b77e02",
+      "test/host/test_application_command_mapper.cpp": "05fea03e532ceec96b7da6b08d9ade1a3003502382226d0a7b49fb06bb790983",
+      "test/host/test_config_manager_migration.cpp": "c3b13b73a7267f5838f30da50ad744f7253963fec5045139c0cdbf0dfc6c7834",
+      "test/host/test_core_effects.cpp": "ccf1150d0864fcc3ec743a8c12c79753d20b609ebc57b06907336fb6aa6c9b65",
+      "test/host/test_core_event_bus.cpp": "0636acdf00c3fa1c1f6777bff6e5ebdf262eaac7dac888730423de0de2a58d60",
+      "test/host/test_core_reducer.cpp": "babb6915618d77c52500f9adca4e578def279fa96223087332098280ef7aeb7b",
+      "test/host/test_core_registry.cpp": "6482c56c16f6886b66be93470f360714f1896dbed12e3ef8d88020fc58c8149c",
+      "test/host/test_device_identity_store.cpp": "db60bf435cb1448d1fb9734d39d5c0b571a90ba5da81eececc55fe0a993bd77f",
+      "test/host/test_hal_wifi_scan.cpp": "b04623a1bd88fa038f8fd94363700f48709fc22b3acdfcce7c2e577f968c131c",
+      "test/host/test_matter_bridge.cpp": "c750a26f9f37dd6a59062e55be2579ff1f8312362cb02044d49bc21befeb0db3",
+      "test/host/test_matter_device_map.cpp": "8302b0aab0404d038198590917d24810ef7ecf7147492c3bf64bb75b934eacdc",
+      "test/host/test_matter_runtime_attach_contract.cpp": "6abe8c8c95d1fc0bf487a3ad09512b383375fa2e5f6ae9e5de3f9ad9c7e4fb56",
+      "test/host/test_matter_runtime_command_loop.cpp": "ec8540747ccf8680e9e6156442c3f318a1c44c31abc360bbb0206003c0534332",
+      "test/host/test_matter_runtime_feed.cpp": "8916ed112180d27e54df1cab5cf26de2627685827976da9e69a69a3fbdaa5555",
+      "test/host/test_matter_runtime_robustness.cpp": "f237a95d9ce164c2b10951dc8dc864093eb92f079ca97bd18f9fa232b156ba25",
+      "test/host/test_matter_snapshot_semantics.cpp": "d574eb33320a58e8254f5fd11caff5af8616baf5028056abeb7a53016b98fda6",
+      "test/host/test_mqtt_bridge_commands.cpp": "5501b406db6f61c5e18920d2d8b8155fc8cff60d1ecae12956848b552a81398a",
+      "test/host/test_mqtt_device_sync.cpp": "f0673f68a0a9874e7471f3d2dca89e329356174eb12458ba8c00778caccb8ae3",
+      "test/host/test_mqtt_discovery.cpp": "86c6bf667467021cd8db40b2556ab426f9fef8f1192c447395d3e093d05f8c41",
+      "test/host/test_mqtt_runtime_feed.cpp": "babf28c7aadf0878a53074a7aabc79632743e4a783b2e8cf92a6e643f2b2d81c",
+      "test/host/test_mqtt_serializer.cpp": "737761c4db08aad4b750c8ce5625e407a949ef8eb3c6c79850fd0bba24d39e4c",
+      "test/host/test_mqtt_status_runtime_feed.cpp": "8ab7e2688e783298a7d16a50ec2bdd11e836ae65d63510333ce09b3ca0db501a",
+      "test/host/test_mqtt_topics.cpp": "4692f9f6dffb316692ac63b92eab71831bbd4de20de2e739b7bdb3077b68b8db",
+      "test/host/test_operation_result_store.cpp": "97e28eab75b90e3e53d07cce0103ae1c090b22fcc6243f78869028c80a51ad30",
+      "test/host/test_ota_bootstrap.cpp": "511a94f0cf3443d1f2b8b30735085f4eb45a6a0975dafe7fed75c7bb4c1b5bfe",
+      "test/host/test_ota_manifest.cpp": "cfee95fb31390feeb7f0e39972dc7c4eefa10450d395bc1a3ddae4f373bcd582",
+      "test/host/test_read_model_coordinator.cpp": "ee0b441ad0ce3da4c7e9efe4658ab60f36ece4be3edfe9534cb3df00d3152b7d",
+      "test/host/test_service_config_bootstrap.cpp": "011bdb928e9263c1347c4433969669f3db52bb91f856c8e5210d0ec38b47c93a",
+      "test/host/test_service_force_remove.cpp": "b187bebcf2d78900436c1841f7ecc596be0cc797afbfc4076ec48d26b69f5568",
+      "test/host/test_service_hal_adapter.cpp": "5d70297f6d9a5740691ecae59c141f9cd3f1215fce6985a456ddd564684f82f7",
+      "test/host/test_service_join_policy.cpp": "1bb71fac735d44a0417f5f6c2a35fd58d826f2c520e1e3045b63d7797e1a56fd",
+      "test/host/test_service_network_autoconnect_limit.cpp": "508a42aa3dc3a69c582e944b2f9766b60f8bdb3191e94fbcab0b3cfce8a077e0",
+      "test/host/test_service_network_connect.cpp": "a10a9d998ac25d310ce22cf85ad93754cfd117f0c4cf8af38981b0486ebd7eb9",
+      "test/host/test_service_network_no_reconnect.cpp": "20bf306522bb25f7c4a33e4719e4209c070da8f3d40b4368b18fab732439ff59",
+      "test/host/test_service_network_policy_state_access.cpp": "f741c64c5d093c915f1376b51fb8d69c0b0dfbcf5af92bd5528583476d51330c",
+      "test/host/test_service_network_reconnect.cpp": "b586c1f170f86229debabbb325108084d6d274e2efe7b6019dd901f34a22d440",
+      "test/host/test_service_network_scan.cpp": "53627e8c917ae866df8d7de0915c723d501fee2815361843cd6cdba669d33881",
+      "test/host/test_service_network_timeout.cpp": "a8ae4c78cf20a2b3ce619ec50f0b899d1b4bb810e16bde63242788761e8921bd",
+      "test/host/test_service_ota.cpp": "8b77dd3ae141a7da283b17f7a410eae6fd375df47a021c94d53a2a66723cafb1",
+      "test/host/test_service_rcp.cpp": "5eb2979aaf62df1ba25e9a755ed5222d6e8a4b984a17f569847dcb45f60066b4",
+      "test/host/test_service_remove_device.cpp": "3b99ceb282c5ed9d1fbeabcf21ac99d0ed797a2e23650fa820c32fb4cf19ae88",
+      "test/host/test_service_reporting_faults.cpp": "3d57788bd214f75308591e4777a03f20e4689029891e556af893587cb64e564c",
+      "test/host/test_service_reporting_flow.cpp": "316501f2a9872eb4a359a04089f21b8a1399d1afa1eeab283a8cf5b7e18742ab",
+      "test/host/test_service_reporting_manager.cpp": "d73775b18eb91797ecae579ad64454b2ad33ae87dec9e8458aa081c51be0e15f",
+      "test/host/test_service_reporting_profiles.cpp": "cb68b67830aa9949415e13168ac91706569ef71873107c2763123658e412be05",
+      "test/host/test_service_reporting_retry.cpp": "b5a3cedb1da953e26c069974755d5e76754ee91765793c480ac80fe892d07161",
+      "test/host/test_service_reporting_semantics.cpp": "588de1dc5a15fef832b654df0656ea0a739195c6d7355916db4eedbcedabe52e",
+      "test/host/test_service_reporting_stale.cpp": "14e3093dce9a1d241703ab20290903b6c9f8fe60eb0bcb3df05a1b91d6278597",
+      "test/host/test_service_runtime.cpp": "558986af89b94aa56a5d6ac481e0ecf8385393feaef685975456665d6f2cf4f9",
+      "test/host/test_service_runtime_lifecycle.cpp": "e0a984217f18e2dcf84334c02c008c742f59978f89cec3807813d1260230c3aa",
+      "test/host/test_service_saved_credentials_zigbee_start.cpp": "a7ae5588d35bfc2cdcdecef24b120260108b9de7fe008ca50fad2a5f2fbf8f3a",
+      "test/host/test_service_scan_status.cpp": "852992acfed1e9266a71e2b814e42b20bdb35f3ced11f1c3d6ac1c8b4da763a8",
+      "test/host/test_service_zigbee_formation_retry.cpp": "ac3bc57b3f62158a5f2ca2d77fb5d92bd10102d040176fb059bc71f5e2d7098f",
+      "test/host/test_state_persistence_coordinator.cpp": "782ba9eebc829879aa863b6e5f958fcb8c6c82c72c16517aeeed14167c614b20",
+      "test/host/test_tuya_command_encode.cpp": "be833fdcc6b3706385f3d9cc6d9e9c0c630088c6981178363aa94322c0fbb7f1",
+      "test/host/test_tuya_contact_sensor_plugin.cpp": "49703f97de7d7ecc1f4944c1bc69dd2c4b718cc383fdf79462f4282239246601",
+      "test/host/test_tuya_dp_parser.cpp": "ae7d28abdaa482836941c4c7c56915ced6d07d93cade88bfa61a1af9813deca0",
+      "test/host/test_tuya_fingerprint.cpp": "ac0c26c1213626f8a57f96b46d6b6dc5682504304228a91eac7cc6a0e61b5731",
+      "test/host/test_tuya_hybrid_device.cpp": "6dea74210eaa8f94d20177bd6aec1e0068f73129f7dd9585269e56c9ba4a412c",
+      "test/host/test_tuya_init_coordinator.cpp": "1bc3ad68c259467eaadaf89c48279cf69e610b960e89e28c4cc6218011900f75",
+      "test/host/test_tuya_switch_plugin.cpp": "243b1ba22cbdcacd6af32e3212c66f9a0b48651226927eaf64c2a081d5bb8367",
+      "test/host/test_tuya_translator.cpp": "d4420fe46c97f5f93359288ae02b4315bc7c196a05c38fb72c581eb41a6bbbe3",
+      "test/host/test_web_handlers_config.cpp": "dcdcb66fbd16f1af063f94957ffc048b36bb6e6f7a6857302c5f3dc74650cb97",
+      "test/host/test_web_handlers_config_post.cpp": "9c1c0f27007da8dc16d25cebb312443318758b30225034f50a79831bcd527b27",
+      "test/host/test_web_handlers_network.cpp": "584e9cd062f5e62c758042f3614b531361a34bbe59e1141b4831b923f30281b0",
+      "test/host/test_web_handlers_network_routes.cpp": "323bb92b0da65ecf3d5ad6ea5aaf532d18987da1b3c799fcd338d2a598c93d1c",
+      "test/host/test_web_handlers_ota.cpp": "757aaa9e7001a84eed0fc516501c7b68fe20417183cac07ab201eabbb7547f6a",
+      "test/host/test_web_handlers_rcp.cpp": "5b221736626b4f8c0268d613161210c5b9ee7f41737a5872da1025742499f9a1",
+      "test/host/test_web_json_helpers.cpp": "888ef26246d850039f0511256f7a8ebf87404ad2dd71802386e30d906c513f9f",
+      "test/host/test_zigbee_lifecycle_coordinator.cpp": "cd48d16c04036373f100a012660b972ac4e14a12d643091191f6890cfe59e62a",
+      "test/integration/CMakeLists.txt": "42002e40d6891d1d9f57ddec9bc674c59af35f145278224408cd9ec76b79282e",
+      "test/integration/README.md": "9cef68ff54822c9f1e145d8c5076d38f1427dfa71a877dfe2ee5edd5f1bd6c06",
+      "test/integration/test_integration_hal_platform_shims.cpp": "edbc8784dbc1462f9773cb99295fdc69e4390d6e4b022d39fc8542f70feb085e",
+      "test/integration/test_integration_web_handlers_device.cpp": "d724f800907eb94396898bc4cced7bd4c75ebbf91a6ed4af43eed9439dca8aac",
+      "test/integration/test_integration_web_handlers_ota.cpp": "73a46aaa10b84948b5ce45dffa8c1f45302e7b8bdbe1b205a9d92646735ef004",
+      "test/integration/test_integration_web_handlers_rcp.cpp": "17122c5942feaf768f2cf09145ffc272b06cad63a0b8cfc391769560484ef126",
+      "test/integration/test_integration_web_handlers_static.cpp": "6e784e0395713744e71672a911fb81cd824330ecf88c1500458ebfbf260f37ed",
+      "test/integration/test_integration_web_routes.cpp": "9e5a935c2411d5a3131e9f92379000489adffb821d951ecb8acf1bb5fd1f5338",
+      "test/integration/test_integration_web_server.cpp": "6d53780374fb4ed4c66b86edc09837e82479911026f761d85c0f74ca778def93",
+      "test/mocks/mock_hal_nvs.c": "c6223f10622ad5060e8be2d740cc836998f61117d338e9081755f206d74de89a",
+      "test/mocks/mock_hal_nvs.h": "2bd1da61a3e1307556ef0cebaba86c5a8790d27d026ce15e0d786ff1f919d839",
+      "test/mocks/mock_hal_zigbee.c": "d1c1019f618cbd2e8c747b229b630fa4698a4dd8fcecdad9e2a11dcad8518bda",
+      "test/mocks/mock_hal_zigbee.h": "a5aaba9a9241f94a2ff7a40371f1c39664b0a8a6e5343730fed83533dca79445",
+      "test/target/CMakeLists.txt": "c27af768bb0288cf6567fd5b592a5b6ef7d899d433fb289c2e011cdf4060b54e",
+      "test/target/dependencies.lock": "e9ab7c31702f51f2e9fce613b5007da5eab74f6090ddaf2b003d7889f3719d8e",
+      "test/target/main/CMakeLists.txt": "5373f928e6ef4df1e4b0961dd70ce662c34f000eeefdca2ef4b41aa0de8c923c",
+      "test/target/main/test_main.c": "4a9a7f1f3c05a35f390035c1a32c935503d2e19cd1210169f92201c8bf57d60f",
+      "test/target/partitions.csv": "3728a1c61ad7024787b47e1b60ae4c7a7d19c01fc2942172fe353fc8076c80b7",
+      "test/target/sdkconfig.defaults": "b067302399d283d5bd2ada3b67f04c19d5918646d3fd787b7e6c5023a58f6104",
+      "test/target/test_config_manager_runtime_policies.cpp": "dc586cfb063b850e3ed6e36daa91180348d28dbf8d293ccd2768e2ccef0ab6c8",
+      "test/target/test_hal_mqtt.c": "eb7e3b6512b6c4f64b8b85ab1d37a82b6af344861bdcf06e52e94f8d49b05424",
+      "test/target/test_hal_nvs.c": "001a95902cf22f6eb468ec7ddc508510bcb646ae95ab0b44045b1c6f60470dda",
+      "test/target/test_hal_ota.c": "db299ae484cc946b629d7b76eacc9f4cf8fdd685971939de788ddbe322d61abf",
+      "test/target/test_hal_zigbee.c": "6de0f22c3c66412922b148e4789e5064e77e7eb0f34cea4014b0e9b85320b9b8",
+      "test/target/test_reporting_faults.c": "d5d1dc1ee0dfa86336ad9afd8aa4e00a7e674fe24f8dc1785dffeb9412b87547",
+      "test/target/test_reporting_flow.c": "0d174cd1839ff5244348e7ea83ce65c7f8f59b3acfe51b2a04f085ebd5c45fef",
+      "test/target/test_web_api_integration.cpp": "b76c7869f1936f8a41277a085298bc8f64dff170f9b2b9a3dcb5ad359bec5395",
+      "tools/extract_repository_inventory.py": "5677f8a9e7766b3e28bfab91a16da97da1b7f336b8c8d38bbc536fe218e32356"
+    },
+    "tree_sha256": "b33f4547bf51a56291727d142311dc8360aa55c328905f00b4fe2bbfb244e4c9"
+  },
+  "scripts": [
+    "check_ota_slot_size.sh",
+    "check_ota_trust_config.sh",
+    "generate_ota_manifest.py",
+    "gzip_asset.py",
+    "package_ota_release.py",
+    "prepare_ota_pending_verify.py",
+    "promote_ota_release.py",
+    "run_blocking_local_checks.sh",
+    "run_gateway_matter_hil_smoke.sh",
+    "run_gateway_mqtt_hil_smoke.sh",
+    "run_gateway_ota_hil_smoke.sh",
+    "run_gateway_ota_staging_hil.sh",
+    "run_gateway_zigbee_smoke.sh",
+    "run_hil_local.sh",
+    "run_matter_phase3_checks.sh",
+    "serve_https_directory.py",
+    "serve_https_range_server.py"
+  ],
+  "temporary_flags": [
+    "components/service/service_runtime.cpp: constexpr bool kTemporarilyDisableRcpWorkerForZigbeeIsolation = true;",
+    "components/service/service_runtime.cpp: if (!kTemporarilyDisableRcpWorkerForZigbeeIsolation) {",
+    "main/app_main.cpp: constexpr bool kTemporarilyDisableMqttForWifiBootSanity = false;",
+    "main/app_main.cpp: constexpr bool kTemporarilyDisableMatterForWifiBootSanity = false;",
+    "main/app_main.cpp: constexpr bool kTemporarilyDisableZigbeeForOtaRfIsolation = true;",
+    "main/app_main.cpp: if (kTemporarilyDisableMqttForWifiBootSanity) {",
+    "main/app_main.cpp: if (kTemporarilyDisableMatterForWifiBootSanity) {",
+    "main/app_main.cpp: if (kTemporarilyDisableZigbeeForOtaRfIsolation) {"
+  ]
+}

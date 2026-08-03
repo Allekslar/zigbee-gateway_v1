@@ -164,6 +164,32 @@ jobs:
           message: ${{ steps.coverage_value.outputs.line_percent }}
           valColorRange: 70 80 90 100
 
+  sanitizer-tests:
+    name: Host Unit Tests (ASan+UBSan, Blocking)
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure host tests (sanitizers)
+        run: |
+          cmake -S test/host -B build-host-asan \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build host tests (sanitizers)
+        run: cmake --build build-host-asan --parallel
+
+      - name: Run host tests (sanitizers)
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ctest --test-dir build-host-asan --output-on-failure
+
   reporting-regression:
     name: Reporting Regression Suite (Blocking)
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}

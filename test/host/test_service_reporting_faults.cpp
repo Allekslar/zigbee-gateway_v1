@@ -92,7 +92,10 @@ int main() {
 
         assert(runtime.post_zigbee_attribute_report_raw(early));
         assert(runtime.process_pending() == 1U);
-        const core::CoreDeviceRecord* device = find_online_device(runtime.state(), 0x4102U);
+        // Bind the snapshot to a named local before use — see find_online_device()
+        // above; passing runtime.state() inline would dangle at end of expression.
+        const core::CoreState after_rejoin = runtime.state();
+        const core::CoreDeviceRecord* device = find_online_device(after_rejoin, 0x4102U);
         assert(device != nullptr);
         assert(device->has_temperature);
         assert(device->temperature_centi_c == 2150);
@@ -124,7 +127,10 @@ int main() {
         assert(runtime.post_zigbee_attribute_report_raw(report));
         assert(runtime.process_pending() == 1U);
 
-        const core::CoreDeviceRecord* device = find_online_device(runtime.state(), 0x4103U);
+        // Bind the snapshot to a named local before use — see the NOTE in the
+        // Fault 2 block above.
+        const core::CoreState after_duplicate = runtime.state();
+        const core::CoreDeviceRecord* device = find_online_device(after_duplicate, 0x4103U);
         assert(device != nullptr);
         assert(device->has_temperature);
         assert(device->temperature_centi_c == 2150);

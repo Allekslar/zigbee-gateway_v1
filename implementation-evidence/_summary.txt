@@ -1,0 +1,13 @@
+files 298
+tree_sha b33f4547bf51a562
+components ['app_hal', 'common', 'core', 'matter_bridge', 'mqtt_bridge', 'service', 'web_ui']
+ci_jobs ['architecture-invariants', 'deploy-pages', 'firmware-build', 'host-tests', 'ota-staging-bundle', 'pull_request', 'push', 'reporting-regression', 'schedule', 'static-analysis', 'target-hal-tests-build', 'target-hal-tests-hil', 'target-hal-tests-hil-smoke', 'workflow_dispatch']
+routes 18
+topics ['zigbee-gateway/devices', 'zigbee-gateway/devices/+/config', 'zigbee-gateway/devices/+/power/set', 'zigbee-gateway/state']
+kconfig 30
+cmake_tests 76
+scripts 17
+hil 1
+versions {'kCurrentSchemaVersion': 3, 'persisted_keys': ['core_state_v1']}
+tempflags 8
+esp_idf {'esp_idf': {'entry': None}}

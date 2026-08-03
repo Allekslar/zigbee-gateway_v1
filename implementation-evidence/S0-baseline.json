@@ -1,0 +1,97 @@
+{
+  "stage": "S0",
+  "plan_document": "docs/implementation/PRODUCTION_HARDENING_PLAN.md",
+  "executed_at": "2026-08-01",
+  "git_baseline": {
+    "kind": "existing_clean_git_checkout",
+    "remote_url": "https://github.com/Allekslar/zigbee-gateway_v1.git",
+    "branch": "main",
+    "tracking": "origin/main (up to date)",
+    "commit_sha": "800fe939c7a17abfbf2f0fe6549df73ffcb89d65",
+    "working_tree_clean": false,
+    "uncommitted_changes": [
+      "modified: README.md (adds link to docs/implementation/PRODUCTION_HARDENING_PLAN.md)",
+      "untracked: docs/implementation/PRODUCTION_HARDENING_PLAN.md",
+      "untracked: implementation-evidence/ (this evidence directory)",
+      "untracked: tools/ (tools/extract_repository_inventory.py)"
+    ],
+    "ancestry_claim": "real upstream Git history (194 commits, single author Alleks-k); this is NOT an archive-without-.git baseline"
+  },
+  "toolchain_environment": {
+    "note": "Host shell (Bash tool) has no C/C++ compiler or build system on PATH (no cmake/make/gcc/g++/clang/ninja, only python3). idf.py/IDF_PATH also absent. User approved using a local Docker container (docker CLI usable without sudo, daemon reachable) as a host-only build/test environment instead of installing packages system-wide.",
+    "image": "zgw-host-tools:s0",
+    "dockerfile": "FROM ubuntu:24.04; apt-get install build-essential cmake clang ninja-build git ca-certificates",
+    "compiler_versions": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0; cmake 3.28.3; clang 18.1.3",
+    "invocation_pattern": "docker run --rm -v <repo>:/workspace -w /workspace zgw-host-tools:s0 bash -c '<cmake/ctest commands>'",
+    "incident": "First build of this image (2026-08-01, prior session) was later found corrupted after the host machine hit a physical disk-full condition ('exec: input/output error' on every container invocation). Diagnosed via docker system df / re-running a plain ubuntu:24.04 container (worked) vs zgw-host-tools:s0 (failed). Fixed by `docker rmi -f`, `docker builder prune -a -f`, and a `--no-cache` rebuild from the same Dockerfile; rebuilt image verified working before reuse. No repository source files were affected by the crash (git diff/status confirmed clean of code changes both before and after)."
+  },
+  "architecture_gate": {
+    "command": "bash ./check_arch_invariants.sh",
+    "result": "PASSED",
+    "summary": "high=0, medium=0, low=0, suppressed=0"
+  },
+  "host_tests": {
+    "command": "cmake -S test/host -B build-host -DCMAKE_BUILD_TYPE=Debug && cmake --build build-host --parallel && ctest --test-dir build-host --output-on-failure",
+    "environment": "Docker container zgw-host-tools:s0",
+    "result": "PASSED",
+    "summary": "100% tests passed, 0 tests failed out of 69",
+    "discovered_test_count": 69,
+    "note": "Matches plan's reviewed baseline of 69 host tests exactly."
+  },
+  "integration_tests": {
+    "command": "cmake -S test/integration -B build-integration -DCMAKE_BUILD_TYPE=Debug && cmake --build build-integration --parallel && ctest --test-dir build-integration --output-on-failure",
+    "environment": "Docker container zgw-host-tools:s0",
+    "result": "PASSED",
+    "summary": "100% tests passed, 0 tests failed out of 7",
+    "discovered_test_count": 7,
+    "note": "Matches plan's reviewed baseline of 7 integration tests exactly."
+  },
+  "sanitizer_baseline": {
+    "command": "cmake -S test/host -B build-host-asan -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined' && cmake --build build-host-asan --parallel && ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=print_stacktrace=1 ctest --test-dir build-host-asan --output-on-failure",
+    "environment": "Docker container zgw-host-tools:s0",
+    "result": "MATCHES_REVIEWED_BASELINE_EXACTLY",
+    "summary": "96% tests passed, 3 tests failed out of 69",
+    "failing_tests": [
+      "test_service_reporting_stale",
+      "test_service_reporting_semantics",
+      "test_service_reporting_faults"
+    ],
+    "diagnostic_evidence": {
+      "test_service_reporting_semantics.cpp": "AddressSanitizer: stack-use-after-scope at test/host/test_service_reporting_semantics.cpp:97 (in main)",
+      "test_service_reporting_faults.cpp": "AddressSanitizer: stack-use-after-scope at test/host/test_service_reporting_faults.cpp:97 (in main)"
+    },
+    "note": "Confirms the plan's S1 diagnosis: dangling pointer/reference into a temporary ServiceRuntime::state() snapshot that outlives the temporary object (stack-use-after-scope). Exactly these 3 tests fail and no others; no different sanitizer result was observed, so this is treated as the confirmed pre-mutation baseline per plan Section 5.3/5.4 (no BLOCKED_DELTA_REVIEW triggered)."
+  },
+  "esp_idf_toolchain": {
+    "command": "idf.py --version",
+    "result": "NOT_AVAILABLE",
+    "blocker": "BLOCKED_TOOLCHAIN",
+    "reason": "idf.py not found on PATH; IDF_PATH unset, in both the bare host shell and the zgw-host-tools:s0 container (which only provides a host-only C/C++ toolchain, not ESP-IDF). Cannot verify ESP-IDF version against dependencies.lock, cannot perform target ESP32-C6 build, cannot resolve immutable container digest, cannot run any HIL.",
+    "dependencies_lock_declares": "esp-zboss-lib and esp-zigbee-lib components present in dependencies.lock; exact ESP-IDF core version pin was not located/verified in this pass.",
+    "scope_impact": "This blocks target-build and HIL portions of every later stage (S2 HAL/Zigbee target build, S5 hardware security, S8 OTA/eFuse, S9 release HIL). Host-buildable/testable work (S1 capability truthfulness, S2 Core/Service identity logic minus HAL wiring, S3 persistence logic, S6 auth/parsing logic, S7 idempotency/queues) remains executable and verifiable via the Docker host-tools path established in this session."
+  },
+  "repository_inventory": {
+    "command": "python3 tools/extract_repository_inventory.py --repo . --output implementation-evidence/current-repository-inventory.json",
+    "result": "COMPLETED",
+    "tree_sha256": "b33f4547bf51a56291727d142311dc8360aa55c328905f00b4fe2bbfb244e4c9",
+    "inventory_sha256": "934c11c4179a8338aaa4d2f1a7d314ff2bcb4b8696598761fa8ba8536d78b394",
+    "files": 298,
+    "components": 7,
+    "ci_jobs": 14,
+    "cmake_tests_total": 76,
+    "scripts": 17,
+    "baseline_diff": {
+      "status": "NOT_PERFORMED",
+      "reason": "evidence/reviewed-repository-inventory.json does not exist in this repository. The plan's companion-artifact package (external 'reviewed audit' baseline) was never delivered alongside the plan document; only the plan markdown itself and this repository exist. Per plan Section 5.6, reviewed numeric values are 'SNAPSHOT-DERIVED — MUST RECOMPUTE, not permanent target numbers', so this freshly generated inventory is adopted as the new S0 baseline of record rather than diffed against a nonexistent external snapshot."
+    },
+    "observed_drift_vs_plan_narrative_numbers": {
+      "files": "298 actual vs 348 named in plan prose (delta unexplained, no external baseline to attribute it to)",
+      "components": "7 actual vs 7 named (match)",
+      "ci_jobs": "14 actual vs 10 named in plan prose (repo has more CI jobs now than the plan's descriptive number)",
+      "host_tests": "69 actual vs 69 named (match, by file count only — not execution-verified)",
+      "integration_tests": "7 actual vs 7 named (match, by file count only)",
+      "scripts": "17 actual vs 17 named (match)"
+    }
+  },
+  "overall_status": "PARTIAL — architecture gate, git baseline, inventory, host tests (69/69), integration tests (7/7) and sanitizer baseline (66/69, matches reviewed baseline exactly) all complete via Docker host-tools workaround; ESP-IDF/target-build/HIL verification remains BLOCKED_TOOLCHAIN (no idf.py in this environment)"
+}

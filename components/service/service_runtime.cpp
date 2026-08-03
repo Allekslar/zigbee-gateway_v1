@@ -53,7 +53,6 @@ constexpr UBaseType_t kOtaWorkerTaskPriority = 5U;
 constexpr const char* kRcpWorkerTaskName = "rcp_worker";
 constexpr uint32_t kRcpWorkerTaskStackSize = 4096U;
 constexpr UBaseType_t kRcpWorkerTaskPriority = 5U;
-constexpr bool kTemporarilyDisableRcpWorkerForZigbeeIsolation = true;
 
 bool should_start_ota_worker() noexcept {
 #if CONFIG_ZGW_OTA_ENABLED
@@ -578,7 +577,7 @@ void ServiceRuntime::request_device_identity_read(uint16_t short_addr) noexcept 
     static constexpr uint16_t kManufacturerNameAttrId = 0x0004U;
     static constexpr uint16_t kModelIdentifierAttrId = 0x0005U;
 
-    device_identity_store_.mark_pending(short_addr);
+    device_descriptor_store_.mark_pending(short_addr);
 
     const uint32_t corr_mfr = next_operation_request_id();
     const uint32_t corr_model = next_operation_request_id();
@@ -595,7 +594,7 @@ void ServiceRuntime::request_device_identity_read(uint16_t short_addr) noexcept 
         static_cast<int>(model_status));
 
     if (mfr_status != HAL_ZIGBEE_STATUS_OK && model_status != HAL_ZIGBEE_STATUS_OK) {
-        device_identity_store_.mark_failed(short_addr);
+        device_descriptor_store_.mark_failed(short_addr);
     }
 }
 
@@ -631,14 +630,14 @@ bool ServiceRuntime::post_zigbee_read_attribute_result(
     const std::size_t actual_len = (zcl_str_len <= available) ? zcl_str_len : available;
 
     if (result.attribute_id == kManufacturerNameAttrId) {
-        device_identity_store_.store_manufacturer(result.short_addr, str_data, actual_len);
+        device_descriptor_store_.store_manufacturer(result.short_addr, str_data, actual_len);
         SR_LOGI(
             "Identity manufacturer short_addr=0x%04x value=%.*s",
             static_cast<unsigned>(result.short_addr),
             static_cast<int>(actual_len),
             str_data);
     } else if (result.attribute_id == kModelIdentifierAttrId) {
-        device_identity_store_.store_model(result.short_addr, str_data, actual_len);
+        device_descriptor_store_.store_model(result.short_addr, str_data, actual_len);
         SR_LOGI(
             "Identity model short_addr=0x%04x value=%.*s",
             static_cast<unsigned>(result.short_addr),
@@ -654,8 +653,8 @@ void ServiceRuntime::maybe_start_tuya_init(uint16_t short_addr) noexcept {
     if (tuya_init_coordinator_.status(short_addr) != TuyaInitStatus::kNotStarted) {
         return;
     }
-    const DeviceIdentityEntry* identity = device_identity_store_.find(short_addr);
-    if (identity == nullptr || identity->status != DeviceIdentityStatus::kResolved) {
+    const DeviceDescriptorEntry* identity = device_descriptor_store_.find(short_addr);
+    if (identity == nullptr || identity->status != DeviceDescriptorStatus::kResolved) {
         return;
     }
     TuyaFingerprint fp{};
@@ -690,8 +689,8 @@ bool ServiceRuntime::try_tuya_translate(const ZigbeeRawAttributeReport& report, 
     view.data_len = report.payload_len;
 
     TuyaFingerprint fingerprint{};
-    const DeviceIdentityEntry* identity = device_identity_store_.find(report.short_addr);
-    if (identity != nullptr && identity->status == DeviceIdentityStatus::kResolved) {
+    const DeviceDescriptorEntry* identity = device_descriptor_store_.find(report.short_addr);
+    if (identity != nullptr && identity->status == DeviceDescriptorStatus::kResolved) {
         fingerprint.manufacturer = identity->manufacturer.data();
         fingerprint.model = identity->model.data();
     }
@@ -760,8 +759,8 @@ bool ServiceRuntime::try_tuya_translate(const ZigbeeRawAttributeReport& report, 
 bool ServiceRuntime::try_execute_tuya_on_off(const core::CoreEffect& effect, bool* routed) noexcept {
     *routed = false;
 
-    const DeviceIdentityEntry* identity = device_identity_store_.find(effect.device_short_addr);
-    if (identity == nullptr || identity->status != DeviceIdentityStatus::kResolved) {
+    const DeviceDescriptorEntry* identity = device_descriptor_store_.find(effect.device_short_addr);
+    if (identity == nullptr || identity->status != DeviceDescriptorStatus::kResolved) {
         return false;
     }
 
@@ -965,7 +964,7 @@ bool ServiceRuntime::build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnaps
         return false;
     }
 
-    const bool built = read_model_coordinator_.publish_devices_api_snapshot(*snapshot.state, runtime_snapshot, device_identity_store_) &&
+    const bool built = read_model_coordinator_.publish_devices_api_snapshot(*snapshot.state, runtime_snapshot, device_descriptor_store_) &&
                        read_model_coordinator_.build_devices_api_snapshot(out);
     registry_->release_snapshot(&snapshot);
     return built;
@@ -1183,7 +1182,7 @@ bool ServiceRuntime::start() noexcept {
         SR_LOGI("OTA worker not started: OTA disabled in config");
     }
 
-    if (!kTemporarilyDisableRcpWorkerForZigbeeIsolation) {
+    if (capabilities_.rcp_update_available) {
         TaskHandle_t rcp_worker_task = nullptr;
         const BaseType_t rcp_task_ok = xTaskCreate(
             &RcpUpdateManager::worker_task_entry,
@@ -1206,7 +1205,7 @@ bool ServiceRuntime::start() noexcept {
         }
         rcp_update_worker_task_handle_ = rcp_worker_task;
     } else {
-        SR_LOGI("RCP worker temporarily disabled for Zigbee isolation");
+        SR_LOGI("RCP worker not started: capability unavailable (no target backend configured)");
     }
     SR_LOGI("Service runtime task started");
     return true;
@@ -1541,6 +1540,16 @@ ServiceRuntime::ConfigSnapshot ServiceRuntime::config_snapshot() const noexcept 
 
 core::CoreState ServiceRuntime::state() const noexcept {
     return registry_->snapshot_copy();
+}
+
+void ServiceRuntime::set_capabilities(const RuntimeCapabilities& capabilities) noexcept {
+    RuntimeLockGuard guard(capabilities_lock_);
+    capabilities_ = capabilities;
+}
+
+RuntimeCapabilities ServiceRuntime::capabilities() const noexcept {
+    RuntimeLockGuard guard(capabilities_lock_);
+    return capabilities_;
 }
 
 std::size_t ServiceRuntime::pending_events() const noexcept {

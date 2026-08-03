@@ -16,6 +16,7 @@ set(CORE_SOURCES
     ../../components/core/core_registry.cpp
     ../../components/core/core_reducer.cpp
     ../../components/core/core_command_dispatcher.cpp
+    ../../components/core/device_id.cpp
 )
 
 add_library(core_host STATIC ${CORE_SOURCES})
@@ -51,7 +52,8 @@ set(SERVICE_SOURCES
     ../../components/service/service_runtime.cpp
     ../../components/service/state_persistence_coordinator.cpp
     ../../components/service/zigbee_lifecycle_coordinator.cpp
-    ../../components/service/device_identity_store.cpp
+    ../../components/service/device_descriptor_store.cpp
+    ../../components/service/device_locator_registry.cpp
     ../../components/service/tuya_fingerprint.cpp
     ../../components/service/tuya_dp_parser.cpp
     ../../components/service/tuya_contact_sensor_plugin.cpp
@@ -109,6 +111,21 @@ target_link_libraries(test_core_reducer PRIVATE core_host)
 zg_apply_component_compile_policy(test_core_reducer)
 add_test(NAME test_core_reducer COMMAND test_core_reducer)
 
+add_executable(test_core_reducer_device_id test_core_reducer_device_id.cpp)
+target_link_libraries(test_core_reducer_device_id PRIVATE core_host)
+zg_apply_component_compile_policy(test_core_reducer_device_id)
+add_test(NAME test_core_reducer_device_id COMMAND test_core_reducer_device_id)
+
+add_executable(test_device_locator_registry test_device_locator_registry.cpp)
+target_link_libraries(test_device_locator_registry PRIVATE service_host)
+zg_apply_component_compile_policy(test_device_locator_registry)
+add_test(NAME test_device_locator_registry COMMAND test_device_locator_registry)
+
+add_executable(test_core_device_id test_core_device_id.cpp)
+target_link_libraries(test_core_device_id PRIVATE core_host)
+zg_apply_component_compile_policy(test_core_device_id)
+add_test(NAME test_core_device_id COMMAND test_core_device_id)
+
 add_executable(test_core_effects test_core_effects.cpp)
 target_link_libraries(test_core_effects PRIVATE core_host)
 zg_apply_component_compile_policy(test_core_effects)
@@ -118,6 +135,11 @@ add_executable(test_service_runtime test_service_runtime.cpp)
 target_link_libraries(test_service_runtime PRIVATE service_host)
 zg_apply_component_compile_policy(test_service_runtime)
 add_test(NAME test_service_runtime COMMAND test_service_runtime)
+
+add_executable(test_service_capabilities test_service_capabilities.cpp)
+target_link_libraries(test_service_capabilities PRIVATE service_host)
+zg_apply_component_compile_policy(test_service_capabilities)
+add_test(NAME test_service_capabilities COMMAND test_service_capabilities)
 
 add_executable(test_service_hal_adapter test_service_hal_adapter.cpp)
 target_link_libraries(test_service_hal_adapter PRIVATE service_host)
@@ -544,10 +566,10 @@ target_link_libraries(test_web_handlers_ota PRIVATE service_host web_ui_host)
 zg_apply_component_compile_policy(test_web_handlers_ota)
 add_test(NAME test_web_handlers_ota COMMAND test_web_handlers_ota)
 
-add_executable(test_device_identity_store test_device_identity_store.cpp)
-target_link_libraries(test_device_identity_store PRIVATE service_host)
-zg_apply_component_compile_policy(test_device_identity_store)
-add_test(NAME test_device_identity_store COMMAND test_device_identity_store)
+add_executable(test_device_descriptor_store test_device_descriptor_store.cpp)
+target_link_libraries(test_device_descriptor_store PRIVATE service_host)
+zg_apply_component_compile_policy(test_device_descriptor_store)
+add_test(NAME test_device_descriptor_store COMMAND test_device_descriptor_store)
 
 add_executable(test_tuya_fingerprint test_tuya_fingerprint.cpp)
 target_link_libraries(test_tuya_fingerprint PRIVATE service_host)
