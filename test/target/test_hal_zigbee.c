@@ -34,13 +34,15 @@ typedef struct {
     hal_zigbee_result_t result;
 } zigbee_callback_capture_t;
 
-static void on_device_joined(void* context, uint16_t short_addr) {
+static void on_device_joined(void* context, uint16_t short_addr, const uint8_t* ieee_addr) {
+    (void)ieee_addr;
     zigbee_callback_capture_t* capture = (zigbee_callback_capture_t*)context;
     capture->joined_called = true;
     capture->short_addr = short_addr;
 }
 
-static void on_device_left(void* context, uint16_t short_addr) {
+static void on_device_left(void* context, uint16_t short_addr, const uint8_t* ieee_addr) {
+    (void)ieee_addr;
     zigbee_callback_capture_t* capture = (zigbee_callback_capture_t*)context;
     capture->left_called = true;
     capture->short_addr = short_addr;

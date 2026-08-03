@@ -34,9 +34,9 @@ int main() {
     assert(seconds_left == 0U);
 
     const std::size_t initial_pending_events = runtime.pending_events();
-    assert(coordinator.handle_join_candidate(runtime, 0x4411U, 1000U));
+    assert(coordinator.handle_join_candidate(runtime, 0x4411U, core::DeviceId{}, 1000U));
     assert(runtime.pending_events() == (initial_pending_events + 1U));
-    assert(coordinator.handle_join_candidate(runtime, 0x4411U, 1001U));
+    assert(coordinator.handle_join_candidate(runtime, 0x4411U, core::DeviceId{}, 1001U));
     assert(runtime.pending_events() == (initial_pending_events + 1U));
 
     runtime.mark_wifi_credentials_available();
