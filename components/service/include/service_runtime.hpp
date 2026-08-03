@@ -13,7 +13,7 @@
 #include "core_commands.hpp"
 #include "core_event_bus.hpp"
 #include "core_registry.hpp"
-#include "device_identity_store.hpp"
+#include "device_descriptor_store.hpp"
 #include "device_manager.hpp"
 #include "tuya_init_coordinator.hpp"
 #include "tuya_translator.hpp"
@@ -147,6 +147,9 @@ public:
     bool start() noexcept override;
     void on_nvs_u32_written(const char* key, uint32_t value) noexcept;
 
+    void set_capabilities(const RuntimeCapabilities& capabilities) noexcept override;
+    RuntimeCapabilities capabilities() const noexcept override;
+
     RuntimeStats stats() const noexcept;
     ConfigSnapshot config_snapshot() const noexcept;
     core::CoreState state() const noexcept;
@@ -274,11 +277,13 @@ private:
 
     mutable RuntimeLock ingress_lock_{};
     mutable RuntimeLock worker_start_lock_{};
+    mutable RuntimeLock capabilities_lock_{};
+    RuntimeCapabilities capabilities_{};
     OperationResultStore operation_result_store_{};
     ReadModelCoordinator read_model_coordinator_;
     StatePersistenceCoordinator state_persistence_coordinator_;
     ZigbeeLifecycleCoordinator zigbee_lifecycle_coordinator_;
-    DeviceIdentityStore device_identity_store_{};
+    DeviceDescriptorStore device_descriptor_store_{};
     TuyaTranslator tuya_translator_{};
     TuyaInitCoordinator tuya_init_coordinator_{};
 

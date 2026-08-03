@@ -5,6 +5,8 @@
 
 #include <cstdint>
 
+#include "device_id.hpp"
+
 namespace core {
 
 inline constexpr uint32_t kNoCorrelationId = 0U;
@@ -45,6 +47,13 @@ enum class CoreTelemetryKind : uint8_t {
 struct CoreEvent {
     CoreEventType type{CoreEventType::kUnknown};
     uint32_t correlation_id{kNoCorrelationId};
+    // Authoritative durable identity (FD-01). The reducer looks up/creates
+    // device records by device_id; an event without a valid device_id can
+    // never create or match a durable Core record.
+    DeviceId device_id{};
+    // Current network locator only (FD-01/FD-02): never a durable key. Carried
+    // through to CoreEffect so the effect executor knows which short_addr to
+    // address at the HAL boundary for this device_id.
     uint16_t device_short_addr{kUnknownDeviceShortAddr};
     uint16_t cluster_id{0};
     uint16_t attribute_id{0};

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "device_identity_store.hpp"
+#include "device_descriptor_store.hpp"
 #include "device_manager.hpp"
 #include "service_runtime_api.hpp"
 
@@ -18,7 +18,7 @@ public:
     bool build(
         const core::CoreState& state,
         const DeviceRuntimeSnapshot& runtime_snapshot,
-        const DeviceIdentityStore& identity_store,
+        const DeviceDescriptorStore& identity_store,
         DevicesApiSnapshot* out) const noexcept;
 };
 

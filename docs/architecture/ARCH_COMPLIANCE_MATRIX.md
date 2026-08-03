@@ -19,6 +19,8 @@ This file defines the architecture rules that are enforced by `check_arch_invari
 | `INV-H001` | High | `ARCHITECTURE.md` (Core platform-agnostic) | `components/core` | No ESP-IDF/platform includes in Core. |
 | `INV-H002` | High | `CODING_GUIDELINES.md` (memory discipline) | `components/core`, `components/service` | No `malloc/calloc/realloc/free` in Core/Service. |
 | `INV-H003` | High | `ARCHITECTURE.md` (bootstrap-only app) | `main/app_main.cpp` | `app_main` must not run runtime loop logic and must call `g_runtime.start(...)`. |
+| `INV-H004` | High | `docs/implementation/PRODUCTION_HARDENING_PLAN.md` (S1: capability truthfulness) | `components`, `main` | No `kTemporarilyDisable*` constants; behavior must be gated by the `RuntimeCapabilities` projection or real Kconfig symbols. |
+| `INV-H005` | High | `docs/implementation/PRODUCTION_HARDENING_PLAN.md` (S2 FD-01: canonical device identity) | `components/core/include/core_state.hpp`, `core_events.hpp`, `core_commands.hpp` | `CoreDeviceRecord`/`CoreEvent`/`CoreCommand` must each declare a `DeviceId device_id` field; `short_addr` may only be a locator, never the sole durable key. |
 | `INV-M001` | Medium | `CODING_GUIDELINES.md` (hot-path heap avoidance) | `components/app_hal/hal_wifi.c` | No `calloc/free` use in Wi-Fi scan path file. |
 | `INV-M002` | Medium | `ARCHITECTURE.md` (HAL thin-wrapper) | `components/app_hal/hal_zigbee.c` | Join dedup/auto-close policy markers must not exist in HAL Zigbee. |
 | `INV-M003` | Medium | `ARCHITECTURE.md` (single-writer service runtime) | `components/service/service_runtime.cpp` | Runtime task entry and service-owned join ingress API must exist. |

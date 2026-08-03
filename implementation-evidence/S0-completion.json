@@ -1,0 +1,70 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S0",
+  "stage_name": "Freeze implementation baseline",
+  "input_commit_sha": "800fe939c7a17abfbf2f0fe6549df73ffcb89d65",
+  "output_commit_sha": "800fe939c7a17abfbf2f0fe6549df73ffcb89d65",
+  "note_on_commits": "No new commit was created in this stage. Per plan Section 9/S0, S0 performs evidence-only work and must not mutate product code; nothing was committed because the user has not asked for a commit. The baseline commit of record is the existing HEAD, 800fe93.",
+  "changed_files": [
+    "implementation-evidence/current-repository-inventory.json (regenerated)",
+    "implementation-evidence/_summary.txt (pre-existing, unmodified this pass)",
+    "implementation-evidence/S0-baseline.json (new/updated)",
+    "implementation-evidence/git-baseline.json (new)",
+    "implementation-evidence/S0-completion.json (this file)"
+  ],
+  "frozen_decisions_applied": [
+    "Section 5.2: S0 is the only stage allowed to start from a cold checkout — honored, no code mutation performed.",
+    "Section 5.6: reviewed numeric values are SNAPSHOT-DERIVED — MUST RECOMPUTE, not permanent targets — honored: current inventory adopted as the new baseline of record rather than forcing a match to plan-prose numbers.",
+    "Section 5.4: tool/hardware unavailability is recorded, never silently converted to pass — honored: ESP-IDF/idf.py absence recorded as BLOCKED_TOOLCHAIN rather than skipped."
+  ],
+  "inventories_recomputed": {
+    "repository_tree": {
+      "files": 298,
+      "tree_sha256": "b33f4547bf51a56291727d142311dc8360aa55c328905f00b4fe2bbfb244e4c9"
+    },
+    "components": 7,
+    "ci_jobs": 14,
+    "cmake_tests_total": 76,
+    "host_tests": 69,
+    "integration_tests": 7,
+    "scripts": 17,
+    "diff_against_external_reviewed_baseline": "NOT_PERFORMED — evidence/reviewed-repository-inventory.json does not exist in this repository; no external audit package was delivered alongside the plan markdown. See implementation-evidence/S0-baseline.json.repository_inventory.baseline_diff for full reasoning."
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "command": "bash ./check_arch_invariants.sh", "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0" },
+    "host_tests": { "result": "PASSED", "detail": "69/69 (100%)" },
+    "integration_tests": { "result": "PASSED", "detail": "7/7 (100%)" },
+    "sanitizer_baseline": {
+      "result": "MATCHES_REVIEWED_BASELINE_EXACTLY",
+      "detail": "66/69 passed, 3 failed: test_service_reporting_stale, test_service_reporting_semantics, test_service_reporting_faults (stack-use-after-scope on a temporary ServiceRuntime::state() snapshot). This is precisely the plan's documented known-failure set — no undocumented delta, so no BLOCKED_DELTA_REVIEW is triggered."
+    },
+    "esp_idf_verification": { "result": "BLOCKED_TOOLCHAIN", "detail": "idf.py not present in this execution environment; not resolved this session." },
+    "target_build": { "result": "NOT_ATTEMPTED", "detail": "Requires ESP-IDF toolchain, unavailable — see esp_idf_verification." },
+    "hil": { "result": "NOT_ATTEMPTED", "detail": "Requires target hardware/broker/certificates, unavailable in this sandboxed session." }
+  },
+  "environment_note": {
+    "problem": "The bare execution shell has no C/C++ compiler or build system at all (no cmake/make/gcc/g++/clang/ninja) and no idf.py/IDF_PATH.",
+    "workaround": "With explicit user approval, a local Docker image (zgw-host-tools:s0, Ubuntu 24.04 + build-essential + cmake + clang + ninja) was built and used to run all host-buildable checks. Docker itself runs without sudo (user is in the docker group).",
+    "incident": "The first build of this image was later found corrupted after this machine hit a physical disk-full condition in a prior session (every `docker run` against it failed with 'exec: input/output error'). No repository source was affected — verified via git status/diff before and after. The image was removed, the build cache pruned, and the image rebuilt with --no-cache; all subsequent runs succeeded.",
+    "still_blocked": "ESP-IDF itself (a much larger, separate toolchain requiring network access to Espressif's component registry) was not installed in this session. Target ESP32-C6 builds and all HIL remain BLOCKED_TOOLCHAIN until that is set up or the user runs those steps in their normal development environment."
+  },
+  "generated_artifacts": [
+    "implementation-evidence/current-repository-inventory.json",
+    "implementation-evidence/S0-baseline.json",
+    "implementation-evidence/git-baseline.json",
+    "implementation-evidence/S0-completion.json"
+  ],
+  "unresolved_deviations": [
+    "No evidence/reviewed-repository-inventory.json baseline exists to two-way-diff against; current inventory adopted as new baseline of record instead (documented, not silently ignored).",
+    "Plan prose cites 348 source files; actual recomputed count is 298. No external baseline exists to attribute this delta to a specific cause; treated as an accepted recomputation per Section 5.6 rather than a blocking anomaly, since the file-count figures in the plan text are explicitly marked SNAPSHOT-DERIVED — MUST RECOMPUTE.",
+    "Working tree is not fully clean at baseline: README.md has an uncommitted 1-line addition and three new untracked paths (the plan doc, implementation-evidence/, tools/) exist. Nothing has been committed because commits are only made on explicit user request."
+  ],
+  "unresolved_blockers": [
+    {
+      "status": "BLOCKED_TOOLCHAIN",
+      "scope": "ESP-IDF exact-version verification, target ESP32-C6 firmware build, all HIL jobs",
+      "detail": "idf.py/IDF_PATH unavailable in this session. Affects target-build/HIL portions of S2 (HAL wiring), S5 (hardware security), S8 (OTA/eFuse), S9 (release HIL) specifically — not host-buildable/testable logic in those stages."
+    }
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

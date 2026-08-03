@@ -79,7 +79,7 @@ int main() {
     runtime_snapshot.has_battery[0] = true;
     runtime_snapshot.battery_percent[0] = 88U;
 
-    service::DeviceIdentityStore identity_store{};
+    service::DeviceDescriptorStore identity_store{};
     assert(coordinator.publish_devices_api_snapshot(state, runtime_snapshot, identity_store));
 
     service::DevicesApiSnapshot devices_snapshot{};

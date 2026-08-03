@@ -46,7 +46,12 @@ int main() {
     assert(runtime.post_event(telemetry));
 
     assert(runtime.process_pending() == 3);
-    const core::CoreDeviceRecord* device = find_device(runtime.state(), 0x7711);
+    // NOTE: runtime.state() returns a CoreState snapshot by value. Do not pass it
+    // inline into find_device() — the returned pointer would alias a temporary
+    // that is destroyed at the end of the full expression (stack-use-after-scope).
+    // Always bind the snapshot to a named local first.
+    core::CoreState state = runtime.state();
+    const core::CoreDeviceRecord* device = find_device(state, 0x7711);
     assert(device != nullptr);
     assert(device->reporting_state == core::CoreReportingState::kReportingActive);
     assert(!device->stale);
@@ -54,13 +59,15 @@ int main() {
     // Silence window is 15000ms, first stale point is at 16000ms.
     assert(runtime.tick(15999U) == 0);
     assert(runtime.process_pending() == 0);
-    device = find_device(runtime.state(), 0x7711);
+    state = runtime.state();
+    device = find_device(state, 0x7711);
     assert(device != nullptr);
     assert(!device->stale);
 
     assert(runtime.tick(16000U) == 1);
     assert(runtime.process_pending() == 1);
-    device = find_device(runtime.state(), 0x7711);
+    state = runtime.state();
+    device = find_device(state, 0x7711);
     assert(device != nullptr);
     assert(device->stale);
     assert(device->reporting_state == core::CoreReportingState::kStale);
@@ -71,7 +78,8 @@ int main() {
     recovered_telemetry.value_u32 = 17000U;
     assert(runtime.post_event(recovered_telemetry));
     assert(runtime.process_pending() == 1);
-    device = find_device(runtime.state(), 0x7711);
+    state = runtime.state();
+    device = find_device(state, 0x7711);
     assert(device != nullptr);
     assert(!device->stale);
     assert(device->reporting_state == core::CoreReportingState::kReportingActive);

@@ -77,6 +77,7 @@ scripts/run_gateway_ota_staging_hil.sh
 - [OTA_RELEASE.md](docs/releases/OTA_RELEASE.md) - OTA release packaging, promotion, key rotation, and operator checklist.
 - [OTA_Implementation.md](docs/implementation/OTA_Implementation.md) - full staged gateway OTA implementation record.
 - [RCP.md](docs/implementation/RCP.md) - separate RCP update plan and open work.
+- [PRODUCTION_HARDENING_PLAN.md](docs/implementation/PRODUCTION_HARDENING_PLAN.md) - approved multi-stage plan (S0-S9) for device identity, control-plane security, versioned persistence, OTA/anti-rollback and release hardening to a verifiable production baseline.
 - [check_arch_invariants.sh](check_arch_invariants.sh) - local architecture gate.
 
 ## Repository Structure (Short)

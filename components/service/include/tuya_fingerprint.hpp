@@ -6,13 +6,13 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "device_identity_store.hpp"
+#include "device_descriptor_store.hpp"
 
 namespace service {
 
 struct TuyaFingerprint {
-    static constexpr std::size_t kManufacturerMaxLen = kDeviceIdentityManufacturerMaxLen;
-    static constexpr std::size_t kModelMaxLen = kDeviceIdentityModelMaxLen;
+    static constexpr std::size_t kManufacturerMaxLen = kDeviceDescriptorManufacturerMaxLen;
+    static constexpr std::size_t kModelMaxLen = kDeviceDescriptorModelMaxLen;
 
     const char* manufacturer{nullptr};
     const char* model{nullptr};

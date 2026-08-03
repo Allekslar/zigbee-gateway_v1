@@ -1,0 +1,103 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S1",
+  "stage_name": "Stabilize tests and make capabilities truthful",
+  "input_commit_sha": "800fe939c7a17abfbf2f0fe6549df73ffcb89d65",
+  "output_commit_sha": "800fe939c7a17abfbf2f0fe6549df73ffcb89d65",
+  "note_on_commits": "No new commit was created. Per Git safety protocol, commits are only made on explicit user request. All S1 work is present as uncommitted working-tree changes on top of the S0 baseline commit.",
+  "changed_files": [
+    "test/host/test_service_reporting_stale.cpp",
+    "test/host/test_service_reporting_semantics.cpp",
+    "test/host/test_service_reporting_faults.cpp",
+    "test/host/test_service_capabilities.cpp (new)",
+    "test/host/CMakeLists.txt",
+    "components/service/include/service_runtime_api.hpp",
+    "components/service/include/service_runtime.hpp",
+    "components/service/service_runtime.cpp",
+    "main/app_main.cpp",
+    "main/Kconfig.projbuild",
+    "check_arch_invariants.sh",
+    "docs/architecture/ARCH_COMPLIANCE_MATRIX.md",
+    ".github/workflows/ci.yml",
+    "README.md (pre-existing uncommitted change from before S0, unrelated to S1)"
+  ],
+  "frozen_decisions_applied": [
+    "FD-11 Capability truthfulness: temporary source booleans removed; Zigbee/MQTT/Matter/OTA/RCP availability now comes from a build/runtime capability contract (service::RuntimeCapabilities), computed once at the composition root from Kconfig/HAL truth sources.",
+    "Plan Section 7.5 / INV-CONC-01 precursor: no pointer/reference into a ServiceRuntime::state() snapshot may outlive the temporary — all 3 known violations fixed, plus a full-repository audit found no other instances in tests or production code.",
+    "S1 required change #7: capabilities DTO/service projection defined and tested this stage; public /api/v1/capabilities route registration is explicitly deferred to S4 per the plan and was NOT added."
+  ],
+  "work_summary": {
+    "1_dangling_pointer_fix": {
+      "root_cause": "test/host/test_service_reporting_{stale,semantics,faults}.cpp called find_device()/find_online_device() with `runtime.state()` passed inline as an argument. ServiceRuntime::state() returns core::CoreState by value; the temporary is destroyed at the end of the full expression, so the returned pointer aliased freed stack storage on every subsequent dereference (ASan: stack-use-after-scope).",
+      "fix": "Every inline `find_*(runtime.state(), addr)` call site was rewritten to first bind the snapshot to a named local (`core::CoreState state = runtime.state();` or a per-block named local), matching the pattern already used correctly elsewhere in the same files, then pass that named local to the finder function.",
+      "files_fixed": [
+        "test/host/test_service_reporting_stale.cpp (4 sites)",
+        "test/host/test_service_reporting_semantics.cpp (9 sites)",
+        "test/host/test_service_reporting_faults.cpp (2 sites)"
+      ],
+      "audit_scope": "Grepped every `.state()`/`.snapshot()` call site across test/, components/, main/. All other occurrences either bind to a named local already, read a scalar member value immediately within the same expression (no pointer/reference stored), or (one case, test_service_hal_adapter.cpp) use a range-based for loop over a temporary's member, which is standards-safe because reference-binding a temporary's subobject in the range-for's implicit `auto&&` extends the complete temporary's lifetime for the loop's duration. Production adapters (MatterBridge/MqttBridge sync_runtime_snapshot) write into a persistent member cache via an out-parameter, not a temporary — no bug there.",
+      "verification": "All 3 previously-failing tests now PASS under ASan+UBSan; full host suite is 70/70 (69 pre-existing + 1 new) under both normal and sanitizer builds, with 0 sanitizer failures (previously 66/69)."
+    },
+    "2_ktemporarilydisable_removal": {
+      "inventory": "Exactly 8 occurrence lines / 4 declarations found, matching the plan's stated reviewed count exactly.",
+      "declarations_removed": [
+        "main/app_main.cpp: kTemporarilyDisableMqttForWifiBootSanity (was false; dead weight above the already-working CONFIG_ZGW_MQTT_TRANSPORT_ENABLED gate in hal_mqtt_init())",
+        "main/app_main.cpp: kTemporarilyDisableMatterForWifiBootSanity (was false; redundant wrapper around the already-truthful hal_matter_available() weak-symbol check)",
+        "main/app_main.cpp: kTemporarilyDisableZigbeeForOtaRfIsolation (was TRUE — an active production bug: introduced 2026-03-28 for a one-off OTA RF isolation HIL test and left enabled ever since, meaning every boot since that commit had Zigbee completely disabled)",
+        "components/service/service_runtime.cpp: kTemporarilyDisableRcpWorkerForZigbeeIsolation (was true; RCP worker task was unconditionally never started)"
+      ],
+      "replacement": "All four now read service::RuntimeCapabilities fields instead: caps.mqtt_available, caps.matter_target_available, caps.zigbee_available (app_main.cpp), capabilities_.rcp_update_available (service_runtime.cpp).",
+      "new_kconfig_symbol": "ZGW_ZIGBEE_ENABLED (bool, default y) added to main/Kconfig.projbuild. This is the functional fix for the shipped-disabled-Zigbee bug: normal/production builds now enable Zigbee by default; an explicit RF-isolation/dev build can still set it to n via the standard Kconfig/sdkconfig override mechanism, with no dedicated profile file needed.",
+      "existing_kconfig_reused": "CONFIG_ZGW_MQTT_TRANSPORT_ENABLED, CONFIG_ZGW_OTA_ENABLED, CONFIG_ZGW_RCP_TARGET_BACKEND_UART, and the hal_matter_available() weak-symbol probe were already real, working truth sources; S1 wired the composition root's capability computation to consult them directly instead of duplicating gates."
+    },
+    "3_runtime_capabilities_contract": {
+      "location": "components/service/include/service_runtime_api.hpp",
+      "shape": "struct RuntimeCapabilities { bool zigbee_available, mqtt_available, matter_target_available, ota_available, rcp_update_available; } — all default-false (unset capability is never assumed available).",
+      "ownership": "Pure data, zero ESP-IDF dependency (INV-ARCH-01 preserved). ServiceRuntimeApi gained set_capabilities()/capabilities() pure-virtual pair; ServiceRuntime is the sole implementer (verified no other class implements the interface, so adding pure virtuals was safe).",
+      "injection_point": "main/app_main.cpp computes the real values from Kconfig macros and hal_matter_available() at the very start of app_main(), before initialize_hal_adapter() and before start(), then calls g_runtime.set_capabilities(caps). Adapters/UI do not query Kconfig or HAL weak symbols directly — they must consult the service-owned projection (matches plan's 'capability availability is a service-owned read model').",
+      "thread_safety": "New dedicated capabilities_lock_ (RuntimeLock, same primitive as the existing ingress_lock_/worker_start_lock_) guards a plain capabilities_ member; set/get both take the lock.",
+      "tests": "test/host/test_service_capabilities.cpp: verifies all-false defaults, full replace-not-merge semantics on set_capabilities(), and read-back correctness.",
+      "deferred_to_s4": "The public GET /api/v1/capabilities HTTP route and its JSON DTO/serializer are explicitly NOT added in S1, per the plan's instruction that only the DTO/service projection needs to be defined and tested in S1 while the public route is registered in S4 alongside the rest of the v1 API surface."
+    },
+    "4_sanitizer_ci_gate": {
+      "added": ".github/workflows/ci.yml: new `sanitizer-tests` job ('Host Unit Tests (ASan+UBSan, Blocking)'), runs on push/pull_request, blocking (no `continue-on-error`), builds test/host with -fsanitize=address,undefined and runs the full ctest suite with ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=print_stacktrace=1.",
+      "rationale": "The pre-existing `reporting-regression` job already exercised the 3 affected tests but WITHOUT sanitizer flags, so it could never have caught the dangling-pointer class of bug. This gap is now closed."
+    },
+    "5_architecture_gate_rule": {
+      "added": "check_arch_invariants.sh: new rule INV-H004 (high severity) using the existing check_absent helper, scanning components/ and main/ for the literal `kTemporarilyDisable` pattern.",
+      "documented": "docs/architecture/ARCH_COMPLIANCE_MATRIX.md updated with the INV-H004 row.",
+      "verified_working": "Manually appended a `kTemporarilyDisableTestProbe` comment to service_runtime.cpp and re-ran the gate: it correctly reported a HIGH violation and FAILED. Confirmed the rule is not a no-op before relying on it."
+    }
+  },
+  "incident": {
+    "what_happened": "While verifying the new INV-H004 rule actually detects violations, a temporary probe line was appended to components/service/service_runtime.cpp and then reverted with `git checkout -- components/service/service_runtime.cpp`. Because that file already had uncommitted S1 changes (RuntimeCapabilities set_capabilities/capabilities implementation and the RCP worker gate replacement) that were never committed, `git checkout --` restored the ENTIRE file to the last commit (800fe93), silently discarding both real S1 edits along with the probe line — a violation of the safety protocol requirement to check git status/diff before any command that can discard uncommitted work.",
+    "detection": "Immediately re-grepped the file for the expected set_capabilities/capabilities_ symbols after the revert; found them missing and kTemporarilyDisableRcpWorkerForZigbeeIsolation back in place.",
+    "impact": "Contained to exactly one file (git diff --stat confirmed no other file was touched by the checkout). No data outside this session's own uncommitted work was at risk (nothing had been pushed or committed).",
+    "recovery": "Reapplied both edits to components/service/service_runtime.cpp from memory of the original diff (removal of the kTemporarilyDisableRcpWorkerForZigbeeIsolation declaration, replacement of its usage with capabilities_.rcp_update_available, and re-addition of the set_capabilities()/capabilities() method bodies), then reran the full architecture gate + host + integration + sanitizer suite to confirm the recovered state is identical in behavior to the pre-incident state.",
+    "outcome": "Fully recovered; all 4 verification suites green after recovery (see tests_and_checks below)."
+  },
+  "inventories_recomputed": {
+    "ktemporarilydisable_occurrences_before": 8,
+    "ktemporarilydisable_occurrences_after": 0,
+    "host_tests": 70,
+    "integration_tests": 7
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0 (includes new INV-H004 rule)" },
+    "host_tests": { "result": "PASSED", "detail": "70/70 (100%) — 69 pre-existing + test_service_capabilities" },
+    "integration_tests": { "result": "PASSED", "detail": "7/7 (100%), unaffected by S1 scope" },
+    "sanitizer_tests": { "result": "PASSED", "detail": "70/70 (100%) under ASan+UBSan — up from 66/69 at S0 baseline; the 3 previously-known failures are fixed with no new failures introduced" }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround established in S0 (ESP-IDF/idf.py still unavailable in this session). Kconfig-dependent code paths in main/app_main.cpp (#if CONFIG_ZGW_ZIGBEE_ENABLED etc.) were reviewed by inspection and are NOT compiler-verified in this session because main/app_main.cpp is target-only (FreeRTOS/ESP-IDF headers) and is outside the host/test/host and test/integration CMake builds. A target build under the real ESP-IDF 5.5.2 toolchain remains required before this stage's app_main.cpp changes can be considered target-compiled, and is tracked as an unresolved blocker below.",
+  "unresolved_deviations": [
+    "Zigbee is now enabled by default in the normal build profile (ZGW_ZIGBEE_ENABLED default y), correcting the prior shipped-disabled state. This is a genuine behavior change on real hardware, not just a refactor, and should be called out explicitly to the user/operator before the next hardware flash."
+  ],
+  "unresolved_blockers": [
+    {
+      "status": "BLOCKED_TOOLCHAIN",
+      "scope": "main/app_main.cpp Kconfig-guarded capability wiring; RCP/Matter/MQTT worker startup paths",
+      "detail": "Not compiled under the real ESP-IDF 5.5.2 toolchain in this session (no idf.py available). Host/integration/sanitizer suites do not cover main/app_main.cpp since it is target-only code outside the host CMake trees."
+    }
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

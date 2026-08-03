@@ -35,6 +35,7 @@ CoreEventType map_result_to_event(CoreCommandResultType result_type) noexcept {
 CoreEvent command_to_event(const CoreCommand& command) noexcept {
     CoreEvent event{};
     event.correlation_id = command.correlation_id;
+    event.device_id = command.device_id;
     event.device_short_addr = command.device_short_addr;
     event.value_bool = command.desired_power_on;
     event.value_u32 = command.issued_at_ms;
@@ -107,6 +108,7 @@ CoreError CoreCommandDispatcher::resolve(
 
         completion_event_out->type = map_result_to_event(result.type);
         completion_event_out->correlation_id = result.correlation_id;
+        completion_event_out->device_id = entry.command.device_id;
         completion_event_out->device_short_addr = entry.command.device_short_addr;
         completion_event_out->value_u32 = result.completed_at_ms;
         completion_event_out->value_bool = (result.type == CoreCommandResultType::kSuccess);
@@ -145,6 +147,7 @@ std::size_t CoreCommandDispatcher::expire_timeouts(
         CoreEvent timeout_event{};
         timeout_event.type = CoreEventType::kCommandResultTimeout;
         timeout_event.correlation_id = entry.command.correlation_id;
+        timeout_event.device_id = entry.command.device_id;
         timeout_event.device_short_addr = entry.command.device_short_addr;
         timeout_event.value_u32 = now_ms;
         timeout_event.value_bool = false;

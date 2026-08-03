@@ -37,6 +37,11 @@ enum class CoreContactState : uint8_t {
 };
 
 struct CoreDeviceRecord {
+    // Authoritative durable identity (FD-01). An invalid (default, all-zero)
+    // device_id marks the slot as free; the reducer never matches or creates
+    // a record keyed only by short_addr.
+    DeviceId device_id{};
+    // Current network locator only, never a durable key (FD-01).
     uint16_t short_addr{kUnknownDeviceShortAddr};
     bool online{false};
     bool power_on{false};

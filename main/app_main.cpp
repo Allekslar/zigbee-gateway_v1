@@ -22,9 +22,6 @@ namespace {
 constexpr const char* kTag = LOG_TAG_APP_MAIN;
 constexpr const char* kGatewayHostName = "zigbee-gateway";
 constexpr const char* kProvisioningApPassword = "12345678";
-constexpr bool kTemporarilyDisableMqttForWifiBootSanity = false;
-constexpr bool kTemporarilyDisableMatterForWifiBootSanity = false;
-constexpr bool kTemporarilyDisableZigbeeForOtaRfIsolation = true;
 constexpr TickType_t kDeferredZigbeeStartDelayTicks = pdMS_TO_TICKS(15000);
 constexpr const char* kDeferredZigbeeTaskName = "zigbee_start";
 constexpr uint32_t kDeferredZigbeeTaskStackSize = 4096U;
@@ -53,6 +50,26 @@ void deferred_zigbee_start_task(void* arg) {
 }  // namespace
 
 extern "C" void app_main(void) {
+    // Capabilities are computed once from Kconfig/HAL truth sources and handed
+    // to the service-owned RuntimeCapabilities projection before anything else
+    // starts. Adapters/UI must consult g_runtime.capabilities() rather than
+    // reading Kconfig or probing HAL weak symbols themselves.
+    service::RuntimeCapabilities caps{};
+#if CONFIG_ZGW_ZIGBEE_ENABLED
+    caps.zigbee_available = true;
+#endif
+#if CONFIG_ZGW_MQTT_TRANSPORT_ENABLED
+    caps.mqtt_available = true;
+#endif
+    caps.matter_target_available = hal_matter_available();
+#if CONFIG_ZGW_OTA_ENABLED
+    caps.ota_available = true;
+#endif
+#if CONFIG_ZGW_RCP_TARGET_BACKEND_UART
+    caps.rcp_update_available = true;
+#endif
+    g_runtime.set_capabilities(caps);
+
     if (!g_runtime.initialize_hal_adapter()) {
         ESP_LOGE(kTag, "HAL adapter init failed");
         while (true) {
@@ -137,8 +154,8 @@ extern "C" void app_main(void) {
         }
     }
 
-    if (kTemporarilyDisableMqttForWifiBootSanity) {
-        ESP_LOGW(kTag, "MQTT bridge temporarily disabled for Wi-Fi boot sanity");
+    if (!caps.mqtt_available) {
+        ESP_LOGI(kTag, "MQTT bridge not started: capability unavailable (CONFIG_ZGW_MQTT_TRANSPORT_ENABLED=n)");
     } else {
         g_mqtt.attach_runtime(&g_runtime);
         if (!g_mqtt.start()) {
@@ -149,10 +166,8 @@ extern "C" void app_main(void) {
         }
     }
 
-    if (kTemporarilyDisableMatterForWifiBootSanity) {
-        ESP_LOGW(kTag, "Matter bridge temporarily disabled for Wi-Fi boot sanity");
-    } else if (!hal_matter_available()) {
-        ESP_LOGW(kTag, "Matter HAL unavailable; skipping Matter attach/start");
+    if (!caps.matter_target_available) {
+        ESP_LOGI(kTag, "Matter bridge not started: capability unavailable (target adapter not linked)");
     } else {
         g_matter.attach_runtime(&g_runtime);
         if (!g_matter.start()) {
@@ -163,8 +178,8 @@ extern "C" void app_main(void) {
         }
     }
 
-    if (kTemporarilyDisableZigbeeForOtaRfIsolation) {
-        ESP_LOGW(kTag, "Zigbee/coexistence temporarily disabled for OTA RF isolation");
+    if (!caps.zigbee_available) {
+        ESP_LOGW(kTag, "Zigbee not started: capability unavailable (CONFIG_ZGW_ZIGBEE_ENABLED=n)");
     } else {
         TaskHandle_t deferred_zigbee_task = nullptr;
         if (xTaskCreate(

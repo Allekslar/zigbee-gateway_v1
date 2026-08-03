@@ -16,6 +16,7 @@ set(CORE_SOURCES
     ../../components/core/core_registry.cpp
     ../../components/core/core_reducer.cpp
     ../../components/core/core_command_dispatcher.cpp
+    ../../components/core/device_id.cpp
 )
 
 add_library(core_integration STATIC ${CORE_SOURCES})
@@ -50,7 +51,8 @@ set(SERVICE_SOURCES
     ../../components/service/scan_manager.cpp
     ../../components/service/service_runtime.cpp
     ../../components/service/state_persistence_coordinator.cpp
-    ../../components/service/device_identity_store.cpp
+    ../../components/service/device_descriptor_store.cpp
+    ../../components/service/device_locator_registry.cpp
     ../../components/service/tuya_fingerprint.cpp
     ../../components/service/tuya_dp_parser.cpp
     ../../components/service/tuya_contact_sensor_plugin.cpp

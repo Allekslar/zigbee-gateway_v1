@@ -223,6 +223,23 @@ run_checks() {
         'g_runtime\.start[[:space:]]*\(' \
         "app_main must start ServiceRuntime task"
 
+    check_absent "INV-H004" "high" "components" \
+        'kTemporarilyDisable' \
+        "production code must not gate behavior with kTemporarilyDisable* constants; use RuntimeCapabilities/Kconfig instead"
+    check_absent "INV-H004" "high" "main" \
+        'kTemporarilyDisable' \
+        "production code must not gate behavior with kTemporarilyDisable* constants; use RuntimeCapabilities/Kconfig instead"
+
+    check_present "INV-H005" "high" "components/core/include/core_state.hpp" \
+        'DeviceId device_id' \
+        "CoreDeviceRecord must carry a DeviceId field (FD-01: short_addr is a locator, never a durable key)"
+    check_present "INV-H005" "high" "components/core/include/core_events.hpp" \
+        'DeviceId device_id' \
+        "CoreEvent must carry a DeviceId field (FD-01)"
+    check_present "INV-H005" "high" "components/core/include/core_commands.hpp" \
+        'DeviceId device_id' \
+        "CoreCommand must carry a DeviceId field (FD-01)"
+
     check_absent "INV-M001" "medium" "components/app_hal/hal_wifi.c" \
         'calloc[[:space:]]*\(|free[[:space:]]*\(' \
         "hal_wifi scan hot path must not use calloc/free"

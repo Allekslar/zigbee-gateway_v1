@@ -92,7 +92,10 @@ int main() {
     occ_report.payload_len = 1U;
     assert(runtime.post_zigbee_attribute_report_raw(occ_report));
     assert(runtime.process_pending() > 0U);
-    device = find_device(runtime.state(), 0x2201U);
+    // See the NOTE at the top of this function: runtime.state() must be bound to
+    // a named local before use, never passed inline into find_device().
+    core::CoreState state = runtime.state();
+    device = find_device(state, 0x2201U);
     assert(device != nullptr);
     assert(device->occupancy_state == core::CoreOccupancyState::kOccupied);
 
@@ -101,21 +104,24 @@ int main() {
     clear_report.payload = clear_payload;
     assert(runtime.post_zigbee_attribute_report_raw(clear_report));
     assert(runtime.process_pending() > 0U);
-    device = find_device(runtime.state(), 0x2201U);
+    state = runtime.state();
+    device = find_device(state, 0x2201U);
     assert(device != nullptr);
     assert(device->occupancy_state == core::CoreOccupancyState::kOccupied);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(90));
     assert(runtime.post_zigbee_attribute_report_raw(clear_report));
     assert(runtime.process_pending() > 0U);
-    device = find_device(runtime.state(), 0x2201U);
+    state = runtime.state();
+    device = find_device(state, 0x2201U);
     assert(device != nullptr);
     assert(device->occupancy_state == core::CoreOccupancyState::kOccupied);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(40));
     assert(runtime.post_zigbee_attribute_report_raw(clear_report));
     assert(runtime.process_pending() > 0U);
-    device = find_device(runtime.state(), 0x2201U);
+    state = runtime.state();
+    device = find_device(state, 0x2201U);
     assert(device != nullptr);
     assert(device->occupancy_state == core::CoreOccupancyState::kNotOccupied);
 
@@ -129,7 +135,8 @@ int main() {
     ias_report.payload_len = 2U;
     assert(runtime.post_zigbee_attribute_report_raw(ias_report));
     assert(runtime.process_pending() > 0U);
-    device = find_device(runtime.state(), 0x2201U);
+    state = runtime.state();
+    device = find_device(state, 0x2201U);
     assert(device != nullptr);
     assert(device->contact_state == core::CoreContactState::kOpen);
     assert(device->contact_tamper);
@@ -139,7 +146,8 @@ int main() {
     ias_report.payload = ias_closed_clear;
     assert(runtime.post_zigbee_attribute_report_raw(ias_report));
     assert(runtime.process_pending() > 0U);
-    device = find_device(runtime.state(), 0x2201U);
+    state = runtime.state();
+    device = find_device(state, 0x2201U);
     assert(device != nullptr);
     assert(device->contact_state == core::CoreContactState::kClosed);
     assert(!device->contact_tamper);
@@ -155,7 +163,8 @@ int main() {
     battery_pct_report.payload_len = 1U;
     assert(runtime.post_zigbee_attribute_report_raw(battery_pct_report));
     assert(runtime.process_pending() > 0U);
-    device = find_device(runtime.state(), 0x2201U);
+    state = runtime.state();
+    device = find_device(state, 0x2201U);
     assert(device != nullptr);
     assert(device->has_battery);
     assert(device->battery_percent == 75U);
@@ -166,7 +175,8 @@ int main() {
     battery_mv_report.payload = battery_mv_payload;
     assert(runtime.post_zigbee_attribute_report_raw(battery_mv_report));
     assert(runtime.process_pending() > 0U);
-    device = find_device(runtime.state(), 0x2201U);
+    state = runtime.state();
+    device = find_device(state, 0x2201U);
     assert(device != nullptr);
     assert(device->has_battery_voltage);
     assert(device->battery_voltage_mv == 3000U);
@@ -185,7 +195,8 @@ int main() {
     lqi_rssi_report.rssi_dbm = -59;
     assert(runtime.post_zigbee_attribute_report_raw(lqi_rssi_report));
     assert(runtime.process_pending() > 0U);
-    device = find_device(runtime.state(), 0x2201U);
+    state = runtime.state();
+    device = find_device(state, 0x2201U);
     assert(device != nullptr);
     assert(device->has_lqi);
     assert(device->lqi == 181U);
