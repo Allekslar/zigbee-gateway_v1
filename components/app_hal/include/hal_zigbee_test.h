@@ -18,6 +18,11 @@ extern "C" {
 
 void hal_zigbee_notify_device_joined(uint16_t short_addr);
 void hal_zigbee_notify_device_left(uint16_t short_addr);
+// Identity-aware variants (ieee_addr: HAL_ZIGBEE_IEEE_ADDR_LEN bytes, or NULL
+// for unresolved identity). The plain variants above remain unchanged and
+// simply forward with ieee_addr=NULL, so every existing caller keeps working.
+void hal_zigbee_notify_device_joined_with_identity(uint16_t short_addr, const uint8_t* ieee_addr);
+void hal_zigbee_notify_device_left_with_identity(uint16_t short_addr, const uint8_t* ieee_addr);
 void hal_zigbee_notify_attribute_report(
     uint16_t short_addr,
     uint16_t cluster_id,
@@ -38,6 +43,10 @@ void hal_zigbee_notify_attribute_report_raw(const hal_zigbee_raw_attribute_repor
 
 void hal_zigbee_simulate_device_joined(uint16_t short_addr);
 void hal_zigbee_simulate_device_left(uint16_t short_addr);
+// Identity-aware simulate variants for tests that need a resolved EUI-64 to
+// flow through to Core (ieee_addr: HAL_ZIGBEE_IEEE_ADDR_LEN bytes).
+void hal_zigbee_simulate_device_joined_with_identity(uint16_t short_addr, const uint8_t* ieee_addr);
+void hal_zigbee_simulate_device_left_with_identity(uint16_t short_addr, const uint8_t* ieee_addr);
 void hal_zigbee_simulate_attribute_report(
     uint16_t short_addr,
     uint16_t cluster_id,

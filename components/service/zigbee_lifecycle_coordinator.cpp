@@ -64,6 +64,7 @@ void ZigbeeLifecycleCoordinator::process_join_window_policy(ServiceRuntime& runt
 bool ZigbeeLifecycleCoordinator::handle_join_candidate(
     ServiceRuntime& runtime,
     uint16_t short_addr,
+    const core::DeviceId& device_id,
     uint32_t now_ms) noexcept {
     if (short_addr == core::kUnknownDeviceShortAddr || short_addr == 0x0000U) {
         return false;
@@ -77,8 +78,20 @@ bool ZigbeeLifecycleCoordinator::handle_join_candidate(
         return true;
     }
 
+    // FD-02/Section 7.2: the locator registry is updated first (steps 1-5 of
+    // the remap algorithm -- including displacing any other DeviceId that
+    // previously owned this short_addr), then one CoreEvent carrying the
+    // resolved DeviceId is posted (step 6). When identity is unresolved for
+    // this occurrence, the registry is left untouched and the event carries
+    // only the locator; Core's legacy fallback (core_reducer.cpp) handles it.
+    if (device_id.valid()) {
+        uint32_t mapping_revision = 0U;
+        (void)runtime.device_locator_registry().remap(device_id, short_addr, &mapping_revision);
+    }
+
     core::CoreEvent event{};
     event.type = core::CoreEventType::kDeviceJoined;
+    event.device_id = device_id;
     event.device_short_addr = short_addr;
     if (!runtime.push_event(event)) {
         return false;

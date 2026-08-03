@@ -121,64 +121,106 @@ the same Service-layer wiring gap described in §3.
 
 ## 3. What is explicitly deferred
 
-### 3.1 Service-layer identity resolution wiring
+### 3.1 Service-layer identity resolution wiring -- CLOSED (host-verifiable scope)
 
-`DeviceLocatorRegistry` exists and is tested standalone but is **not yet
-wired into `ServiceRuntime`**. The full chain that would make it load-bearing
-in production spans multiple layers discovered during this stage:
+`DeviceLocatorRegistry` is now wired into `ServiceRuntime` and load-bearing
+for every code path that can be exercised on host. The full chain:
 
 ```
 HAL join/leave signal (real ESP-Zigbee stack or host mock)
-  -> hal_zigbee_callbacks_t (on_device_joined/on_device_left: short_addr only today)
-  -> hal_event_adapter.cpp (zigbee_device_joined_cb/zigbee_device_left_cb)
-  -> ServiceRuntime::post_zigbee_join_candidate() -> ZigbeeLifecycleCoordinator::handle_join_candidate()
-  -> core::CoreEvent{kDeviceJoined, ...} posted into Core
+  -> hal_zigbee_callbacks_t::on_device_joined/on_device_left(context, short_addr, ieee_addr)
+  -> hal_event_adapter.cpp: zigbee_device_joined_cb/zigbee_device_left_cb
+       -> build_device_id_from_ieee(ieee_addr)
+  -> ServiceRuntime::post_zigbee_join_candidate(short_addr, device_id)
+       -> ZigbeeLifecycleCoordinator::handle_join_candidate(): if device_id.valid(),
+          runtime.device_locator_registry().remap(device_id, short_addr, ...) first,
+          then core::CoreEvent{kDeviceJoined, device_id, device_short_addr} posted
 ```
 
 and separately:
 
 ```
 ServiceRuntime::post_zigbee_interview_result() / post_zigbee_bind_result() /
-post_zigbee_configure_reporting_result()
-  -> core::CoreEvent{kDeviceInterviewCompleted | kDeviceBindingReady | kDeviceReportingConfigured, ...}
+post_zigbee_configure_reporting_result() / zigbee_attribute_report_cb() /
+post_zigbee_attribute_report_raw() / try_tuya_translate()
+  -> resolve_device_id_for_short_addr(short_addr) via device_locator_registry().find_by_short_addr()
+  -> core::CoreEvent{..., device_id, device_short_addr, ...}
 ```
 
-None of these currently populate `device_id`. Wiring them requires:
+What changed to close this, in implementation order:
 
-1. Extending `hal_zigbee_callbacks_t::on_device_joined`/`on_device_left`
-   (`components/app_hal/include/hal_zigbee.h`) to carry an EUI-64.
-2. On the real ESP-Zigbee (`ESP_PLATFORM`) path: `components/app_hal/hal_zigbee.c`
-   already maintains an internal IEEE-address table
-   (`s_known_device_identities`, `upsert_known_device_identity()`,
-   `find_known_device_by_ieee()`) and already detects short-address remaps by
-   IEEE address (`notify_join_with_identity()`) -- today it resolves this
-   only to synthesize a `LEAVE` + `JOIN` callback pair for the *old* API
-   shape. Per plan S2 required change #7, this should become a single
-   identity-aware callback instead of that synthetic leave/join pair, once
-   the callback struct carries EUI-64.
-3. On the host mock path (`hal_zigbee_simulate_device_joined()` and
-   friends): extending the mock signatures to accept a test-supplied EUI-64.
-4. `hal_event_adapter.cpp` resolving the EUI-64 through
-   `DeviceLocatorRegistry` and setting `CoreEvent::device_id` before posting.
-5. Threading the resolved `DeviceId` through
-   `ZigbeeLifecycleCoordinator::handle_join_candidate()` and the three
-   `post_zigbee_*_result()` methods listed above.
+1. **`components/app_hal/include/hal_zigbee.h`**: `on_device_joined`/
+   `on_device_left` now take a third `const uint8_t* ieee_addr` parameter
+   (`HAL_ZIGBEE_IEEE_ADDR_LEN` = 8 bytes; `NULL` means unresolved for this
+   occurrence). This is the one genuinely breaking signature change in the
+   stage; see "target-only fallout" below for how it was contained.
+2. **`components/app_hal/hal_zigbee.c`**: `notify_join_with_source()`/
+   `notify_left_with_source()` gained an `ieee_addr` parameter, fed by
+   `notify_join_with_identity()`/`notify_left_with_identity()` -- which
+   already had a resolved IEEE address in scope from the existing internal
+   `s_known_device_identities` table and already detected short-address
+   remaps by IEEE address before this change; it just never propagated that
+   address past its own synthetic leave/join pair. `hal_zigbee_notify_device_joined(short_addr)`
+   and `hal_zigbee_simulate_device_joined(short_addr)` (and the `_left`
+   equivalents) keep their original signatures unchanged, now implemented as
+   thin wrappers around new `..._with_identity(short_addr, ieee_addr)`
+   siblings -- every existing caller (including `test/target/*`, not
+   recompilable in this environment) keeps working unmodified.
+3. **`hal_event_adapter.cpp`**: new `build_device_id_from_ieee()` converts
+   the raw HAL bytes to `core::DeviceId` (byte order taken as-is from the HAL
+   boundary; **not verified against real ESP-Zigbee stack documentation or
+   hardware** -- see the code comment at its definition for how to correct it
+   if wrong). `zigbee_device_joined_cb`/`zigbee_device_left_cb` resolve and
+   attach `device_id`; leave additionally calls
+   `device_locator_registry().mark_offline()`.
+4. **`ServiceRuntime`**: now owns a `DeviceLocatorRegistry device_locator_registry_`
+   member, exposed via a public `device_locator_registry()` accessor and a
+   public `resolve_device_id_for_short_addr()` helper (looks up the registry;
+   returns an invalid `DeviceId` when unresolved).
+5. **`ZigbeeLifecycleCoordinator::handle_join_candidate()`** gained a
+   `const core::DeviceId&` parameter; when valid, it calls
+   `device_locator_registry().remap()` (running the full steps 1-5 algorithm
+   from Section 2.2, including displacement) before posting the `CoreEvent`.
+6. **`ServiceRuntime::post_zigbee_interview_result/bind_result/configure_reporting_result`**,
+   **`zigbee_attribute_report_cb`**, **`post_zigbee_attribute_report_raw`**
+   and **`try_tuya_translate`** all now resolve and attach `device_id` via
+   `resolve_device_id_for_short_addr()`/the registry directly, so a
+   already-joined device's interview/bind/reporting/telemetry events reach
+   the *same* Core record instead of falling back to short_addr matching.
 
-Item 2 touches real `esp_zb_*` SDK callback code that cannot be compiled or
-verified in this environment (no ESP-IDF/esp-zigbee-lib toolchain available;
-see `implementation-evidence/S0-baseline.json`). Items 1, 3 and 4 are
-host-buildable and verifiable but were not attempted in this pass once the
-true depth of the chain (discovered while investigating item 2's
-prerequisites) made clear that doing this correctly, for every event type,
-was a substantially larger and separately-reviewable unit of work than the
-`DeviceId`/`DeviceLocatorRegistry`/reducer foundation delivered in this
-stage.
+**Target-only fallout (contained, not compiled/verified):** two files under
+`test/target/` implement `on_device_joined`/`on_device_left` callbacks
+directly and were updated to the new 3-parameter signature
+(`test_reporting_flow.c`, `test_hal_zigbee.c`); several other `test/target/*`
+files call the unchanged-signature `hal_zigbee_notify_device_joined(short_addr)`
+and needed no change at all. None of `test/target/` compiles in this
+environment (no ESP-IDF); these two edits are mechanical (add a parameter,
+ignore it) and were made carefully but are unverified until a real target
+build runs.
 
-**Consequence:** the real running system does not yet close the
-short-address-reuse identity-confusion vulnerability end to end. `Core` and
-`DeviceLocatorRegistry` are ready and correct; the Service/HAL plumbing that
-would make every device event carry a resolved `DeviceId` in production is
-the next concrete increment.
+**End-to-end proof:** `test/host/test_service_device_identity_wiring.cpp`
+exercises the full chain via `hal_zigbee_simulate_device_joined_with_identity()`
+and asserts, without touching Core or the registry directly: a resolved join
+creates one record; the registry's `find_by_device_id`/`find_by_short_addr`
+agree with Core's view; interview/bind/configure-reporting results land on
+the *same* record (not a shadow); a short-address remap for the same
+identity updates locator only (INV-ID-01, no state reset); a different
+identity joining does not inherit reporting state (INV-ID-02/03); leave
+marks the registry entry offline and removes the Core record.
+
+**Remaining gap:** the real ESP-Zigbee (`ESP_PLATFORM`) signal-handler path
+in `hal_zigbee.c` was updated by inspection (threading the already-resolved
+`ieee_addr` through `notify_join_with_source`/`notify_left_with_source`,
+which required no new SDK calls -- the IEEE address was already being
+extracted from `esp_zb_*` signal params before this change). It is
+**syntactically consistent with the rest of the file's existing patterns**
+but has not been compiled or run against real hardware, because no
+ESP-IDF/esp-zigbee-lib toolchain is available in this environment (see
+`implementation-evidence/S0-baseline.json`). A target build and HIL pass
+(plan Stage S9's release gates, or an earlier manual check) are required
+before this is trusted on real hardware. The `build_device_id_from_ieee()`
+byte-order assumption noted in item 3 above is the other specific detail
+that needs hardware confirmation.
 
 ### 3.2 `NetworkGenerationId` and `LegacyIdentityEvidenceSnapshot` (FD-15)
 

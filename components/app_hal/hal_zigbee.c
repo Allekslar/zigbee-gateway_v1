@@ -12,6 +12,15 @@
 static hal_zigbee_callbacks_t s_callbacks;
 static void* s_context = 0;
 
+// Forward-declared unconditionally (unlike most of this file's internals,
+// these four are called from code paths compiled on both the ESP_PLATFORM
+// and host-mock sides) so both build configurations see a prototype before
+// first use.
+void hal_zigbee_notify_device_joined(uint16_t short_addr);
+void hal_zigbee_notify_device_left(uint16_t short_addr);
+void hal_zigbee_notify_device_joined_with_identity(uint16_t short_addr, const uint8_t* ieee_addr);
+void hal_zigbee_notify_device_left_with_identity(uint16_t short_addr, const uint8_t* ieee_addr);
+
 #ifndef ESP_PLATFORM
 static bool s_mock_network_formed = true;
 static bool s_mock_next_formation_status_once_armed = false;
@@ -97,8 +106,6 @@ typedef struct {
 static recent_departure_entry_t s_recent_departures[kRecentDepartureCapacity];
 static portMUX_TYPE s_recent_departures_lock = portMUX_INITIALIZER_UNLOCKED;
 
-void hal_zigbee_notify_device_joined(uint16_t short_addr);
-void hal_zigbee_notify_device_left(uint16_t short_addr);
 void hal_zigbee_notify_attribute_report(
     uint16_t short_addr,
     uint16_t cluster_id,
@@ -742,7 +749,7 @@ static void schedule_implicit_permit_join_close(void) {
 #endif
 }
 
-static void notify_join_with_source(uint16_t short_addr, const char* source_tag) {
+static void notify_join_with_source(uint16_t short_addr, const uint8_t* ieee_addr, const char* source_tag) {
     if (!is_valid_short_addr(short_addr)) {
         ESP_LOGW(kTag, "Ignore join from %s with invalid short_addr=0x%04x", source_tag, (unsigned)short_addr);
         return;
@@ -750,10 +757,10 @@ static void notify_join_with_source(uint16_t short_addr, const char* source_tag)
 
     clear_recent_departure(short_addr);
     ESP_LOGI(kTag, "Join candidate from %s short_addr=0x%04x", source_tag, (unsigned)short_addr);
-    hal_zigbee_notify_device_joined(short_addr);
+    hal_zigbee_notify_device_joined_with_identity(short_addr, ieee_addr);
 }
 
-static void notify_left_with_source(uint16_t short_addr, const char* source_tag) {
+static void notify_left_with_source(uint16_t short_addr, const uint8_t* ieee_addr, const char* source_tag) {
     if (!is_valid_short_addr(short_addr)) {
         ESP_LOGW(kTag, "Ignore leave from %s with invalid short_addr=0x%04x", source_tag, (unsigned)short_addr);
         return;
@@ -761,7 +768,7 @@ static void notify_left_with_source(uint16_t short_addr, const char* source_tag)
 
     note_recent_departure(short_addr);
     ESP_LOGI(kTag, "Leave candidate from %s short_addr=0x%04x", source_tag, (unsigned)short_addr);
-    hal_zigbee_notify_device_left(short_addr);
+    hal_zigbee_notify_device_left_with_identity(short_addr, ieee_addr);
 }
 
 static void notify_join_with_identity(
@@ -773,7 +780,7 @@ static void notify_join_with_identity(
     }
 
     if (!is_valid_ieee_addr(ieee_addr)) {
-        notify_join_with_source(short_addr, source_tag);
+        notify_join_with_source(short_addr, NULL, source_tag);
         return;
     }
 
@@ -794,11 +801,11 @@ static void notify_join_with_identity(
             ieee_addr[7],
             (unsigned)known.short_addr,
             (unsigned)short_addr);
-        notify_left_with_source(known.short_addr, "SHORT_ADDR_REMAP");
+        notify_left_with_source(known.short_addr, ieee_addr, "SHORT_ADDR_REMAP");
     }
 
     upsert_known_device_identity(ieee_addr, short_addr);
-    notify_join_with_source(short_addr, source_tag);
+    notify_join_with_source(short_addr, ieee_addr, source_tag);
 }
 
 static void notify_left_with_identity(
@@ -810,7 +817,7 @@ static void notify_left_with_identity(
     }
 
     remove_known_device_identity(ieee_addr, short_addr);
-    notify_left_with_source(short_addr, source_tag);
+    notify_left_with_source(short_addr, ieee_addr, source_tag);
 }
 
 static uint16_t resolve_short_from_ieee(esp_zb_ieee_addr_t ieee_addr) {
@@ -1897,14 +1904,22 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_s) {
 #endif
 
 void hal_zigbee_notify_device_joined(uint16_t short_addr) {
-    if (s_callbacks.on_device_joined != 0) {
-        s_callbacks.on_device_joined(s_context, short_addr);
-    }
+    hal_zigbee_notify_device_joined_with_identity(short_addr, NULL);
 }
 
 void hal_zigbee_notify_device_left(uint16_t short_addr) {
+    hal_zigbee_notify_device_left_with_identity(short_addr, NULL);
+}
+
+void hal_zigbee_notify_device_joined_with_identity(uint16_t short_addr, const uint8_t* ieee_addr) {
+    if (s_callbacks.on_device_joined != 0) {
+        s_callbacks.on_device_joined(s_context, short_addr, ieee_addr);
+    }
+}
+
+void hal_zigbee_notify_device_left_with_identity(uint16_t short_addr, const uint8_t* ieee_addr) {
     if (s_callbacks.on_device_left != 0) {
-        s_callbacks.on_device_left(s_context, short_addr);
+        s_callbacks.on_device_left(s_context, short_addr, ieee_addr);
     }
 }
 
@@ -1994,6 +2009,26 @@ void hal_zigbee_simulate_device_joined(uint16_t short_addr) {
     hal_zigbee_notify_device_joined(short_addr);
 #else
     (void)short_addr;
+#endif
+}
+
+void hal_zigbee_simulate_device_joined_with_identity(uint16_t short_addr, const uint8_t* ieee_addr) {
+#ifndef ESP_PLATFORM
+    // TEMP MOCK PATH (!ESP_PLATFORM): explicit simulation helper for host tests.
+    hal_zigbee_notify_device_joined_with_identity(short_addr, ieee_addr);
+#else
+    (void)short_addr;
+    (void)ieee_addr;
+#endif
+}
+
+void hal_zigbee_simulate_device_left_with_identity(uint16_t short_addr, const uint8_t* ieee_addr) {
+#ifndef ESP_PLATFORM
+    // TEMP MOCK PATH (!ESP_PLATFORM): explicit simulation helper for host tests.
+    hal_zigbee_notify_device_left_with_identity(short_addr, ieee_addr);
+#else
+    (void)short_addr;
+    (void)ieee_addr;
 #endif
 }
 

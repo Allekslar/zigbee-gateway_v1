@@ -14,6 +14,7 @@
 #include "core_event_bus.hpp"
 #include "core_registry.hpp"
 #include "device_descriptor_store.hpp"
+#include "device_locator_registry.hpp"
 #include "device_manager.hpp"
 #include "tuya_init_coordinator.hpp"
 #include "tuya_translator.hpp"
@@ -93,7 +94,13 @@ public:
     OtaSubmitStatus post_ota_start(const OtaStartRequest& request) noexcept override;
     RcpUpdateSubmitStatus post_rcp_update_start(const RcpUpdateRequest& request) noexcept override;
     bool post_open_join_window(uint32_t request_id, uint16_t duration_seconds) noexcept override;
-    bool post_zigbee_join_candidate(uint16_t short_addr) noexcept;
+    bool post_zigbee_join_candidate(uint16_t short_addr, const core::DeviceId& device_id) noexcept;
+    DeviceLocatorRegistry& device_locator_registry() noexcept { return device_locator_registry_; }
+    // Looks up the DeviceId currently mapped to short_addr in the locator
+    // registry; returns an invalid (default) DeviceId when unresolved. Used
+    // by hal_event_adapter.cpp and internally so every device-scoped event
+    // built after a successful join carries its resolved identity.
+    core::DeviceId resolve_device_id_for_short_addr(uint16_t short_addr) noexcept;
     bool post_zigbee_interview_result(
         uint32_t correlation_id,
         uint16_t short_addr,
@@ -284,6 +291,7 @@ private:
     StatePersistenceCoordinator state_persistence_coordinator_;
     ZigbeeLifecycleCoordinator zigbee_lifecycle_coordinator_;
     DeviceDescriptorStore device_descriptor_store_{};
+    DeviceLocatorRegistry device_locator_registry_{};
     TuyaTranslator tuya_translator_{};
     TuyaInitCoordinator tuya_init_coordinator_{};
 

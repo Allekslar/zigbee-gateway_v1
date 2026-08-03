@@ -23,7 +23,8 @@ typedef struct {
     uint8_t payload_first_byte;
 } reporting_flow_capture_t;
 
-static void on_device_joined(void* context, uint16_t short_addr) {
+static void on_device_joined(void* context, uint16_t short_addr, const uint8_t* ieee_addr) {
+    (void)ieee_addr;
     reporting_flow_capture_t* capture = (reporting_flow_capture_t*)context;
     capture->joined_called = true;
     capture->short_addr = short_addr;

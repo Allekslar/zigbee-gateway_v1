@@ -520,8 +520,16 @@ bool ServiceRuntime::post_open_join_window(uint32_t request_id, uint16_t duratio
     return network_manager_.enqueue_request(*this, request);
 }
 
-bool ServiceRuntime::post_zigbee_join_candidate(uint16_t short_addr) noexcept {
-    return zigbee_lifecycle_coordinator_.handle_join_candidate(*this, short_addr, monotonic_now_ms());
+bool ServiceRuntime::post_zigbee_join_candidate(uint16_t short_addr, const core::DeviceId& device_id) noexcept {
+    return zigbee_lifecycle_coordinator_.handle_join_candidate(*this, short_addr, device_id, monotonic_now_ms());
+}
+
+core::DeviceId ServiceRuntime::resolve_device_id_for_short_addr(uint16_t short_addr) noexcept {
+    DeviceLocatorEntry entry{};
+    if (device_locator_registry_.find_by_short_addr(short_addr, &entry)) {
+        return entry.device_id;
+    }
+    return core::DeviceId{};
 }
 
 bool ServiceRuntime::post_zigbee_interview_result(
@@ -537,6 +545,7 @@ bool ServiceRuntime::post_zigbee_interview_result(
 
     core::CoreEvent event{};
     event.type = core::CoreEventType::kDeviceInterviewCompleted;
+    event.device_id = resolve_device_id_for_short_addr(short_addr);
     event.device_short_addr = short_addr;
     return push_event(event);
 }
@@ -552,6 +561,7 @@ bool ServiceRuntime::post_zigbee_bind_result(
 
     core::CoreEvent event{};
     event.type = core::CoreEventType::kDeviceBindingReady;
+    event.device_id = resolve_device_id_for_short_addr(short_addr);
     event.device_short_addr = short_addr;
     return push_event(event);
 }
@@ -567,6 +577,7 @@ bool ServiceRuntime::post_zigbee_configure_reporting_result(
 
     core::CoreEvent event{};
     event.type = core::CoreEventType::kDeviceReportingConfigured;
+    event.device_id = resolve_device_id_for_short_addr(short_addr);
     event.device_short_addr = short_addr;
     return push_event(event);
 }
@@ -681,6 +692,7 @@ bool ServiceRuntime::try_route_tuya_init_result(const core::CoreCommandResult& r
 }
 
 bool ServiceRuntime::try_tuya_translate(const ZigbeeRawAttributeReport& report, uint32_t now_ms) noexcept {
+    const core::DeviceId device_id = resolve_device_id_for_short_addr(report.short_addr);
     TuyaPayloadView view{};
     view.short_addr = report.short_addr;
     view.endpoint = report.endpoint;
@@ -715,6 +727,7 @@ bool ServiceRuntime::try_tuya_translate(const ZigbeeRawAttributeReport& report, 
         core::CoreEvent event{};
         event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         event.device_short_addr = report.short_addr;
+        event.device_id = device_id;
         event.value_u32 = now_ms;
         event.telemetry_valid = out.valid;
 
@@ -794,11 +807,13 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeRe
         return false;
     }
     const uint32_t now_ms = monotonic_now_ms();
+    const core::DeviceId device_id = resolve_device_id_for_short_addr(report.short_addr);
 
     if (report.has_lqi) {
         core::CoreEvent lqi_event{};
         lqi_event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         lqi_event.device_short_addr = report.short_addr;
+        lqi_event.device_id = device_id;
         lqi_event.value_u32 = now_ms;
         lqi_event.telemetry_kind = core::CoreTelemetryKind::kLqi;
         lqi_event.telemetry_i32 = static_cast<int32_t>(report.lqi);
@@ -812,6 +827,7 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeRe
         core::CoreEvent rssi_event{};
         rssi_event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         rssi_event.device_short_addr = report.short_addr;
+        rssi_event.device_id = device_id;
         rssi_event.value_u32 = now_ms;
         rssi_event.telemetry_kind = core::CoreTelemetryKind::kRssiDbm;
         rssi_event.telemetry_i32 = static_cast<int32_t>(report.rssi_dbm);
@@ -835,6 +851,7 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeRe
         core::CoreEvent event{};
         event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         event.device_short_addr = report.short_addr;
+        event.device_id = device_id;
         event.value_u32 = now_ms;
         event.telemetry_kind = core::CoreTelemetryKind::kTemperatureCentiC;
         event.telemetry_i32 = static_cast<int32_t>(temperature_centi_c);
@@ -851,6 +868,7 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeRe
         core::CoreEvent event{};
         event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         event.device_short_addr = report.short_addr;
+        event.device_id = device_id;
         event.value_u32 = now_ms;
         event.telemetry_kind = core::CoreTelemetryKind::kContactIasZoneStatus;
         event.telemetry_i32 = static_cast<int32_t>(normalized_status);
@@ -868,6 +886,7 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeRe
         core::CoreEvent event{};
         event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         event.device_short_addr = report.short_addr;
+        event.device_id = device_id;
         event.value_u32 = now_ms;
         event.telemetry_kind = core::CoreTelemetryKind::kBatteryPercent;
         event.telemetry_i32 = battery_percent;
@@ -885,6 +904,7 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeRe
         core::CoreEvent event{};
         event.type = core::CoreEventType::kDeviceTelemetryUpdated;
         event.device_short_addr = report.short_addr;
+        event.device_id = device_id;
         event.value_u32 = now_ms;
         event.telemetry_kind = core::CoreTelemetryKind::kBatteryVoltageMilliV;
         event.telemetry_i32 = battery_mv;
@@ -900,6 +920,7 @@ bool ServiceRuntime::post_zigbee_attribute_report_raw(const ZigbeeRawAttributeRe
     core::CoreEvent event{};
     event.type = core::CoreEventType::kAttributeReported;
     event.device_short_addr = report.short_addr;
+    event.device_id = device_id;
     event.cluster_id = report.cluster_id;
     event.attribute_id = report.attribute_id;
     event.value_u32 = decoded_u32;

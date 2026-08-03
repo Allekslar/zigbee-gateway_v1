@@ -50,9 +50,19 @@ typedef struct {
     uint8_t value_len;
 } hal_zigbee_read_attr_result_t;
 
+// Length in bytes of a Zigbee IEEE/EUI-64 address as carried across the HAL
+// boundary. Byte order matches whatever the underlying stack (or, on host
+// builds, the test-supplied mock) provides; callers normalize to canonical
+// order when constructing a core::DeviceId (FD-01/FD-02).
+#define HAL_ZIGBEE_IEEE_ADDR_LEN 8
+
 typedef struct {
-    void (*on_device_joined)(void* context, uint16_t short_addr);
-    void (*on_device_left)(void* context, uint16_t short_addr);
+    // ieee_addr is NULL when the stack/mock cannot supply a resolved EUI-64
+    // for this event (identity remains unresolved for this occurrence); when
+    // non-NULL it points to exactly HAL_ZIGBEE_IEEE_ADDR_LEN bytes, valid
+    // only for the duration of the callback.
+    void (*on_device_joined)(void* context, uint16_t short_addr, const uint8_t* ieee_addr);
+    void (*on_device_left)(void* context, uint16_t short_addr, const uint8_t* ieee_addr);
     void (*on_attribute_report)(
         void* context,
         uint16_t short_addr,

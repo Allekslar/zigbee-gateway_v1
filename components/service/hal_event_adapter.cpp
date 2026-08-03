@@ -3,6 +3,10 @@
 
 #include "hal_event_adapter_internal.hpp"
 
+#include <array>
+#include <cstddef>
+
+#include "device_id.hpp"
 #include "hal_nvs.h"
 #include "hal_wifi.h"
 #include "hal_zigbee.h"
@@ -52,6 +56,30 @@ ZigbeeResult map_service_zigbee_result(hal_zigbee_result_t result) noexcept {
     }
 }
 
+// Builds a core::DeviceId from a HAL-supplied IEEE address. Returns an
+// invalid (default) DeviceId when ieee_addr is null -- the caller's identity
+// remains unresolved for this occurrence (FD-01), which the Core reducer's
+// legacy short_addr fallback handles safely (see core_reducer.cpp).
+//
+// Byte order: taken as-is from the HAL boundary (index 0 -> DeviceId byte 0),
+// matching this file's existing IEEE-address logging convention
+// (hal_zigbee.c's log_ieee_addr prints ieee_addr[0..7] unreversed). This has
+// not been verified against real ESP-Zigbee stack byte-order documentation
+// or hardware (no ESP-IDF toolchain available in the environment this was
+// written in); if a real device's persisted DeviceId does not match its
+// printed IEEE address, correct the byte order here -- this is the only
+// place it needs to change.
+core::DeviceId build_device_id_from_ieee(const uint8_t* ieee_addr) noexcept {
+    if (ieee_addr == nullptr) {
+        return core::DeviceId{};
+    }
+    std::array<uint8_t, core::DeviceId::kByteLength> bytes{};
+    for (std::size_t i = 0; i < core::DeviceId::kByteLength; ++i) {
+        bytes[i] = ieee_addr[i];
+    }
+    return core::DeviceId(bytes);
+}
+
 ZigbeeRawAttributeReport map_raw_attribute_report(const hal_zigbee_raw_attribute_report_t& report) noexcept {
     ZigbeeRawAttributeReport mapped{};
     mapped.short_addr = report.short_addr;
@@ -68,7 +96,7 @@ ZigbeeRawAttributeReport map_raw_attribute_report(const hal_zigbee_raw_attribute
     return mapped;
 }
 
-void zigbee_device_joined_cb(void* context, uint16_t short_addr) noexcept {
+void zigbee_device_joined_cb(void* context, uint16_t short_addr, const uint8_t* ieee_addr) noexcept {
     if (context == nullptr) {
         return;
     }
@@ -79,16 +107,20 @@ void zigbee_device_joined_cb(void* context, uint16_t short_addr) noexcept {
     }
 
     ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
-    const bool queued = runtime->post_zigbee_join_candidate(short_addr);
+    const core::DeviceId device_id = build_device_id_from_ieee(ieee_addr);
+    const bool queued = runtime->post_zigbee_join_candidate(short_addr, device_id);
     if (!queued) {
         HAL_ADAPTER_LOGW("Drop Zigbee join candidate short_addr=0x%04x", (unsigned)short_addr);
     }
     if (queued) {
-        HAL_ADAPTER_LOGI("Accepted Zigbee join candidate short_addr=0x%04x", (unsigned)short_addr);
+        HAL_ADAPTER_LOGI(
+            "Accepted Zigbee join candidate short_addr=0x%04x identity_resolved=%s",
+            (unsigned)short_addr,
+            device_id.valid() ? "yes" : "no");
     }
 }
 
-void zigbee_device_left_cb(void* context, uint16_t short_addr) noexcept {
+void zigbee_device_left_cb(void* context, uint16_t short_addr, const uint8_t* ieee_addr) noexcept {
     if (context == nullptr) {
         return;
     }
@@ -99,8 +131,14 @@ void zigbee_device_left_cb(void* context, uint16_t short_addr) noexcept {
     }
 
     ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
+    const core::DeviceId device_id = build_device_id_from_ieee(ieee_addr);
+    if (device_id.valid()) {
+        (void)runtime->device_locator_registry().mark_offline(device_id);
+    }
+
     core::CoreEvent event{};
     event.type = core::CoreEventType::kDeviceLeft;
+    event.device_id = device_id;
     event.device_short_addr = short_addr;
     const bool posted = runtime->post_event(event);
     if (!posted) {
@@ -125,6 +163,7 @@ void zigbee_attribute_report_cb(
     ServiceRuntime* runtime = static_cast<ServiceRuntime*>(context);
     core::CoreEvent event{};
     event.type = core::CoreEventType::kAttributeReported;
+    event.device_id = runtime->resolve_device_id_for_short_addr(short_addr);
     event.device_short_addr = short_addr;
     event.cluster_id = cluster_id;
     event.attribute_id = attribute_id;

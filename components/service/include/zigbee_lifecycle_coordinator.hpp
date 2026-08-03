@@ -6,6 +6,8 @@
 #include <atomic>
 #include <cstdint>
 
+#include "device_id.hpp"
+
 namespace service {
 
 class DeviceManager;
@@ -22,7 +24,11 @@ public:
     bool get_join_window_status(uint16_t* seconds_left) const noexcept;
     bool request_join_window_open(ServiceRuntime& runtime, uint16_t duration_seconds, uint32_t now_ms) noexcept;
     void process_join_window_policy(ServiceRuntime& runtime, uint32_t now_ms) noexcept;
-    bool handle_join_candidate(ServiceRuntime& runtime, uint16_t short_addr, uint32_t now_ms) noexcept;
+    bool handle_join_candidate(
+        ServiceRuntime& runtime,
+        uint16_t short_addr,
+        const core::DeviceId& device_id,
+        uint32_t now_ms) noexcept;
     void maybe_auto_close_join_window_after_first_join(ServiceRuntime& runtime, uint16_t short_addr) noexcept;
     bool handle_remove_device(ServiceRuntime& runtime, const NetworkRequest& request, NetworkResult* result) noexcept;
     std::size_t process_force_remove_timeouts(ServiceRuntime& runtime, uint32_t now_ms) noexcept;
