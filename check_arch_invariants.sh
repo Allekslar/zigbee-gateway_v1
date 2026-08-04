@@ -240,6 +240,16 @@ run_checks() {
         'DeviceId device_id' \
         "CoreCommand must carry a DeviceId field (FD-01)"
 
+    check_absent "INV-H006" "high" "components/service" \
+        'reinterpret_cast<[^>]*core::CoreState' \
+        "no new code may reinterpret_cast/blob a raw core::CoreState for persistence (INV-PERS-01); use persisted_device_state.hpp's explicit to_payload()/apply_payload() conversion instead"
+    check_present "INV-H006" "high" "components/service/include/persisted_device_state.hpp" \
+        'PersistedStatePayload to_payload' \
+        "the explicit versioned persistence conversion (to_payload) must exist"
+    check_present "INV-H006" "high" "components/service/include/persisted_state_store.hpp" \
+        'kLoaded' \
+        "the two-generation persisted state store (PersistedStateStore) must exist"
+
     check_absent "INV-M001" "medium" "components/app_hal/hal_wifi.c" \
         'calloc[[:space:]]*\(|free[[:space:]]*\(' \
         "hal_wifi scan hot path must not use calloc/free"

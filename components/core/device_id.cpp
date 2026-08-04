@@ -32,17 +32,17 @@ bool DeviceId::parse(const char* text, std::size_t len, DeviceId* out) noexcept 
         return false;
     }
 
-    std::array<uint8_t, kByteLength> bytes{};
+    std::array<uint8_t, kByteLength> parsed_bytes{};
     for (std::size_t byte_index = 0; byte_index < kByteLength; ++byte_index) {
         uint8_t high = 0;
         uint8_t low = 0;
         if (!hex_nibble(text[byte_index * 2U], &high) || !hex_nibble(text[byte_index * 2U + 1U], &low)) {
             return false;
         }
-        bytes[byte_index] = static_cast<uint8_t>((high << 4U) | low);
+        parsed_bytes[byte_index] = static_cast<uint8_t>((high << 4U) | low);
     }
 
-    *out = DeviceId(bytes);
+    *out = DeviceId(parsed_bytes);
     return true;
 }
 

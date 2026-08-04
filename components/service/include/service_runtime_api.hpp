@@ -397,6 +397,9 @@ public:
         uint32_t issued_at_ms) noexcept = 0;
     virtual bool post_config_write(const ConfigWriteRequest& request) noexcept = 0;
     virtual bool post_reporting_profile_write(const ConfigManager::ReportingProfile& profile) noexcept = 0;
+    // Looks up the DeviceId currently mapped to short_addr in the locator
+    // registry; returns an invalid (default) DeviceId when unresolved.
+    virtual core::DeviceId resolve_device_id_for_short_addr(uint16_t short_addr) noexcept = 0;
     virtual bool post_network_scan(uint32_t request_id) noexcept = 0;
     virtual bool post_network_connect(
         uint32_t request_id,

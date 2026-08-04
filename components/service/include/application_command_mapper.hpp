@@ -26,7 +26,7 @@ ApplicationCommandParseStatus parse_web_device_power_request(
 
 ApplicationCommandParseStatus parse_web_reporting_profile_request(
     const char* body,
-    ConfigManager::ReportingProfile* out_profile) noexcept;
+    ReportingProfileWriteRequest* out_request) noexcept;
 
 ApplicationCommandParseStatus parse_mqtt_device_power_request(
     const char* topic,
@@ -36,7 +36,7 @@ ApplicationCommandParseStatus parse_mqtt_device_power_request(
 ApplicationCommandParseStatus parse_mqtt_reporting_profile_request(
     const char* topic,
     const char* payload,
-    ConfigManager::ReportingProfile* out_profile) noexcept;
+    ReportingProfileWriteRequest* out_request) noexcept;
 
 bool mqtt_topic_has_suffix(const char* topic, const char* suffix) noexcept;
 

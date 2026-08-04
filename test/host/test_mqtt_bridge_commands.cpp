@@ -47,6 +47,24 @@ int main() {
         "{\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":301,\"max_interval_seconds\":300}",
         502U));
 
+    // A short_addr with no resolvable DeviceId is rejected rather than
+    // written under a synthetic identity (FD-01/FD-03). The kDeviceJoined
+    // event above was posted directly and bypasses the locator registry, so
+    // 8705 is not yet resolvable at this point.
+    assert(!bridge.handle_command_message(
+        "zigbee-gateway/devices/8705/config",
+        "{\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,\"max_interval_seconds\":300,\"reportable_change\":25,\"capability_flags\":3}",
+        5025U));
+
+    const core::DeviceId reporting_device_id = [] {
+        core::DeviceId id{};
+        assert(core::DeviceId::parse("00124b0001aa8705", 16, &id));
+        return id;
+    }();
+    uint32_t reporting_device_revision = 0U;
+    assert(runtime.device_locator_registry().remap(reporting_device_id, 8705U, &reporting_device_revision) ==
+           service::DeviceLocatorRemapResult::kInserted);
+
     // Valid command should enqueue write through ServiceRuntime command path.
     assert(bridge.handle_command_message(
         "zigbee-gateway/devices/8705/config",
@@ -54,7 +72,7 @@ int main() {
         503U));
 
     service::ConfigManager::ReportingProfileKey key{};
-    key.short_addr = 8705U;
+    key.device_id = reporting_device_id;
     key.endpoint = 1U;
     key.cluster_id = 1026U;
 

@@ -118,6 +118,18 @@ int main() {
     assert(snapshot.command_timeout_ms == 7000U);
     assert(snapshot.max_command_retries == 4U);
 
+    // config_reporting_post_handler now resolves short_addr -> DeviceId
+    // (FD-01) before writing; register the mapping the fixture below relies
+    // on (0x2201 == 8705).
+    const core::DeviceId reporting_device_id = [] {
+        core::DeviceId id{};
+        assert(core::DeviceId::parse("00124b0001aa2201", 16, &id));
+        return id;
+    }();
+    uint32_t reporting_device_revision = 0U;
+    assert(runtime.device_locator_registry().remap(reporting_device_id, 0x2201U, &reporting_device_revision) ==
+           service::DeviceLocatorRemapResult::kInserted);
+
     clear_http_capture();
     g_request_body = "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":301,\"max_interval_seconds\":300}";
     req.content_len = static_cast<int>(g_request_body.size());
@@ -132,6 +144,16 @@ int main() {
     assert(g_last_status == "400 Bad Request");
     assert(g_last_response.find("\"error\":\"invalid_capability_flags\"") != std::string::npos);
 
+    // A short_addr with no resolvable DeviceId (never joined/never in the
+    // locator registry) is rejected rather than written under a synthetic
+    // or guessed identity (FD-01/FD-03).
+    clear_http_capture();
+    g_request_body = "{\"short_addr\":9999,\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,\"max_interval_seconds\":300,\"reportable_change\":25,\"capability_flags\":3}";
+    req.content_len = static_cast<int>(g_request_body.size());
+    assert(web_ui::config_reporting_post_handler(&req) == ESP_OK);
+    assert(g_last_status == "404 Not Found");
+    assert(g_last_response.find("\"error\":\"unknown_device\"") != std::string::npos);
+
     clear_http_capture();
     g_request_body = "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,\"max_interval_seconds\":300,\"reportable_change\":25,\"capability_flags\":3}";
     req.content_len = static_cast<int>(g_request_body.size());
@@ -140,7 +162,7 @@ int main() {
     assert(g_last_response.find("\"accepted\":true") != std::string::npos);
 
     service::ConfigManager::ReportingProfileKey key{};
-    key.short_addr = 0x2201U;
+    key.device_id = reporting_device_id;
     key.endpoint = 1U;
     key.cluster_id = 0x0402U;
     service::ConfigManager::ReportingProfile before_apply{};

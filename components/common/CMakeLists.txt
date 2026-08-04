@@ -4,7 +4,7 @@
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/ProjectCompileOptions.cmake")
 
 idf_component_register(
-    SRCS "utils.cpp"
+    SRCS "utils.cpp" "crc32c.cpp"
     INCLUDE_DIRS "include"
 )
 

@@ -29,6 +29,8 @@ idf_component_register(
         "scan_manager.cpp"
         "service_runtime.cpp"
         "state_persistence_coordinator.cpp"
+        "persisted_device_state.cpp"
+        "persisted_state_store.cpp"
         "zigbee_lifecycle_coordinator.cpp"
         "device_descriptor_store.cpp"
         "device_locator_registry.cpp"

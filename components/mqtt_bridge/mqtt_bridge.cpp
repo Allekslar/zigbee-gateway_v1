@@ -142,13 +142,23 @@ bool MqttBridge::handle_config_command(const char* topic, const char* payload, u
         return false;
     }
 
-    service::ConfigManager::ReportingProfile profile{};
-    if (service::parse_mqtt_reporting_profile_request(topic, payload, &profile) !=
+    service::ReportingProfileWriteRequest request{};
+    if (service::parse_mqtt_reporting_profile_request(topic, payload, &request) !=
         service::ApplicationCommandParseStatus::kOk) {
         return false;
     }
 
-    return runtime_->post_reporting_profile_write(profile);
+    // Deliberately `auto`, not a spelled-out Core-namespaced type: MQTT
+    // bridge adapters must not name Core symbols directly (INV-M026) -- the
+    // DeviceId type stays opaque to this layer, which only needs .valid()
+    // and to store it back into the service-owned ReportingProfileKey.
+    const auto device_id = runtime_->resolve_device_id_for_short_addr(request.short_addr);
+    if (!device_id.valid()) {
+        return false;
+    }
+    request.profile.key.device_id = device_id;
+
+    return runtime_->post_reporting_profile_write(request.profile);
 }
 
 bool MqttBridge::handle_power_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept {

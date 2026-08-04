@@ -218,7 +218,7 @@ bool reporting_profile_equal(
     const ConfigManager::ReportingProfile& lhs,
     const ConfigManager::ReportingProfile& rhs) noexcept {
     return lhs.in_use == rhs.in_use &&
-           lhs.key.short_addr == rhs.key.short_addr &&
+           lhs.key.device_id == rhs.key.device_id &&
            lhs.key.endpoint == rhs.key.endpoint &&
            lhs.key.cluster_id == rhs.key.cluster_id &&
            lhs.min_interval_seconds == rhs.min_interval_seconds &&
@@ -386,9 +386,14 @@ core::CoreError ServiceRuntime::post_command(const core::CoreCommand& command) n
             return core::CoreError::kInvalidArgument;
         }
 
+        const core::DeviceId device_id = resolve_device_id_for_short_addr(command.device_short_addr);
+        if (!device_id.valid()) {
+            return core::CoreError::kInvalidArgument;
+        }
+
         ConfigManager::ReportingProfile profile{};
         profile.in_use = true;
-        profile.key.short_addr = command.device_short_addr;
+        profile.key.device_id = device_id;
         profile.key.endpoint = command.reporting_endpoint;
         profile.key.cluster_id = command.reporting_cluster_id;
         profile.min_interval_seconds = command.reporting_min_interval_seconds;
@@ -493,6 +498,9 @@ OtaSubmitStatus ServiceRuntime::post_ota_start(const OtaStartRequest& request) n
         return OtaSubmitStatus::kBusy;
     }
 #ifdef ESP_PLATFORM
+    // See the knownConditionTrueFalse note in ensure_ota_worker_started():
+    // its return value depends on a Kconfig macro cppcheck cannot resolve.
+    // cppcheck-suppress knownConditionTrueFalse
     if (!ensure_ota_worker_started()) {
         SR_LOGW("OTA request rejected: worker start failed");
         return OtaSubmitStatus::kBusy;
@@ -1240,14 +1248,25 @@ bool ServiceRuntime::start() noexcept {
 
 #ifdef ESP_PLATFORM
 bool ServiceRuntime::ensure_ota_worker_started() noexcept {
+    // should_start_ota_worker()'s return value depends on the Kconfig-gated
+    // CONFIG_ZGW_OTA_ENABLED, which is only resolved at a real ESP-IDF
+    // build; cppcheck (run without a real sdkconfig) explores both possible
+    // values and reports this as a contradictory "always true"/"always
+    // false" condition depending on which it assumes.
+    // cppcheck-suppress knownConditionTrueFalse
     if (!should_start_ota_worker()) {
         return false;
     }
+    // Lock-free fast path: if another thread already completed
+    // initialization, skip acquiring worker_start_lock_ entirely.
     if (ota_worker_task_handle_ != nullptr) {
         return true;
     }
 
     RuntimeLockGuard guard(worker_start_lock_);
+    // Double-checked locking: another thread may have started the worker
+    // between the fast-path check above and acquiring the lock here.
+    // cppcheck-suppress identicalConditionAfterEarlyExit
     if (ota_worker_task_handle_ != nullptr) {
         return true;
     }

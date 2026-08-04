@@ -27,6 +27,7 @@ target_include_directories(core_host
 zg_apply_component_compile_policy(core_host)
 
 set(SERVICE_SOURCES
+    ../../components/common/crc32c.cpp
     ../../components/service/application_command_mapper.cpp
     ../../components/service/bridge_snapshot_builder.cpp
     ../../components/service/command_manager.cpp
@@ -51,6 +52,8 @@ set(SERVICE_SOURCES
     ../../components/service/scan_manager.cpp
     ../../components/service/service_runtime.cpp
     ../../components/service/state_persistence_coordinator.cpp
+    ../../components/service/persisted_device_state.cpp
+    ../../components/service/persisted_state_store.cpp
     ../../components/service/zigbee_lifecycle_coordinator.cpp
     ../../components/service/device_descriptor_store.cpp
     ../../components/service/device_locator_registry.cpp
@@ -125,6 +128,21 @@ add_executable(test_device_locator_registry test_device_locator_registry.cpp)
 target_link_libraries(test_device_locator_registry PRIVATE service_host)
 zg_apply_component_compile_policy(test_device_locator_registry)
 add_test(NAME test_device_locator_registry COMMAND test_device_locator_registry)
+
+add_executable(test_state_persistence_migration test_state_persistence_migration.cpp)
+target_link_libraries(test_state_persistence_migration PRIVATE service_host)
+zg_apply_component_compile_policy(test_state_persistence_migration)
+add_test(NAME test_state_persistence_migration COMMAND test_state_persistence_migration)
+
+add_executable(test_persisted_state_store test_persisted_state_store.cpp)
+target_link_libraries(test_persisted_state_store PRIVATE service_host)
+zg_apply_component_compile_policy(test_persisted_state_store)
+add_test(NAME test_persisted_state_store COMMAND test_persisted_state_store)
+
+add_executable(test_common_crc32c test_common_crc32c.cpp ../../components/common/crc32c.cpp)
+target_include_directories(test_common_crc32c PRIVATE ../../components/common/include)
+zg_apply_component_compile_policy(test_common_crc32c)
+add_test(NAME test_common_crc32c COMMAND test_common_crc32c)
 
 add_executable(test_core_device_id test_core_device_id.cpp)
 target_link_libraries(test_core_device_id PRIVATE core_host)

@@ -335,16 +335,16 @@ uint32_t ReportingManager::degraded_count() const noexcept {
 
 bool ReportingManager::resolve_profile_for_device(
     const ConfigManager& config,
-    uint16_t short_addr,
+    const core::DeviceId& device_id,
     uint8_t endpoint,
     uint16_t cluster_id,
     ConfigManager::ReportingProfile* out) const noexcept {
-    if (out == nullptr || !valid_short_addr(short_addr) || endpoint == 0U || cluster_id == 0U) {
+    if (out == nullptr || !device_id.valid() || endpoint == 0U || cluster_id == 0U) {
         return false;
     }
 
     ConfigManager::ReportingProfileKey key{};
-    key.short_addr = short_addr;
+    key.device_id = device_id;
     key.endpoint = endpoint;
     key.cluster_id = cluster_id;
     return config.resolve_reporting_profile(key, classify_device_class(cluster_id), out);

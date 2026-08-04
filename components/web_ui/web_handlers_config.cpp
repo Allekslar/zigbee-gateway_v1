@@ -105,14 +105,24 @@ esp_err_t config_reporting_post_handler(httpd_req_t* req) {
         return send_json_error(req, "400 Bad Request", "invalid_body");
     }
 
-    service::ConfigManager::ReportingProfile profile{};
+    service::ReportingProfileWriteRequest request{};
     const service::ApplicationCommandParseStatus parse_status =
-        service::parse_web_reporting_profile_request(body, &profile);
+        service::parse_web_reporting_profile_request(body, &request);
     if (parse_status != service::ApplicationCommandParseStatus::kOk) {
         return send_json_error(req, "400 Bad Request", service::application_command_parse_error(parse_status));
     }
 
-    if (!context->runtime->post_reporting_profile_write(profile)) {
+    // Deliberately `auto`, not a spelled-out Core-namespaced type: web_ui
+    // adapters must not name Core symbols directly (INV-M030) -- the
+    // DeviceId type stays opaque to this layer, which only needs .valid()
+    // and to store it back into the service-owned ReportingProfileKey.
+    const auto device_id = context->runtime->resolve_device_id_for_short_addr(request.short_addr);
+    if (!device_id.valid()) {
+        return send_json_error(req, "404 Not Found", "unknown_device");
+    }
+    request.profile.key.device_id = device_id;
+
+    if (!context->runtime->post_reporting_profile_write(request.profile)) {
         return send_json_error(req, "503 Service Unavailable", "config_queue_full");
     }
 

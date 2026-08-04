@@ -19,26 +19,30 @@ int main() {
             "{\"short_addr\":65535,\"power_on\":true}",
             &power_request) == service::ApplicationCommandParseStatus::kInvalidShortAddr);
 
-    service::ConfigManager::ReportingProfile profile{};
+    service::ReportingProfileWriteRequest request{};
     assert(
         service::parse_web_reporting_profile_request(
             "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,"
             "\"min_interval_seconds\":10,\"max_interval_seconds\":300,"
             "\"reportable_change\":25,\"capability_flags\":3}",
-            &profile) == service::ApplicationCommandParseStatus::kOk);
-    assert(profile.key.short_addr == 0x2201U);
-    assert(profile.key.endpoint == 1U);
-    assert(profile.key.cluster_id == 0x0402U);
-    assert(profile.min_interval_seconds == 10U);
-    assert(profile.max_interval_seconds == 300U);
-    assert(profile.reportable_change == 25U);
-    assert(profile.capability_flags == 3U);
+            &request) == service::ApplicationCommandParseStatus::kOk);
+    assert(request.short_addr == 0x2201U);
+    // device_id is intentionally left unresolved by the leaf parser (see
+    // ReportingProfileWriteRequest) -- the caller (Web/MQTT handler)
+    // resolves it via ServiceRuntime before the write.
+    assert(!request.profile.key.device_id.valid());
+    assert(request.profile.key.endpoint == 1U);
+    assert(request.profile.key.cluster_id == 0x0402U);
+    assert(request.profile.min_interval_seconds == 10U);
+    assert(request.profile.max_interval_seconds == 300U);
+    assert(request.profile.reportable_change == 25U);
+    assert(request.profile.capability_flags == 3U);
 
     assert(
         service::parse_web_reporting_profile_request(
             "{\"short_addr\":8705,\"endpoint\":1,\"cluster_id\":1026,"
             "\"min_interval_seconds\":301,\"max_interval_seconds\":300}",
-            &profile) == service::ApplicationCommandParseStatus::kInvalidProfileBounds);
+            &request) == service::ApplicationCommandParseStatus::kInvalidProfileBounds);
 
     assert(
         service::parse_mqtt_device_power_request(
@@ -53,16 +57,16 @@ int main() {
             "zigbee-gateway/devices/8705/config",
             "{\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,"
             "\"max_interval_seconds\":300,\"capability_flags\":2}",
-            &profile) == service::ApplicationCommandParseStatus::kOk);
-    assert(profile.key.short_addr == 0x2201U);
-    assert(profile.capability_flags == 2U);
+            &request) == service::ApplicationCommandParseStatus::kOk);
+    assert(request.short_addr == 0x2201U);
+    assert(request.profile.capability_flags == 2U);
 
     assert(
         service::parse_mqtt_reporting_profile_request(
             "zigbee-gateway/devices/8705/config",
             "{\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,"
             "\"max_interval_seconds\":300,\"capability_flags\":512}",
-            &profile) == service::ApplicationCommandParseStatus::kInvalidCapabilityFlags);
+            &request) == service::ApplicationCommandParseStatus::kInvalidCapabilityFlags);
 
     assert(
         service::parse_mqtt_device_power_request(

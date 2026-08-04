@@ -80,7 +80,7 @@ public:
     uint32_t degraded_count() const noexcept;
     bool resolve_profile_for_device(
         const ConfigManager& config,
-        uint16_t short_addr,
+        const core::DeviceId& device_id,
         uint8_t endpoint,
         uint16_t cluster_id,
         ConfigManager::ReportingProfile* out) const noexcept;
