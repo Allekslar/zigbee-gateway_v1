@@ -150,6 +150,19 @@ int main() {
     }
     assert(telemetry_verified);
 
+    // kUpdateReportingProfile now resolves device_short_addr -> DeviceId
+    // (FD-01) via the locator registry before writing; register the mapping
+    // here since this test posts the kDeviceJoined core event directly and
+    // bypasses the HAL adapter path that normally populates the registry.
+    const core::DeviceId reporting_device_id = [] {
+        core::DeviceId id{};
+        assert(core::DeviceId::parse("00124b0001aa3301", 16, &id));
+        return id;
+    }();
+    uint32_t reporting_device_revision = 0U;
+    assert(runtime.device_locator_registry().remap(reporting_device_id, 0x3301U, &reporting_device_revision) ==
+           service::DeviceLocatorRemapResult::kInserted);
+
     core::CoreCommand bad_reporting_cmd{};
     bad_reporting_cmd.type = core::CoreCommandType::kUpdateReportingProfile;
     bad_reporting_cmd.correlation_id = 300U;
@@ -173,7 +186,7 @@ int main() {
     assert(runtime.post_command(reporting_cmd) == core::CoreError::kOk);
 
     service::ConfigManager::ReportingProfileKey reporting_key{};
-    reporting_key.short_addr = 0x3301U;
+    reporting_key.device_id = reporting_device_id;
     reporting_key.endpoint = 1U;
     reporting_key.cluster_id = 0x0402U;
     service::ConfigManager::ReportingProfile reporting_before{};

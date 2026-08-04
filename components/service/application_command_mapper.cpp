@@ -154,8 +154,8 @@ ApplicationCommandParseStatus extract_device_short_addr_from_topic(
 ApplicationCommandParseStatus parse_reporting_profile_payload(
     const char* payload,
     const uint16_t short_addr,
-    ConfigManager::ReportingProfile* out_profile) noexcept {
-    if (payload == nullptr || out_profile == nullptr) {
+    ReportingProfileWriteRequest* out_request) noexcept {
+    if (payload == nullptr || out_request == nullptr) {
         return ApplicationCommandParseStatus::kInvalidPayload;
     }
 
@@ -183,7 +183,10 @@ ApplicationCommandParseStatus parse_reporting_profile_payload(
 
     ConfigManager::ReportingProfile profile{};
     profile.in_use = true;
-    profile.key.short_addr = short_addr;
+    // device_id is intentionally left unresolved here: this is a leaf JSON
+    // parser with no access to ServiceRuntime's locator registry. The
+    // caller resolves short_addr -> DeviceId (FD-01) after a successful
+    // parse -- see ReportingProfileWriteRequest.
     profile.key.endpoint = static_cast<uint8_t>(endpoint);
     profile.key.cluster_id = static_cast<uint16_t>(cluster_id);
     profile.min_interval_seconds = static_cast<uint16_t>(min_interval);
@@ -201,7 +204,8 @@ ApplicationCommandParseStatus parse_reporting_profile_payload(
         profile.capability_flags = static_cast<uint8_t>(capability_flags);
     }
 
-    *out_profile = profile;
+    out_request->short_addr = short_addr;
+    out_request->profile = profile;
     return ApplicationCommandParseStatus::kOk;
 }
 
@@ -268,8 +272,8 @@ ApplicationCommandParseStatus parse_web_device_power_request(
 
 ApplicationCommandParseStatus parse_web_reporting_profile_request(
     const char* body,
-    ConfigManager::ReportingProfile* out_profile) noexcept {
-    if (body == nullptr || out_profile == nullptr) {
+    ReportingProfileWriteRequest* out_request) noexcept {
+    if (body == nullptr || out_request == nullptr) {
         return ApplicationCommandParseStatus::kInvalidPayload;
     }
 
@@ -282,7 +286,7 @@ ApplicationCommandParseStatus parse_web_reporting_profile_request(
         return ApplicationCommandParseStatus::kInvalidProfileKey;
     }
 
-    return parse_reporting_profile_payload(body, static_cast<uint16_t>(short_addr_raw), out_profile);
+    return parse_reporting_profile_payload(body, static_cast<uint16_t>(short_addr_raw), out_request);
 }
 
 ApplicationCommandParseStatus parse_mqtt_device_power_request(
@@ -315,8 +319,8 @@ ApplicationCommandParseStatus parse_mqtt_device_power_request(
 ApplicationCommandParseStatus parse_mqtt_reporting_profile_request(
     const char* topic,
     const char* payload,
-    ConfigManager::ReportingProfile* out_profile) noexcept {
-    if (payload == nullptr || out_profile == nullptr) {
+    ReportingProfileWriteRequest* out_request) noexcept {
+    if (payload == nullptr || out_request == nullptr) {
         return ApplicationCommandParseStatus::kInvalidPayload;
     }
 
@@ -327,7 +331,7 @@ ApplicationCommandParseStatus parse_mqtt_reporting_profile_request(
         return short_addr_status;
     }
 
-    return parse_reporting_profile_payload(payload, short_addr, out_profile);
+    return parse_reporting_profile_payload(payload, short_addr, out_request);
 }
 
 }  // namespace service

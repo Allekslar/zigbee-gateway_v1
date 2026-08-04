@@ -97,9 +97,12 @@ extern "C" void test_config_manager_reporting_profile_persist_restore(void) {
     service::ConfigManager writer;
     TEST_ASSERT_TRUE(writer.load());
 
+    core::DeviceId device_id{};
+    TEST_ASSERT_TRUE(core::DeviceId::parse("00124b0001aa2233", 16, &device_id));
+
     service::ConfigManager::ReportingProfile profile{};
     profile.in_use = true;
-    profile.key.short_addr = 0x2233U;
+    profile.key.device_id = device_id;
     profile.key.endpoint = 1U;
     profile.key.cluster_id = 0x0402U;
     profile.min_interval_seconds = 3U;
@@ -115,7 +118,7 @@ extern "C" void test_config_manager_reporting_profile_persist_restore(void) {
     service::ConfigManager::ReportingProfile restored{};
     TEST_ASSERT_TRUE(reader.get_reporting_profile(profile.key, &restored));
     TEST_ASSERT_TRUE(restored.in_use);
-    TEST_ASSERT_EQUAL_UINT16(profile.key.short_addr, restored.key.short_addr);
+    TEST_ASSERT_TRUE(profile.key.device_id == restored.key.device_id);
     TEST_ASSERT_EQUAL_UINT8(profile.key.endpoint, restored.key.endpoint);
     TEST_ASSERT_EQUAL_UINT16(profile.key.cluster_id, restored.key.cluster_id);
     TEST_ASSERT_EQUAL_UINT16(profile.min_interval_seconds, restored.min_interval_seconds);

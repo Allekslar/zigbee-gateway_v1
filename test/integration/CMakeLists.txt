@@ -27,6 +27,7 @@ target_include_directories(core_integration
 zg_apply_component_compile_policy(core_integration)
 
 set(SERVICE_SOURCES
+    ../../components/common/crc32c.cpp
     ../../components/service/application_command_mapper.cpp
     ../../components/service/bridge_snapshot_builder.cpp
     ../../components/service/command_manager.cpp
@@ -51,6 +52,8 @@ set(SERVICE_SOURCES
     ../../components/service/scan_manager.cpp
     ../../components/service/service_runtime.cpp
     ../../components/service/state_persistence_coordinator.cpp
+    ../../components/service/persisted_device_state.cpp
+    ../../components/service/persisted_state_store.cpp
     ../../components/service/device_descriptor_store.cpp
     ../../components/service/device_locator_registry.cpp
     ../../components/service/tuya_fingerprint.cpp

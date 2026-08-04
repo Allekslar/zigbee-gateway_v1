@@ -14,8 +14,18 @@ constexpr const char* kKeyTimeoutMs = "cfg_cmd_tmo_ms";
 constexpr const char* kKeyMaxRetries = "cfg_cmd_retry";
 constexpr const char* kLegacyKeyTimeoutMs = "cmd_tmo_ms";
 constexpr const char* kLegacyKeyMaxRetries = "cmd_retries";
-constexpr const char* kKeyReportingProfileCount = "cfg_rpt_cnt";
+// Schema 4 (DeviceId-keyed) reporting-profile count -- see config_manager.cpp.
+constexpr const char* kKeyReportingProfileCount = "cfg_rpt_cnt2";
+// Schema 3 (short_addr-keyed) reporting-profile count.
+constexpr const char* kLegacyV3KeyReportingProfileCount = "cfg_rpt_cnt";
 constexpr const char* kLegacyV2KeyReportingProfileCount = "cfg_rpt_count";
+
+core::DeviceId make_id(const char* hex) {
+    core::DeviceId id{};
+    const bool ok = core::DeviceId::parse(hex, 16, &id);
+    assert(ok);
+    return id;
+}
 
 void test_missing_schema_initializes_fresh_install() {
     assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
@@ -107,9 +117,11 @@ void test_reporting_profile_persist_restore() {
     service::ConfigManager writer;
     assert(writer.load());
 
+    const core::DeviceId device_id = make_id("00124b0001aa2201");
+
     service::ConfigManager::ReportingProfile profile{};
     profile.in_use = true;
-    profile.key.short_addr = 0x2201U;
+    profile.key.device_id = device_id;
     profile.key.endpoint = 1U;
     profile.key.cluster_id = 0x0402U;
     profile.min_interval_seconds = 5U;
@@ -125,7 +137,7 @@ void test_reporting_profile_persist_restore() {
     service::ConfigManager::ReportingProfile restored{};
     assert(reader.get_reporting_profile(profile.key, &restored));
     assert(restored.in_use);
-    assert(restored.key.short_addr == profile.key.short_addr);
+    assert(restored.key.device_id == profile.key.device_id);
     assert(restored.key.endpoint == profile.key.endpoint);
     assert(restored.key.cluster_id == profile.key.cluster_id);
     assert(restored.min_interval_seconds == profile.min_interval_seconds);
@@ -134,10 +146,17 @@ void test_reporting_profile_persist_restore() {
     assert(restored.capability_flags == profile.capability_flags);
 }
 
-void test_migrate_v2_legacy_reporting_keys_idempotent() {
+// v2 reporting profiles are short_addr-keyed. ConfigManager has no access to
+// the DeviceLocatorRegistry, so it cannot resolve a DeviceId for them: the
+// v2->v3 step migrates them into the v3 (still short_addr-keyed) key-space
+// as before, but the subsequent v3->v4 step quarantines them by omission
+// (FD-03) rather than guessing/rebinding an identity. This is a **behavior
+// change** from the pre-rekey migration, which used to carry the profile
+// all the way to "current" because "current" was still short_addr-keyed.
+void test_migrate_v2_legacy_reporting_keys_quarantined_at_v4() {
     assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32(kKeySchemaVersion, 2U) == HAL_NVS_STATUS_OK);
-    assert(hal_nvs_set_u32(kKeyReportingProfileCount, 0U) == HAL_NVS_STATUS_OK);
+    assert(hal_nvs_set_u32(kLegacyV3KeyReportingProfileCount, 0U) == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32(kLegacyV2KeyReportingProfileCount, 1U) == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32("cfg_rpt_k00", 0x01013322U) == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32("cfg_rpt_c00", 0x00030402U) == HAL_NVS_STATUS_OK);
@@ -149,39 +168,36 @@ void test_migrate_v2_legacy_reporting_keys_idempotent() {
     assert(first_boot.schema_version() == service::ConfigManager::kCurrentSchemaVersion);
     assert(first_boot.load_report().status == service::ConfigManager::LoadStatus::kMigrated);
     assert(first_boot.load_report().from_schema_version == 2U);
-    assert(first_boot.reporting_profile_count() == 1U);
+    // Quarantined by omission: no DeviceId can be resolved for a v2/v3
+    // short_addr-keyed profile at this layer.
+    assert(first_boot.reporting_profile_count() == 0U);
 
-    service::ConfigManager::ReportingProfileKey key{};
-    key.short_addr = 0x3322U;
-    key.endpoint = 1U;
-    key.cluster_id = 0x0402U;
-
-    service::ConfigManager::ReportingProfile profile{};
-    assert(first_boot.get_reporting_profile(key, &profile));
-    assert(profile.capability_flags == 0x03U);
-    assert(profile.min_interval_seconds == 3U);
-    assert(profile.max_interval_seconds == 120U);
-    assert(profile.reportable_change == 25U);
+    // The intermediate v2->v3 step did run and wrote into the v3 (legacy)
+    // key-space -- evidence the profile was carried forward, not silently
+    // lost before the identity-aware quarantine decision was even made.
+    uint32_t legacy_v3_count = 0U;
+    assert(hal_nvs_get_u32(kLegacyV3KeyReportingProfileCount, &legacy_v3_count) == HAL_NVS_STATUS_OK);
+    assert(legacy_v3_count == 1U);
 
     uint32_t persisted = 0U;
     assert(hal_nvs_get_u32(kKeyReportingProfileCount, &persisted) == HAL_NVS_STATUS_OK);
-    assert(persisted == 1U);
+    assert(persisted == 0U);
     assert(hal_nvs_get_u32(kKeySchemaVersion, &persisted) == HAL_NVS_STATUS_OK);
     assert(persisted == service::ConfigManager::kCurrentSchemaVersion);
 
+    // Second boot: already at current schema, quarantine does not re-run,
+    // and the profile count stays at zero (no path to resurrect it).
     service::ConfigManager second_boot;
     assert(second_boot.load());
     assert(second_boot.schema_version() == service::ConfigManager::kCurrentSchemaVersion);
-    assert(second_boot.reporting_profile_count() == 1U);
-    service::ConfigManager::ReportingProfile profile_after_reload{};
-    assert(second_boot.get_reporting_profile(key, &profile_after_reload));
-    assert(profile_after_reload.capability_flags == 0x03U);
+    assert(second_boot.load_report().status == service::ConfigManager::LoadStatus::kReady);
+    assert(second_boot.reporting_profile_count() == 0U);
 }
 
 void test_migrate_v2_without_legacy_reporting_keys_is_safe() {
     assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32(kKeySchemaVersion, 2U) == HAL_NVS_STATUS_OK);
-    assert(hal_nvs_set_u32(kKeyReportingProfileCount, 0U) == HAL_NVS_STATUS_OK);
+    assert(hal_nvs_set_u32(kLegacyV3KeyReportingProfileCount, 0U) == HAL_NVS_STATUS_OK);
     assert(hal_nvs_set_u32(kLegacyV2KeyReportingProfileCount, 0U) == HAL_NVS_STATUS_OK);
 
     service::ConfigManager manager;
@@ -199,7 +215,7 @@ int main() {
     test_invalid_legacy_values_fallback_to_defaults();
     test_reject_future_schema();
     test_reporting_profile_persist_restore();
-    test_migrate_v2_legacy_reporting_keys_idempotent();
+    test_migrate_v2_legacy_reporting_keys_quarantined_at_v4();
     test_migrate_v2_without_legacy_reporting_keys_is_safe();
     return 0;
 }

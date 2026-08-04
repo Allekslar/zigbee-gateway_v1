@@ -9,17 +9,26 @@
 
 namespace {
 
+core::DeviceId make_id(const char* hex) {
+    core::DeviceId id{};
+    const bool ok = core::DeviceId::parse(hex, 16, &id);
+    assert(ok);
+    return id;
+}
+
 void test_class_default_profile_is_used() {
     assert(hal_nvs_init() == HAL_NVS_STATUS_OK);
 
     service::ConfigManager config;
     assert(config.load());
 
+    const core::DeviceId device_id = make_id("00124b0001aa2201");
+
     service::ReportingManager manager;
     service::ConfigManager::ReportingProfile profile{};
-    assert(manager.resolve_profile_for_device(config, 0x2201U, 1U, 0x0402U, &profile));
+    assert(manager.resolve_profile_for_device(config, device_id, 1U, 0x0402U, &profile));
     assert(profile.in_use);
-    assert(profile.key.short_addr == 0x2201U);
+    assert(profile.key.device_id == device_id);
     assert(profile.key.endpoint == 1U);
     assert(profile.key.cluster_id == 0x0402U);
     assert(profile.min_interval_seconds == 5U);
@@ -35,9 +44,11 @@ void test_per_device_override_has_priority_over_class_default() {
     service::ConfigManager config;
     assert(config.load());
 
+    const core::DeviceId device_id = make_id("00124b0001aa2202");
+
     service::ConfigManager::ReportingProfile override_profile{};
     override_profile.in_use = true;
-    override_profile.key.short_addr = 0x2202U;
+    override_profile.key.device_id = device_id;
     override_profile.key.endpoint = 1U;
     override_profile.key.cluster_id = 0x0402U;
     override_profile.min_interval_seconds = 30U;
@@ -48,7 +59,7 @@ void test_per_device_override_has_priority_over_class_default() {
 
     service::ReportingManager manager;
     service::ConfigManager::ReportingProfile resolved{};
-    assert(manager.resolve_profile_for_device(config, 0x2202U, 1U, 0x0402U, &resolved));
+    assert(manager.resolve_profile_for_device(config, device_id, 1U, 0x0402U, &resolved));
     assert(resolved.min_interval_seconds == 30U);
     assert(resolved.max_interval_seconds == 900U);
     assert(resolved.reportable_change == 50U);
@@ -70,9 +81,11 @@ void test_custom_class_default_applies_to_new_devices() {
     custom_motion.capability_flags = 0x44U;
     assert(config.set_reporting_policy_default(service::ConfigManager::ReportingDeviceClass::kMotion, custom_motion));
 
+    const core::DeviceId device_id = make_id("00124b0001aa2203");
+
     service::ReportingManager manager;
     service::ConfigManager::ReportingProfile resolved{};
-    assert(manager.resolve_profile_for_device(config, 0x2203U, 1U, 0x0406U, &resolved));
+    assert(manager.resolve_profile_for_device(config, device_id, 1U, 0x0406U, &resolved));
     assert(resolved.min_interval_seconds == 2U);
     assert(resolved.max_interval_seconds == 45U);
     assert(resolved.capability_flags == 0x44U);
@@ -86,9 +99,11 @@ void test_unknown_cluster_has_no_default_profile() {
     service::ConfigManager config;
     assert(config.load());
 
+    const core::DeviceId device_id = make_id("00124b0001aa2204");
+
     service::ReportingManager manager;
     service::ConfigManager::ReportingProfile resolved{};
-    assert(!manager.resolve_profile_for_device(config, 0x2204U, 1U, 0x1234U, &resolved));
+    assert(!manager.resolve_profile_for_device(config, device_id, 1U, 0x1234U, &resolved));
 }
 
 }  // namespace

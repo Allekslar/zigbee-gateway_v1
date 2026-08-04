@@ -1,0 +1,84 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S3-followup",
+  "stage_name": "ConfigManager reporting-profile re-keying to DeviceId (closes S3-completion.json Section 3.1 deviation / plan Section 9 S3 required change #5)",
+  "input_commit_sha": "0bf879b10d51507843412ab8450ff859053be6a0",
+  "output_commit_sha": "0bf879b10d51507843412ab8450ff859053be6a0",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work, plus all of S3 proper, is uncommitted on top of 0bf879b (S2's HAL/Service wiring follow-up, PR #39).",
+  "changed_files": [
+    "components/service/include/config_manager.hpp (ReportingProfileKey: short_addr -> core::DeviceId device_id; kCurrentSchemaVersion 3 -> 4)",
+    "components/service/config_manager.cpp (new NVS encoding, schema 3->4 migration, v2->v3 legacy-key-name bugfix, capability-flags mask bugfix)",
+    "components/service/include/reporting_manager.hpp (resolve_profile_for_device: short_addr -> const core::DeviceId&)",
+    "components/service/reporting_manager.cpp (same)",
+    "components/service/service_runtime.cpp (reporting_profile_equal compares device_id; kUpdateReportingProfile handler resolves device_id via resolve_device_id_for_short_addr(), rejects unresolved)",
+    "components/service/include/service_runtime_api.hpp (new pure virtual resolve_device_id_for_short_addr on the service facade)",
+    "components/service/include/service_runtime.hpp (resolve_device_id_for_short_addr marked override)",
+    "components/service/include/application_requests.hpp (new ReportingProfileWriteRequest{ short_addr, ConfigManager::ReportingProfile })",
+    "components/service/include/application_command_mapper.hpp (parse_web_reporting_profile_request / parse_mqtt_reporting_profile_request now emit ReportingProfileWriteRequest, not a bare ReportingProfile)",
+    "components/service/application_command_mapper.cpp (same; device_id left unresolved by design -- these are leaf JSON/topic parsers with no locator-registry access)",
+    "components/web_ui/web_handlers_config.cpp (config_reporting_post_handler resolves device_id post-parse, rejects with 404 unknown_device if unresolved)",
+    "components/mqtt_bridge/mqtt_bridge.cpp (handle_config_command resolves device_id post-parse, silently refuses if unresolved, matching MQTT's existing no-ack contract)",
+    "docs/architecture/PERSISTENCE.md (Section 3.1 rewritten from DEFERRED to DONE)",
+    "test/host/test_config_manager_migration.cpp (device_id-keyed persist/restore; v2->v4 migration test rewritten to assert quarantine, renamed test_migrate_v2_legacy_reporting_keys_quarantined_at_v4)",
+    "test/host/test_service_runtime.cpp (registers short_addr->device_id in the locator registry before exercising kUpdateReportingProfile, since this test posts kDeviceJoined directly and bypasses the HAL adapter path)",
+    "test/host/test_web_handlers_config_post.cpp (same registration; new 404 unknown_device case)",
+    "test/host/test_mqtt_bridge_commands.cpp (same registration; new silent-refusal-on-unresolved case)",
+    "test/host/test_service_reporting_profiles.cpp (resolve_profile_for_device call sites take DeviceId)",
+    "test/host/test_application_command_mapper.cpp (ReportingProfileWriteRequest; asserts device_id is left unresolved by the leaf parser)",
+    "test/target/test_config_manager_runtime_policies.cpp (device_id-keyed persist/restore; unverifiable, no ESP-IDF)",
+    "test/target/test_web_api_integration.cpp (joins with a resolved identity via hal_zigbee_notify_device_joined_with_identity before the reporting-profile POST; unverifiable, no ESP-IDF)"
+  ],
+  "frozen_decisions_applied": [
+    "FD-01: DeviceId is the sole durable key for reporting profiles as for every other durable record; short_addr is never persisted as identity in the new schema.",
+    "FD-03 / quarantine by omission: a schema-3 (short_addr-keyed) reporting profile that ConfigManager cannot resolve a DeviceId for is dropped on the 3->4 migration, never guessed or rebound -- the same default already used for the S3 CoreState migration.",
+    "INV-ARCH-01 / layering: ConfigManager gained no dependency on DeviceLocatorRegistry (it still has none); every resolution happens at the caller (ServiceRuntime, Web/MQTT adapters), preserving the existing dependency direction.",
+    "INV-M026 / INV-M030 (architecture-gate rules, not a plan FD but load-bearing): mqtt_bridge and web_ui adapters must not name core:: symbols directly. The device_id local in both call sites is declared with auto, not core::DeviceId, to stay compliant -- confirmed by check_arch_invariants.sh after the fix (see deviations)."
+  ],
+  "work_summary": {
+    "nvs_encoding": {
+      "status": "COMPLETE, TESTED",
+      "detail": "ReportingProfileKey.device_id (8 bytes) is stored as an NVS blob under the 'd' per-slot key. cluster_id/capability_flags/endpoint are packed into one repurposed uint32_t word ('c' key) via encode_profile_cluster_caps_endpoint_word(): bits 0-15 cluster, 16-23 capability flags, 24-31 endpoint. The old single bit-packed short_addr/endpoint 'k' key and encode/decode_profile_key_word() are removed from the current (schema-4) code path. kCurrentSchemaVersion bumped 3 -> 4 with a new, deliberately distinct count-key name (cfg_rpt_cnt2) so the schema-repair heuristic can never mistake a schema-3 install for schema-4 data."
+    },
+    "migration_3_to_4": {
+      "status": "COMPLETE, TESTED",
+      "detail": "Schema-3 reporting profiles are short_addr-keyed; ConfigManager has no DeviceLocatorRegistry access and cannot resolve a DeviceId for them. The 3->4 step quarantines by omission: sets the new count key to 0 and bumps schema to 4, dropping every schema-3 profile. The pre-existing v2->v3 legacy migration (short_addr-keyed, itself unchanged in logic) still runs first, so a v2 install's profile is provably carried into the v3 key-space before the identity-aware quarantine decision -- not silently lost earlier in the chain. Tested end-to-end in test_migrate_v2_legacy_reporting_keys_quarantined_at_v4 (v2 -> full migration to v4 in one load(), asserts final count is 0 but the intermediate v3 legacy count key shows 1, proving the v2->v3 step ran)."
+    },
+    "call_site_resolution": {
+      "status": "COMPLETE, TESTED",
+      "detail": "Three independent production write paths all now resolve short_addr -> DeviceId before writing, and reject the write if unresolved, rather than writing under a synthetic/guessed identity: (1) ServiceRuntime::post_command's kUpdateReportingProfile handler returns CoreError::kInvalidArgument; (2) the Web POST handler (config_reporting_post_handler) returns 404 unknown_device; (3) the MQTT command handler (handle_config_command) returns false, matching MQTT's existing contract for other rejected commands (no ack topic). The Web/MQTT JSON/topic parsers (application_command_mapper.cpp) were deliberately NOT given locator-registry access -- they remain pure leaf parsers, returning short_addr alongside an unresolved-device_id profile via the new ReportingProfileWriteRequest, with resolution pushed to the adapter call site that already owns a ServiceRuntimeApi pointer."
+    },
+    "bug_found_and_fixed_during_this_pass": {
+      "status": "FIXED, CONFIRMED BY TEST FAILURE THEN PASS",
+      "detail": "kProfileCapsMask (capability_flags bits) was written as `0x0000FF00U << 16U`, which evaluates to 0xFF000000 -- identical to kProfileEndpointMask, meaning capability_flags and endpoint silently clobbered each other in the packed word on every save/load. This was NOT caught by manual review; it was caught by test_reporting_profile_persist_restore (test/host/test_config_manager_migration.cpp) failing its capability_flags round-trip assertion after everything else compiled clean. Fixed to the intended 0x00FF0000UL (bits 16-23); full suite re-run afterward confirmed no other latent breakage from the same class of mistake."
+    },
+    "architecture_gate_violation_found_and_fixed": {
+      "status": "FIXED",
+      "detail": "The first working version of the Web/MQTT call-site fix declared `const core::DeviceId device_id = ...`, which check_arch_invariants.sh correctly flagged as INV-M026/INV-M030 violations (adapters must not name core:: symbols). Fixed by declaring the variable `auto` instead -- the adapter code never needs to spell out the type, only call .valid() and assign it into the service-owned ReportingProfileKey. Re-ran the gate to confirm: high=0, medium=0, low=0."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Plan Section 9 S3 required change #5 asked for ReportingProfileKey = { DeviceId, endpoint, cluster_id } without specifying migration behavior for existing short_addr-keyed profiles beyond the general FD-03 default.",
+      "why": "No literal deviation: the quarantine-by-omission migration behavior is the plan's own mandated safe default ('a record without proof is quarantined... never guessed, manually rebound') applied consistently with how S3's CoreState migration already handled the identical problem shape.",
+      "consequence": "Any reporting profile written before this change is lost on first boot after upgrade (not migrated, not recoverable). This is the same consequence already accepted and documented for CoreState device records in S3-completion.json; reporting profiles are strictly less consequential (a UX/behavior default reverts to the class-level ReportingPolicyDefault, not a lost device)."
+    }
+  ],
+  "inventories_recomputed": {
+    "new_tests_this_pass": [],
+    "renamed_tests_this_pass": ["test_migrate_v2_legacy_reporting_keys_idempotent -> test_migrate_v2_legacy_reporting_keys_quarantined_at_v4 (test/host/test_config_manager_migration.cpp)"],
+    "host_tests_total": 77,
+    "integration_tests_total": 7
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0 (after fixing the auto-vs-core:: violation described above)." },
+    "host_tests": { "result": "PASSED", "detail": "77/77 (100%), clean rebuild." },
+    "integration_tests": { "result": "PASSED", "detail": "7/7 (100%), clean rebuild." },
+    "sanitizer_tests": { "result": "PASSED", "detail": "77/77 (100%) under ASan+UBSan, clean rebuild." }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround (zgw-host-tools:s0). ESP-IDF/idf.py remains unavailable, so test/target/test_config_manager_runtime_policies.cpp and test/target/test_web_api_integration.cpp were updated by careful manual inspection of the same pattern applied and verified on the host suite, but could not themselves be compiled or executed -- consistent with the BLOCKED_TOOLCHAIN status S0 recorded for all target/HIL code.",
+  "unresolved_deviations": [],
+  "unresolved_blockers": [
+    "test/target/test_config_manager_runtime_policies.cpp and test/target/test_web_api_integration.cpp changes are unverified against a real ESP-IDF/hardware build (BLOCKED_TOOLCHAIN, carried over from S0)."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

@@ -7,11 +7,13 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "device_id.hpp"
+
 namespace service {
 
 class ConfigManager {
 public:
-    static constexpr uint32_t kCurrentSchemaVersion = 3;
+    static constexpr uint32_t kCurrentSchemaVersion = 4;
     static constexpr uint32_t kDefaultCommandTimeoutMs = 5000;
     static constexpr uint8_t kDefaultMaxCommandRetries = 1;
     static constexpr uint8_t kMaxCommandRetries = 5;
@@ -25,8 +27,14 @@ public:
         kContact = 3,
     };
 
+    // Durable key (FD-01): identified by DeviceId, never by short_addr. A
+    // profile whose device_id cannot be resolved at write time is rejected
+    // (see ServiceRuntime's kUpdateReportingProfile handler); a schema-3
+    // profile that predates DeviceId cannot be migrated (ConfigManager has
+    // no access to the locator registry) and is quarantined by omission on
+    // the one-time schema 3->4 migration -- see docs/architecture/PERSISTENCE.md.
     struct ReportingProfileKey {
-        uint16_t short_addr{0};
+        core::DeviceId device_id{};
         uint8_t endpoint{0};
         uint16_t cluster_id{0};
     };

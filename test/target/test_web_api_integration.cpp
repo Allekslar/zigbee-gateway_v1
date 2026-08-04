@@ -311,6 +311,17 @@ extern "C" void test_web_api_config_reporting_update_validation_and_queue_apply(
         goto cleanup;
     }
 
+    // POST /api/config/reporting now resolves short_addr -> DeviceId
+    // (FD-01) via the locator registry before writing; join with a resolved
+    // identity so 8705 (0x2201) is resolvable. The locator registry is
+    // updated synchronously inside the join notification, so no
+    // process_pending() is required before the POST below.
+    {
+        static const uint8_t kIeeeAddr[HAL_ZIGBEE_IEEE_ADDR_LEN] = {
+            0x00, 0x12, 0x4b, 0x00, 0x01, 0xaa, 0x22, 0x01};
+        hal_zigbee_notify_device_joined_with_identity(0x2201U, kIeeeAddr);
+    }
+
     if (!web_server.start()) {
         failure = "web_server.start failed";
         goto cleanup;
@@ -348,7 +359,10 @@ extern "C" void test_web_api_config_reporting_update_validation_and_queue_apply(
         goto cleanup;
     }
 
-    key.short_addr = 0x2201U;
+    if (!core::DeviceId::parse("00124b0001aa2201", 16, &key.device_id)) {
+        failure = "failed to parse expected DeviceId for 0x2201";
+        goto cleanup;
+    }
     key.endpoint = 1U;
     key.cluster_id = test_cluster_id;
     if (runtime.config_manager().get_reporting_profile(key, &profile)) {

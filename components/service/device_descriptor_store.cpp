@@ -66,55 +66,52 @@ bool DeviceDescriptorStore::mark_failed(uint16_t short_addr) noexcept {
 }
 
 const DeviceDescriptorEntry* DeviceDescriptorStore::find(uint16_t short_addr) const noexcept {
-    for (const auto& entry : entries_) {
-        if (entry.short_addr == short_addr) {
-            return &entry;
-        }
-    }
-    return nullptr;
+    const auto it = std::find_if(
+        entries_.begin(), entries_.end(),
+        [short_addr](const DeviceDescriptorEntry& entry) noexcept { return entry.short_addr == short_addr; });
+    return it == entries_.end() ? nullptr : &(*it);
 }
 
 bool DeviceDescriptorStore::remove(uint16_t short_addr) noexcept {
-    for (auto& entry : entries_) {
-        if (entry.short_addr == short_addr) {
-            entry = DeviceDescriptorEntry{};
-            return true;
-        }
+    const auto it = std::find_if(
+        entries_.begin(), entries_.end(),
+        [short_addr](const DeviceDescriptorEntry& entry) noexcept { return entry.short_addr == short_addr; });
+    if (it == entries_.end()) {
+        return false;
     }
-    return false;
+    *it = DeviceDescriptorEntry{};
+    return true;
 }
 
 void DeviceDescriptorStore::clear() noexcept {
-    for (auto& entry : entries_) {
-        entry = DeviceDescriptorEntry{};
-    }
+    std::fill(entries_.begin(), entries_.end(), DeviceDescriptorEntry{});
 }
 
 DeviceDescriptorEntry* DeviceDescriptorStore::find_or_allocate(uint16_t short_addr) noexcept {
     if (short_addr == kUnknownShortAddr) {
         return nullptr;
     }
-    for (auto& entry : entries_) {
-        if (entry.short_addr == short_addr) {
-            return &entry;
-        }
+    const auto existing = std::find_if(
+        entries_.begin(), entries_.end(),
+        [short_addr](const DeviceDescriptorEntry& entry) noexcept { return entry.short_addr == short_addr; });
+    if (existing != entries_.end()) {
+        return &(*existing);
     }
-    for (auto& entry : entries_) {
-        if (entry.short_addr == kUnknownShortAddr) {
-            entry.short_addr = short_addr;
-            return &entry;
-        }
+    const auto free_slot = std::find_if(
+        entries_.begin(), entries_.end(),
+        [](const DeviceDescriptorEntry& entry) noexcept { return entry.short_addr == kUnknownShortAddr; });
+    if (free_slot == entries_.end()) {
+        return nullptr;
     }
-    return nullptr;
+    free_slot->short_addr = short_addr;
+    return &(*free_slot);
 }
 
 DeviceDescriptorEntry* DeviceDescriptorStore::find_mutable(uint16_t short_addr) noexcept {
-    for (auto& entry : entries_) {
-        if (entry.short_addr == short_addr) {
-            return &entry;
-        }
-    }
-    return nullptr;
+    const auto it = std::find_if(
+        entries_.begin(), entries_.end(),
+        [short_addr](const DeviceDescriptorEntry& entry) noexcept { return entry.short_addr == short_addr; });
+    return it == entries_.end() ? nullptr : &(*it);
 }
 
 void DeviceDescriptorStore::try_resolve(DeviceDescriptorEntry& entry) noexcept {

@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include "core_registry.hpp"
+#include "device_id.hpp"
 #include "state_persistence_coordinator.hpp"
 
 int main() {
@@ -14,10 +15,14 @@ int main() {
     assert(persistence.consume_restore_pending());
     assert(!persistence.consume_restore_pending());
 
+    core::DeviceId device_id{};
+    assert(core::DeviceId::parse("00124b0001aaaaaa", 16, &device_id));
+
     core::CoreState state{};
     state.device_count = 1U;
     state.revision = 1U;
     state.devices[0].online = true;
+    state.devices[0].device_id = device_id;
     state.devices[0].short_addr = 0x4411;
     assert(registry.publish(state));
     persistence.note_persist_state_requested();
@@ -29,7 +34,9 @@ int main() {
     assert(restored_persistence.restore_persisted_core_state());
     const core::CoreState restored = restored_registry.snapshot_copy();
     assert(restored.device_count == 1U);
+    assert(restored.devices[0].device_id == device_id);
     assert(restored.devices[0].short_addr == 0x4411);
+    assert(!restored.devices[0].online);  // sanitized: never restored as online
     assert(!restored.network_connected);
     return 0;
 }
