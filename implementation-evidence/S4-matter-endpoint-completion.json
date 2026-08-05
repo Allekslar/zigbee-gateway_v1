@@ -1,0 +1,120 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S4-matter-endpoint",
+  "stage_name": "S4 slice 2/N: DeviceId-keyed Matter endpoint allocation and two-phase removal (plan required changes #20-#26)",
+  "input_commit_sha": "293e40fd07123235da383781ab4ed847dfc2d303",
+  "output_commit_sha": "293e40fd07123235da383781ab4ed847dfc2d303",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 293e40f (merge of PR #41: S3 versioned persistence + DeviceId reporting-profile rekey), and follows the uncommitted S4-gateway-id slice already completed in this working tree.",
+  "sequencing_note": "Second S4 slice, chosen by the user after GatewayId. Remaining S4 required changes (HTTP /api/v1, MQTT v1, HA discovery migration) are not attempted in this pass. See docs/architecture/MATTER_ENDPOINT_IDENTITY.md Section 3 for exact scope boundaries.",
+  "changed_files": [
+    "components/service/include/matter_endpoint_registry.hpp (new)",
+    "components/service/matter_endpoint_registry.cpp (new)",
+    "components/service/CMakeLists.txt (adds matter_endpoint_registry.cpp)",
+    "components/app_hal/include/hal_matter.h (adds hal_matter_remove_endpoint)",
+    "components/app_hal/hal_matter.c (adds hal_matter_stack_remove_endpoint weak hook + hal_matter_remove_endpoint)",
+    "components/service/include/matter_runtime_api.hpp (MatterBridgeDeviceSnapshot gains resolved uint16_t endpoint field)",
+    "components/service/include/bridge_snapshot_builder.hpp (BridgeSnapshotBuilder takes const MatterEndpointRegistry&)",
+    "components/service/bridge_snapshot_builder.cpp (build_matter_snapshot resolves endpoint via read-only find())",
+    "components/service/include/read_model_coordinator.hpp (ReadModelCoordinator constructor takes const MatterEndpointRegistry&)",
+    "components/service/read_model_coordinator.cpp (forwards MatterEndpointRegistry to BridgeSnapshotBuilder)",
+    "components/service/include/service_runtime.hpp (matter_endpoint_registry_ member; sync_matter_endpoint_allocations/handle_matter_endpoint_removal_on_device_left declarations)",
+    "components/service/service_runtime.cpp (constructor loads registry; sync_matter_endpoint_allocations called from notify_read_models_from_core_snapshot; apply_managers wires kDeviceLeft to two-phase removal; #include hal_matter.h/hal_identity.h)",
+    "components/matter_bridge/include/matter_endpoint_map.hpp (deleted)",
+    "components/matter_bridge/matter_device_map.cpp (deleted)",
+    "components/matter_bridge/CMakeLists.txt (removes matter_device_map.cpp)",
+    "components/matter_bridge/include/matter_bridge.hpp (removes MatterEndpointMapEntry/set_endpoint_map/endpoint_map_ members)",
+    "components/matter_bridge/matter_bridge.cpp (removes class-based endpoint resolution; consumes pre-resolved device.endpoint directly for all attribute types)",
+    "check_arch_invariants.sh (new INV-H008 rule group)",
+    "docs/architecture/ARCH_COMPLIANCE_MATRIX.md (INV-H008 row)",
+    "docs/architecture/MATTER_ENDPOINT_IDENTITY.md (new)",
+    "test/host/test_matter_endpoint_registry.cpp (new)",
+    "test/host/test_matter_endpoint_remap_stability.cpp (new)",
+    "test/host/test_matter_device_map.cpp (deleted, tested the removed fixed-class fallback)",
+    "test/host/test_matter_bridge.cpp (endpoint supplied directly in snapshot instead of via set_endpoint_map)",
+    "test/host/test_matter_snapshot_semantics.cpp (same)",
+    "test/host/test_matter_runtime_robustness.cpp (same, plus include for MatterEndpointRegistry::kEndpointBase)",
+    "test/host/test_matter_runtime_attach_contract.cpp (switched to identity-aware join via hal_zigbee_simulate_device_joined_with_identity; endpoint now allocated through the real pipeline)",
+    "test/host/test_matter_runtime_feed.cpp (same, plus identity-aware leave)",
+    "test/host/test_matter_runtime_command_loop.cpp (same, plus device_id resolved for the manually-constructed telemetry event)",
+    "test/host/test_read_model_coordinator.cpp (constructs a MatterEndpointRegistry to pass into ReadModelCoordinator's new constructor parameter)",
+    "test/host/CMakeLists.txt (removes test_matter_device_map target and matter_device_map.cpp references from every other matter_* target; adds hal_matter.c to APP_HAL_SOURCES; adds matter_endpoint_registry.cpp to SERVICE_SOURCES; adds test_matter_endpoint_registry and test_matter_endpoint_remap_stability targets)",
+    "test/integration/CMakeLists.txt (adds hal_matter.c to APP_HAL_SERVICE_SOURCES; adds matter_endpoint_registry.cpp to SERVICE_SOURCES)"
+  ],
+  "frozen_decisions_applied": [
+    "FD-16 (by extension, not literally named in earlier stages): the PersistedMatterEndpointState enum (kUnassigned/kAssigned/kPendingRemoval) S3 reserved is exactly the state machine this allocator implements, though via its own independent store -- see docs/architecture/MATTER_ENDPOINT_IDENTITY.md Section 2.2 for why.",
+    "FD-01 extended to Matter identity: a device rejoining mid-removal (kPendingRemoval) is never allowed to inherit its own not-yet-confirmed slot; it is treated exactly like a genuinely new device and gets a fresh allocation. No state is guessed or inherited across a rejoin.",
+    "S4 required change #20: MatterEndpointRegistry is keyed exclusively by core::DeviceId; one endpoint carries every cluster class (temperature/occupancy/contact) a device supports -- matter_bridge.cpp's sync_snapshot() no longer resolves a separate endpoint per cluster.",
+    "S4 required change #21: dynamic base 10, capacity service::kServiceMaxDevices (64, confirmed equal to core::kMaxDevices), reviewed range 10-73.",
+    "S4 required change #22/#25: the three fixed class-wide constants (kMatterEndpointTemperature/Occupancy/Contact = 10/11/12) and the entire MatterEndpointMapEntry/set_endpoint_map mechanism are deleted from the codebase, not merely deprecated -- nothing production-relevant consumed them once endpoint resolution moved server-side and DeviceId-keyed. Locked by INV-H008.",
+    "S4 required change #23: allocation happens in ServiceRuntime::sync_matter_endpoint_allocations(), called before the read-model snapshot matter_bridge consumes is rebuilt; a new allocation triggers persist_current_core_state() before that snapshot becomes visible (the CoreState-side persist; the Matter registry's own store is written synchronously inside allocate() itself).",
+    "S4 required change #24: two-phase removal (mark_pending_removal -> HAL tombstone attempt -> confirm_removed only on HAL success) is fully implemented and tested; the HAL tombstone primitive (hal_matter_remove_endpoint) is new in this pass, following the codebase's existing weak-hook pattern exactly.",
+    "S4 required change #26: a short-address remap (INV-ID-01 in core_reducer.cpp: same DeviceId, new short_addr, still online, no intervening leave) cannot disturb an existing Matter allocation by construction, since the registry's API has no short_addr parameter anywhere. Verified end-to-end, not just at the allocator's isolated API level.",
+    "S4 required change #27: hal_matter_available()'s existing truthful-unavailability contract (host=true for testability, ESP_PLATFORM weak-hook default=false) was already correct before this pass and is unchanged; hal_matter_remove_endpoint() follows the identical pattern."
+  ],
+  "work_summary": {
+    "matter_endpoint_registry": {
+      "status": "COMPLETE, TESTED",
+      "detail": "DeviceId-keyed allocator with its own independent two-generation NVS store (mtep_a/mtep_b), replicating persisted_state_store.cpp's write/validate/commit protocol over a differently-shaped, much smaller payload rather than retrofitting that class to be generic. Deterministic lowest-free-slot allocation, idempotent re-allocation, explicit kNoCapacity at exhaustion, full two-phase removal, fail-safe (not fail-closed) recovery from a corrupted store. Tested in test_matter_endpoint_registry.cpp: 7 scenarios covering every one of the above plus persistence across a simulated reboot for both the assigned and pending-removal states."
+    },
+    "removal_wiring": {
+      "status": "COMPLETE, TESTED (host); ESP_PLATFORM real-adapter path unverifiable",
+      "detail": "ServiceRuntime::handle_matter_endpoint_removal_on_device_left(), called from apply_managers() on kDeviceLeft, resolves the leaving DeviceId (falling back to the locator registry if the event itself lacks one, since the registry is still queryable at this point -- core_reduce, which wipes the CoreDeviceRecord, runs AFTER apply_managers in the event loop), then attempts the new hal_matter_remove_endpoint() HAL primitive and only confirms removal on success. New HAL primitive follows the exact existing weak-hook pattern (hal_matter_stack_remove_endpoint, ESP_PLATFORM default -1/unavailable, host stub returns 0/success). Tested end-to-end (host, where the tombstone succeeds) in test_matter_endpoint_remap_stability.cpp's second half."
+    },
+    "allocation_wiring_and_remap_stability": {
+      "status": "COMPLETE, TESTED",
+      "detail": "ServiceRuntime::sync_matter_endpoint_allocations(), called from notify_read_models_from_core_snapshot() before the Matter read-model snapshot is rebuilt, allocates for every online device with a resolved DeviceId (deliberately not gated on capability discovery -- see docs/architecture/MATTER_ENDPOINT_IDENTITY.md Section 2.4 for why) and persists the CoreState side if any new allocation happened. Because the registry's entire API is DeviceId-only, a short_addr remap cannot reach it at all, which is what makes item #26 hold by construction. Tested end-to-end in test_matter_endpoint_remap_stability.cpp: endpoint unchanged across a pure remap; a genuinely different physical device after a confirmed removal correctly lands on the freed slot without any short_addr-based coincidence being load-bearing."
+    },
+    "matter_bridge_simplification": {
+      "status": "COMPLETE, TESTED",
+      "detail": "MatterEndpointMapEntry/set_endpoint_map/kMatterEndpointTemperature/Occupancy/Contact and the matter_endpoint_map.hpp/matter_device_map.cpp file pair are deleted outright (confirmed by repository-wide grep: zero remaining references anywhere, including test/target). matter_bridge.cpp's sync_snapshot() now reads the single pre-resolved device.endpoint field for every attribute type instead of a per-cluster class lookup -- a direct simplification following from 'one endpoint per device' rather than a separate refactor. All 7 affected matter_bridge/matter_runtime host tests updated: three that constructed a MatterBridgeSnapshot directly now set .endpoint on the struct; three that exercised the real ServiceRuntime pipeline switched from raw CoreEvent posting to identity-aware HAL simulation (hal_zigbee_simulate_device_joined_with_identity), since MatterEndpointRegistry -- correctly -- refuses to allocate for a device with no resolved DeviceId."
+    },
+    "bug_found_and_fixed_during_this_pass": {
+      "status": "FIXED, CONFIRMED BY CPPCHECK THEN CLEAN",
+      "detail": "matter_endpoint_registry.cpp's occupied_count() used a raw counting loop; cppcheck's core+service job flagged it (useStlAlgorithm), converted to std::count_if with a lambda, re-verified cppcheck exit 0."
+    },
+    "test_isolation_bug_found_and_fixed_in_own_new_test": {
+      "status": "FIXED, CONFIRMED BY TEST FAILURE THEN PASS",
+      "detail": "The host hal_nvs mock only clears its backing storage on the very first hal_nvs_init() call in a process (simulating first boot); every later call in the same test binary is a no-op. test_matter_endpoint_registry.cpp's first draft called hal_nvs_init() at the top of each of its 7 test functions expecting a fresh store each time, which is not what the mock does -- state accumulated across functions within the one process, causing test_capacity_exhaustion_is_explicit to fail (residual entries from earlier functions left fewer than 64 free slots). Fixed by adding a force_clean_matter_store() helper that overwrites both NVS blob keys with mismatched-length garbage (forcing MatterEndpointRegistry::load() to treat them as corrupt/absent, its documented fail-safe path) at the start of every test function, rather than relying on hal_nvs_init()'s misunderstood reset semantics."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Matter endpoint persistence uses its own independent NVS store rather than the S3 PersistedDeviceRecord.matter_endpoint_state/matter_endpoint_id fields that appear to have been reserved for exactly this purpose.",
+      "why": "A kPendingRemoval endpoint must remain non-reusable across the corresponding CoreDeviceRecord being wiped (core_reducer.cpp's kDeviceLeft handling does this immediately) and across reboot until tombstone confirmation. Once the device has left Core, there is no PersistedDeviceRecord slot left to carry that fact forward -- the S3 payload's per-device shape is fundamentally the wrong fit for state that must outlive the corresponding device record. See docs/architecture/MATTER_ENDPOINT_IDENTITY.md Section 2.2 for the full reasoning, including why PersistedStateStore itself was not made generic and reused (it is hardcoded to PersistedStatePayload and INV-H006 pins its existence/shape by name; retrofitting it risked destabilizing already-shipped, tested S3 code for a moderate, avoidable amount of duplication).",
+      "consequence": "S3's matter_endpoint_state/matter_endpoint_id fields remain unpopulated dead schema (round-trip only, never written or read) unless a future pass decouples Matter endpoint lifecycle from Core device lifecycle in that schema. No regression: those fields were never populated by anything before this pass either (S3-completion.json documented them as 'structural readiness only')."
+    },
+    {
+      "deviation": "Endpoint allocation is not gated on capability discovery (has_temperature/occupancy/contact known); every online, identity-resolved device gets an endpoint immediately on join.",
+      "why": "An earlier draft gated allocation on capability discovery, but this made allocation timing dependent on Zigbee interview completion order and broke test compatibility for the pre-existing bridge/runtime-feed test suite (which posts raw join events with no capability data). Re-examined the plan's own test list: nothing in it requires capability-gated allocation, only DeviceId-keyed allocation and deterministic lowest-free assignment, both of which hold either way. Simplified to unconditional allocation on join.",
+      "consequence": "A device that joins but never reports any Matter-relevant attribute permanently occupies an endpoint slot with no active clusters until it leaves. Capacity is shared 1:1 with core::kMaxDevices (both 64), so this can never cause capacity exhaustion under normal operation; it is a minor efficiency note, not a correctness gap."
+    },
+    {
+      "deviation": "Plan item #22's BLOCKED_DELTA_REVIEW build-time gate (fail if any additional static/reserved target endpoint conflicts with the 10-73 range) is not implemented as a generic build check.",
+      "why": "A repository-wide search confirmed no other static/reserved Matter endpoint constant exists anywhere in the codebase today (the three that did are deleted by this pass). There is currently nothing for such a gate to find. INV-H008 locks the specific regression this repository could reintroduce (the deleted constants coming back); a generic diff-every-constant gate is deferred as its own reviewable increment rather than built speculatively.",
+      "consequence": "If a future change introduces a new hardcoded Matter endpoint constant outside MatterEndpointRegistry's [10,73] allocation path, INV-H008 would not automatically catch it unless it happens to match one of the three deleted names. Documented in docs/architecture/MATTER_ENDPOINT_IDENTITY.md Section 3.4 as an explicit, reviewed gap, not an oversight."
+    }
+  ],
+  "inventories_recomputed": {
+    "new_tests_this_pass": ["test_matter_endpoint_registry", "test_matter_endpoint_remap_stability"],
+    "removed_tests_this_pass": ["test_matter_device_map"],
+    "host_tests_total": 80,
+    "integration_tests_total": 7
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0; includes new INV-H008 rule group (MatterEndpointRegistry existence, absence of the fixed-class fallback in matter_bridge, resolved endpoint field on MatterBridgeDeviceSnapshot, hal_matter_remove_endpoint presence)." },
+    "host_tests": { "result": "PASSED", "detail": "80/80 (100%), clean rebuild." },
+    "integration_tests": { "result": "PASSED", "detail": "7/7 (100%), clean rebuild." },
+    "sanitizer_tests": { "result": "PASSED", "detail": "80/80 (100%) under ASan+UBSan, clean rebuild, exact CI flags reproduced." },
+    "cppcheck": { "result": "PASSED", "detail": "All three CI static-analysis jobs (core+service, app_hal, web_ui) via the zgw-host-tools:cppcheck derivative image -- exit code 0 on every job, including after fixing the occupied_count() useStlAlgorithm finding." }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround (zgw-host-tools:s0 for build/test; zgw-host-tools:cppcheck for static analysis). ESP-IDF/idf.py remains unavailable, so hal_matter.c's ESP_PLATFORM branches (both the pre-existing weak hooks and the new hal_matter_stack_remove_endpoint) are unverified against real hardware -- BLOCKED_TOOLCHAIN, consistent with S0's recorded status for all target/HIL Matter code. No test/target/ files reference Matter at all (confirmed by search), so there was nothing to carefully-but-unverifiably update there in this pass, unlike prior stages.",
+  "unresolved_deviations": [
+    "S4 required changes for HTTP /api/v1, MQTT v1, and HA discovery migration remain unimplemented -- see docs/architecture/MATTER_ENDPOINT_IDENTITY.md Section 3.3.",
+    "Plan item #22's generic BLOCKED_DELTA_REVIEW build gate is not implemented; INV-H008 covers the specific known regression only -- see docs/architecture/MATTER_ENDPOINT_IDENTITY.md Section 3.4.",
+    "No retry/recovery path exists for a Matter endpoint stuck in kPendingRemoval when no real Matter adapter is linked -- see docs/architecture/MATTER_ENDPOINT_IDENTITY.md Section 3.2."
+  ],
+  "unresolved_blockers": [
+    "hal_matter.c's ESP_PLATFORM branches (including the new hal_matter_stack_remove_endpoint weak hook) are unverified against real ESP-IDF/hardware -- BLOCKED_TOOLCHAIN, carried over from S0."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

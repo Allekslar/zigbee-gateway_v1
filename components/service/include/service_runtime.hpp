@@ -157,6 +157,8 @@ public:
     void set_capabilities(const RuntimeCapabilities& capabilities) noexcept override;
     RuntimeCapabilities capabilities() const noexcept override;
 
+    common::GatewayId gateway_id() const noexcept override;
+
     RuntimeStats stats() const noexcept;
     ConfigSnapshot config_snapshot() const noexcept;
     core::CoreState state() const noexcept;
@@ -259,6 +261,14 @@ private:
     void notify_read_models_from_config_cache() noexcept;
     void reload_config_bootstrap_state() noexcept;
     bool drain_mqtt_status_update() noexcept;
+    // Allocates a Matter endpoint (plan S4 #20/#23) for every online device
+    // whose capability class is now known and persists immediately if any
+    // new allocation happened, before the read-model snapshot that Matter
+    // bridge consumes is rebuilt. See docs/architecture/MATTER_ENDPOINT_IDENTITY.md.
+    void sync_matter_endpoint_allocations() noexcept;
+    // Two-phase Matter endpoint removal (plan S4 #24), triggered from
+    // apply_managers() on kDeviceLeft.
+    void handle_matter_endpoint_removal_on_device_left(const core::CoreEvent& event) noexcept;
 
     // CoreRegistry is owned by ServiceRuntime; managers must consume prepared
     // runtime state fragments instead of reading snapshots directly.
@@ -286,7 +296,13 @@ private:
     mutable RuntimeLock worker_start_lock_{};
     mutable RuntimeLock capabilities_lock_{};
     RuntimeCapabilities capabilities_{};
+    // Resolved once at construction (see the constructor body) and never
+    // reassigned afterward, so no lock is needed for reads.
+    common::GatewayId gateway_id_{};
     OperationResultStore operation_result_store_{};
+    // Must be declared (and therefore constructed) before
+    // read_model_coordinator_, which holds a reference to it.
+    MatterEndpointRegistry matter_endpoint_registry_{};
     ReadModelCoordinator read_model_coordinator_;
     StatePersistenceCoordinator state_persistence_coordinator_;
     ZigbeeLifecycleCoordinator zigbee_lifecycle_coordinator_;

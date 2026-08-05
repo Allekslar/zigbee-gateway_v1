@@ -19,6 +19,8 @@
 #include "sdkconfig.h"
 #endif
 
+#include "hal_identity.h"
+#include "hal_matter.h"
 #include "hal_zigbee.h"
 
 namespace service {
@@ -227,14 +229,32 @@ bool reporting_profile_equal(
            lhs.capability_flags == rhs.capability_flags;
 }
 
+// Resolves the canonical GatewayId (FD-17) from the HAL-owned factory base
+// MAC. A HAL read failure yields a default-constructed (invalid)
+// GatewayId rather than a fabricated value -- callers must check valid().
+common::GatewayId resolve_gateway_id() noexcept {
+    uint8_t mac[HAL_IDENTITY_BASE_MAC_LEN]{};
+    if (hal_identity_get_factory_base_mac(mac) != 0) {
+        return common::GatewayId{};
+    }
+    std::array<uint8_t, common::GatewayId::kByteLength> bytes{};
+    static_assert(
+        common::GatewayId::kByteLength == HAL_IDENTITY_BASE_MAC_LEN,
+        "GatewayId byte length must match the HAL factory base MAC length");
+    std::memcpy(bytes.data(), mac, bytes.size());
+    return common::GatewayId(bytes);
+}
+
 }  // namespace
 
 ServiceRuntime::ServiceRuntime(core::CoreRegistry& registry, EffectExecutor& effect_executor) noexcept
     : registry_(&registry),
       effect_executor_(&effect_executor),
-      read_model_coordinator_(registry),
+      gateway_id_(resolve_gateway_id()),
+      read_model_coordinator_(registry, matter_endpoint_registry_),
       state_persistence_coordinator_(registry),
       zigbee_lifecycle_coordinator_(network_policy_manager_, device_manager_) {
+    matter_endpoint_registry_.load();
     reload_config_bootstrap_state();
     mqtt_status_cache_.last_connect_error = NetworkApiSnapshot::MqttConnectionError::kNone;
     zigbee_lifecycle_coordinator_.set_join_window_cache(false, 0U);
@@ -1041,6 +1061,8 @@ void ServiceRuntime::notify_read_models_from_config_cache() noexcept {
 }
 
 void ServiceRuntime::notify_read_models_from_core_snapshot() noexcept {
+    sync_matter_endpoint_allocations();
+
     CoreReadModel core_snapshot{};
     if (!capture_core_read_model(&core_snapshot)) {
         return;
@@ -1051,6 +1073,41 @@ void ServiceRuntime::notify_read_models_from_core_snapshot() noexcept {
     input.network_connected = core_snapshot.network_connected;
     input.last_command_status = core_snapshot.last_command_status;
     read_model_coordinator_.on_core_state_published(input);
+}
+
+void ServiceRuntime::sync_matter_endpoint_allocations() noexcept {
+    if (registry_ == nullptr) {
+        return;
+    }
+
+    core::CoreRegistry::SnapshotRef snapshot{};
+    if (!registry_->pin_current(&snapshot) || !snapshot.valid()) {
+        return;
+    }
+
+    // Every online, identity-resolved device gets a Matter endpoint as soon
+    // as it joins -- allocation is not gated on capability discovery (that
+    // would just mean an endpoint with no clusters populated yet until an
+    // attribute report arrives, which is harmless and keeps this pass
+    // deterministic and independent of interview timing).
+    bool allocation_changed = false;
+    for (const core::CoreDeviceRecord& device : snapshot.state->devices) {
+        if (!device.online || !device.device_id.valid()) {
+            continue;
+        }
+
+        uint8_t endpoint = 0U;
+        const MatterEndpointAllocateResult result = matter_endpoint_registry_.allocate(device.device_id, &endpoint);
+        if (result == MatterEndpointAllocateResult::kAssigned) {
+            allocation_changed = true;
+        }
+    }
+
+    registry_->release_snapshot(&snapshot);
+
+    if (allocation_changed) {
+        (void)persist_current_core_state();
+    }
 }
 
 bool ServiceRuntime::build_network_api_snapshot(NetworkApiSnapshot* out) const noexcept {
@@ -1332,7 +1389,48 @@ void ServiceRuntime::apply_managers(const core::CoreEvent& event) noexcept {
         event.device_short_addr,
         monotonic_now_ms());
     stats_.network_refresh_requests.store(network_manager_.refresh_count(), std::memory_order_relaxed);
+
+    if (event.type == core::CoreEventType::kDeviceLeft) {
+        handle_matter_endpoint_removal_on_device_left(event);
+    }
+
     event_bus_.publish(event);
+}
+
+void ServiceRuntime::handle_matter_endpoint_removal_on_device_left(const core::CoreEvent& event) noexcept {
+    // The incoming event's device_id may be unresolved if the HAL could not
+    // supply an IEEE address for this leave notification; fall back to the
+    // locator registry, which the leave path (hal_event_adapter.cpp) marks
+    // offline but does not unmap, before core_reduce (called after
+    // apply_managers) wipes the CoreDeviceRecord entirely.
+    core::DeviceId leaving_device_id = event.device_id;
+    if (!leaving_device_id.valid()) {
+        leaving_device_id = resolve_device_id_for_short_addr(event.device_short_addr);
+    }
+    if (!leaving_device_id.valid()) {
+        return;
+    }
+
+    uint8_t endpoint = 0U;
+    if (!matter_endpoint_registry_.mark_pending_removal(leaving_device_id, &endpoint)) {
+        return;  // No Matter endpoint was ever allocated for this device.
+    }
+
+    // Two-phase removal (plan S4 #24): the endpoint stays kPendingRemoval
+    // (never reusable) unless the Matter adapter confirms the tombstone.
+    // Host builds return success here for testability, matching every
+    // other hal_matter_* host stub; an ESP_PLATFORM build without a real
+    // Matter backend linked truthfully reports failure via the weak hook
+    // default, so confirm_removed() is correctly never reached there until
+    // a real adapter exists -- see docs/architecture/MATTER_ENDPOINT_IDENTITY.md.
+    if (hal_matter_remove_endpoint(endpoint) == 0) {
+        (void)matter_endpoint_registry_.confirm_removed(leaving_device_id);
+    }
+    // No explicit persist_current_core_state() call needed here:
+    // mark_pending_removal()/confirm_removed() already persist the Matter
+    // registry's own independent store internally, and the S3 CoreState
+    // side is already covered by core_reduce's kPersistState effect for
+    // kDeviceLeft (core_reducer.cpp), executed right after this returns.
 }
 
 void ServiceRuntime::execute_effects(const core::CoreEffectList& effects) noexcept {
@@ -1590,6 +1688,10 @@ void ServiceRuntime::set_capabilities(const RuntimeCapabilities& capabilities) n
 RuntimeCapabilities ServiceRuntime::capabilities() const noexcept {
     RuntimeLockGuard guard(capabilities_lock_);
     return capabilities_;
+}
+
+common::GatewayId ServiceRuntime::gateway_id() const noexcept {
+    return gateway_id_;
 }
 
 std::size_t ServiceRuntime::pending_events() const noexcept {

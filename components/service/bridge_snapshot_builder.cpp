@@ -115,6 +115,18 @@ bool BridgeSnapshotBuilder::build_matter_snapshot(MatterBridgeSnapshot* out) con
         } else if (matter_device.has_contact) {
             matter_device.primary_class = MatterBridgeDeviceClass::kContact;
         }
+
+        // Read-only lookup: allocation itself happens in
+        // ServiceRuntime::sync_matter_endpoint_allocations(), which runs
+        // (and persists any new assignment) before this snapshot is
+        // rebuilt, so build_matter_snapshot() can stay a pure read and
+        // this class can stay const-correct throughout.
+        if (matter_endpoint_registry_ != nullptr) {
+            uint8_t endpoint = 0U;
+            if (matter_endpoint_registry_->find(device.device_id, &endpoint)) {
+                matter_device.endpoint = endpoint;
+            }
+        }
     }
 
     registry_->release_snapshot(&snapshot);

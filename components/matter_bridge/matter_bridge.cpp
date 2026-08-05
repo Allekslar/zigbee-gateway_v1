@@ -4,7 +4,6 @@
 #include "matter_bridge.hpp"
 
 #include <algorithm>
-#include <cstring>
 
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
@@ -27,28 +26,6 @@ constexpr TickType_t kMatterBridgeTaskPeriodTicks = pdMS_TO_TICKS(1000);
 
 bool is_active_device(const service::MatterBridgeDeviceSnapshot& device) noexcept {
     return device.short_addr != service::kUnknownShortAddr && device.online;
-}
-
-MatterDeviceClass infer_primary_class(const service::MatterBridgeDeviceSnapshot& device) noexcept {
-    switch (device.primary_class) {
-        case service::MatterBridgeDeviceClass::kTemperature:
-            return MatterDeviceClass::kTemperature;
-        case service::MatterBridgeDeviceClass::kOccupancy:
-            return MatterDeviceClass::kOccupancy;
-        case service::MatterBridgeDeviceClass::kContact:
-            return MatterDeviceClass::kContact;
-        case service::MatterBridgeDeviceClass::kUnknown:
-        default:
-            return MatterDeviceClass::kUnknown;
-    }
-}
-
-uint16_t resolve_status_endpoint(const MatterEndpointMapEntry* map,
-                                 std::size_t map_size,
-                                 const service::MatterBridgeDeviceSnapshot& device) noexcept {
-    uint16_t endpoint = 0;
-    (void)map_resolve_endpoint(map, map_size, device.short_addr, infer_primary_class(device), &endpoint);
-    return endpoint;
 }
 
 bool publish_update_to_hal(const MatterAttributeUpdate& update) noexcept {
@@ -139,24 +116,6 @@ void MatterBridge::attach_runtime(service::MatterRuntimeApi* runtime) noexcept {
 #endif
 }
 
-bool MatterBridge::set_endpoint_map(const MatterEndpointMapEntry* map, std::size_t size) noexcept {
-    if (size > kMatterMaxEndpointMapEntries) {
-        return false;
-    }
-    if (size > 0U && map == nullptr) {
-        return false;
-    }
-
-    if (size == 0U) {
-        endpoint_map_size_ = 0U;
-        return true;
-    }
-
-    std::memcpy(endpoint_map_, map, sizeof(MatterEndpointMapEntry) * size);
-    endpoint_map_size_ = size;
-    return true;
-}
-
 std::size_t MatterBridge::sync_runtime_snapshot() noexcept {
     if (!started() || runtime_ == nullptr) {
         return 0U;
@@ -237,7 +196,11 @@ std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& sna
         next.occupied = device.occupied;
         next.has_contact = device.has_contact;
         next.contact_open = device.contact_open;
-        next.status_endpoint = resolve_status_endpoint(endpoint_map_, endpoint_map_size_, device);
+        // One endpoint carries every cluster this device supports (plan S4
+        // #20), resolved server-side by ServiceRuntime/MatterEndpointRegistry
+        // and handed to us pre-computed in the snapshot -- this bridge no
+        // longer computes or falls back to a class-wide fixed endpoint.
+        next.status_endpoint = device.endpoint;
 
         const DeviceShadow* prev = find_shadow(cached_devices_, service::kServiceMaxDevices, next.short_addr);
         const bool is_new = (prev == nullptr);
@@ -260,43 +223,34 @@ std::size_t MatterBridge::sync_snapshot(const service::MatterBridgeSnapshot& sna
             enqueue(update);
         }
 
-        if (next.has_temperature && (is_new || !prev->has_temperature || prev->temperature_centi_c != next.temperature_centi_c)) {
-            uint16_t endpoint = 0;
-            if (map_resolve_endpoint(endpoint_map_, endpoint_map_size_, next.short_addr, MatterDeviceClass::kTemperature, &endpoint) &&
-                endpoint != 0U) {
-                MatterAttributeUpdate update{};
-                update.short_addr = next.short_addr;
-                update.endpoint = endpoint;
-                update.type = MatterAttributeType::kTemperatureCentiC;
-                update.int_value = static_cast<int32_t>(next.temperature_centi_c);
-                enqueue(update);
-            }
+        if (next.status_endpoint != 0U &&
+            next.has_temperature && (is_new || !prev->has_temperature || prev->temperature_centi_c != next.temperature_centi_c)) {
+            MatterAttributeUpdate update{};
+            update.short_addr = next.short_addr;
+            update.endpoint = next.status_endpoint;
+            update.type = MatterAttributeType::kTemperatureCentiC;
+            update.int_value = static_cast<int32_t>(next.temperature_centi_c);
+            enqueue(update);
         }
 
-        if (next.has_occupancy && (is_new || prev->has_occupancy != next.has_occupancy || prev->occupied != next.occupied)) {
-            uint16_t endpoint = 0;
-            if (map_resolve_endpoint(endpoint_map_, endpoint_map_size_, next.short_addr, MatterDeviceClass::kOccupancy, &endpoint) &&
-                endpoint != 0U) {
-                MatterAttributeUpdate update{};
-                update.short_addr = next.short_addr;
-                update.endpoint = endpoint;
-                update.type = MatterAttributeType::kOccupancy;
-                update.bool_value = next.occupied;
-                enqueue(update);
-            }
+        if (next.status_endpoint != 0U &&
+            next.has_occupancy && (is_new || prev->has_occupancy != next.has_occupancy || prev->occupied != next.occupied)) {
+            MatterAttributeUpdate update{};
+            update.short_addr = next.short_addr;
+            update.endpoint = next.status_endpoint;
+            update.type = MatterAttributeType::kOccupancy;
+            update.bool_value = next.occupied;
+            enqueue(update);
         }
 
-        if (next.has_contact && (is_new || prev->has_contact != next.has_contact || prev->contact_open != next.contact_open)) {
-            uint16_t endpoint = 0;
-            if (map_resolve_endpoint(endpoint_map_, endpoint_map_size_, next.short_addr, MatterDeviceClass::kContact, &endpoint) &&
-                endpoint != 0U) {
-                MatterAttributeUpdate update{};
-                update.short_addr = next.short_addr;
-                update.endpoint = endpoint;
-                update.type = MatterAttributeType::kContactOpen;
-                update.bool_value = next.contact_open;
-                enqueue(update);
-            }
+        if (next.status_endpoint != 0U &&
+            next.has_contact && (is_new || prev->has_contact != next.has_contact || prev->contact_open != next.contact_open)) {
+            MatterAttributeUpdate update{};
+            update.short_addr = next.short_addr;
+            update.endpoint = next.status_endpoint;
+            update.type = MatterAttributeType::kContactOpen;
+            update.bool_value = next.contact_open;
+            enqueue(update);
         }
 
         sync_shadow_scratch_[next_count++] = next;

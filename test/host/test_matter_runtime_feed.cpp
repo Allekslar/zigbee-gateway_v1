@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 Alex.K. */
 
+#include <array>
 #include <cassert>
 
-#include "core_events.hpp"
 #include "core_registry.hpp"
 #include "effect_executor.hpp"
+#include "hal_zigbee.h"
+#include "hal_zigbee_test.h"
 #include "matter_bridge.hpp"
 #include "service_runtime.hpp"
 
@@ -30,40 +32,43 @@ int main() {
     core::CoreRegistry registry;
     service::EffectExecutor effect_executor;
     service::ServiceRuntime runtime(registry, effect_executor);
+    assert(runtime.initialize_hal_adapter());
 
     matter_bridge::MatterBridge bridge;
-    const matter_bridge::MatterEndpointMapEntry map[] = {{0x2201U, 50U}};
-    assert(bridge.set_endpoint_map(map, 1U));
     bridge.attach_runtime(&runtime);
     assert(bridge.start());
 
-    core::CoreEvent joined{};
-    joined.type = core::CoreEventType::kDeviceJoined;
-    joined.device_short_addr = 0x2201U;
-    assert(runtime.post_event(joined));
-    assert(runtime.process_pending() == 1U);
+    // A resolved DeviceId is required for MatterEndpointRegistry to
+    // allocate an endpoint (plan S4 #20).
+    const std::array<uint8_t, HAL_ZIGBEE_IEEE_ADDR_LEN> ieee_a = {
+        0x00, 0x12, 0x4b, 0x00, 0x01, 0xaa, 0x22, 0x01};
+    hal_zigbee_simulate_device_joined_with_identity(0x2201U, ieee_a.data());
+    assert(runtime.process_pending() >= 1U);
 
     const std::size_t joined_count = bridge.sync_runtime_snapshot();
     assert(joined_count == 2U);
     matter_bridge::MatterAttributeUpdate updates[matter_bridge::kMatterMaxUpdatesPerSync]{};
     std::size_t drained = bridge.drain_attribute_updates(updates, matter_bridge::kMatterMaxUpdatesPerSync);
     assert(drained == joined_count);
-    assert(has_update(updates, drained, matter_bridge::MatterAttributeType::kAvailabilityOnline, 50U, true));
-    assert(has_update(updates, drained, matter_bridge::MatterAttributeType::kStale, 50U, false));
+    assert(has_update(
+        updates, drained, matter_bridge::MatterAttributeType::kAvailabilityOnline,
+        service::MatterEndpointRegistry::kEndpointBase, true));
+    assert(has_update(
+        updates, drained, matter_bridge::MatterAttributeType::kStale,
+        service::MatterEndpointRegistry::kEndpointBase, false));
 
     assert(bridge.sync_runtime_snapshot() == 0U);
 
-    core::CoreEvent left{};
-    left.type = core::CoreEventType::kDeviceLeft;
-    left.device_short_addr = 0x2201U;
-    assert(runtime.post_event(left));
-    assert(runtime.process_pending() == 1U);
+    hal_zigbee_simulate_device_left_with_identity(0x2201U, ieee_a.data());
+    assert(runtime.process_pending() >= 1U);
 
     const std::size_t left_count = bridge.sync_runtime_snapshot();
     assert(left_count == 1U);
     drained = bridge.drain_attribute_updates(updates, matter_bridge::kMatterMaxUpdatesPerSync);
     assert(drained == 1U);
-    assert(has_update(updates, drained, matter_bridge::MatterAttributeType::kAvailabilityOnline, 50U, false));
+    assert(has_update(
+        updates, drained, matter_bridge::MatterAttributeType::kAvailabilityOnline,
+        service::MatterEndpointRegistry::kEndpointBase, false));
 
     bridge.stop();
     return 0;

@@ -37,6 +37,13 @@ struct MatterBridgeDeviceSnapshot {
     bool occupied{false};
     bool has_contact{false};
     bool contact_open{false};
+    // The one Matter endpoint carrying every cluster this device supports
+    // (plan S4 required change #20), resolved server-side by
+    // MatterEndpointRegistry via the device's DeviceId -- never derived
+    // from short_addr or a fixed per-class constant. 0 means "not yet
+    // allocated" (e.g. capability class still unknown), matching the
+    // pre-S4 sentinel the Matter bridge already treated as "skip".
+    uint16_t endpoint{0};
 };
 
 struct MatterBridgeSnapshot {

@@ -30,6 +30,13 @@ bool hal_matter_available(void);
 int hal_matter_publish_state(uint16_t endpoint_id, bool on);
 int hal_matter_publish_attribute_update(const hal_matter_attribute_update_t* update);
 
+// Tombstones (removes) a Matter endpoint that was previously published,
+// step 2 of the S4 two-phase endpoint removal protocol (plan FD-16
+// required change #24). Returns 0 only if the adapter confirms the
+// endpoint is gone; the caller must not free the endpoint for reuse
+// (service::MatterEndpointRegistry::confirm_removed) on any other result.
+int hal_matter_remove_endpoint(uint16_t endpoint_id);
+
 #ifdef __cplusplus
 }
 #endif

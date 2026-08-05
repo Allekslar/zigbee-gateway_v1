@@ -24,6 +24,11 @@ int __attribute__((weak)) hal_matter_stack_publish_attribute_update(const hal_ma
     (void)update;
     return -1;
 }
+
+int __attribute__((weak)) hal_matter_stack_remove_endpoint(uint16_t endpoint_id) {
+    (void)endpoint_id;
+    return -1;
+}
 #endif
 
 int hal_matter_init(void) {
@@ -59,6 +64,15 @@ int hal_matter_publish_attribute_update(const hal_matter_attribute_update_t* upd
 #ifdef ESP_PLATFORM
     return hal_matter_stack_publish_attribute_update(update);
 #else
+    return 0;
+#endif
+}
+
+int hal_matter_remove_endpoint(uint16_t endpoint_id) {
+#ifdef ESP_PLATFORM
+    return hal_matter_stack_remove_endpoint(endpoint_id);
+#else
+    (void)endpoint_id;
     return 0;
 #endif
 }

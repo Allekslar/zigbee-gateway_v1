@@ -48,8 +48,9 @@ void store_snapshot(detail::SnapshotStorage<T>* storage, const T& value) noexcep
 
 }  // namespace
 
-ReadModelCoordinator::ReadModelCoordinator(core::CoreRegistry& registry) noexcept
-    : bridge_snapshot_builder_(registry) {}
+ReadModelCoordinator::ReadModelCoordinator(
+    core::CoreRegistry& registry, const MatterEndpointRegistry& matter_endpoint_registry) noexcept
+    : bridge_snapshot_builder_(registry, matter_endpoint_registry) {}
 
 bool ReadModelCoordinator::publish_devices_api_snapshot(
     const core::CoreState& state,

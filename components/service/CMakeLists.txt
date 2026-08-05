@@ -34,6 +34,7 @@ idf_component_register(
         "zigbee_lifecycle_coordinator.cpp"
         "device_descriptor_store.cpp"
         "device_locator_registry.cpp"
+        "matter_endpoint_registry.cpp"
         "tuya_fingerprint.cpp"
         "tuya_dp_parser.cpp"
         "tuya_contact_sensor_plugin.cpp"

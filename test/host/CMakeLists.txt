@@ -28,6 +28,7 @@ zg_apply_component_compile_policy(core_host)
 
 set(SERVICE_SOURCES
     ../../components/common/crc32c.cpp
+    ../../components/common/gateway_id.cpp
     ../../components/service/application_command_mapper.cpp
     ../../components/service/bridge_snapshot_builder.cpp
     ../../components/service/command_manager.cpp
@@ -57,6 +58,7 @@ set(SERVICE_SOURCES
     ../../components/service/zigbee_lifecycle_coordinator.cpp
     ../../components/service/device_descriptor_store.cpp
     ../../components/service/device_locator_registry.cpp
+    ../../components/service/matter_endpoint_registry.cpp
     ../../components/service/tuya_fingerprint.cpp
     ../../components/service/tuya_dp_parser.cpp
     ../../components/service/tuya_contact_sensor_plugin.cpp
@@ -68,7 +70,9 @@ set(SERVICE_SOURCES
 )
 
 set(APP_HAL_SOURCES
+    ../../components/app_hal/hal_identity.c
     ../../components/app_hal/hal_led.c
+    ../../components/app_hal/hal_matter.c
     ../../components/app_hal/hal_nvs.c
     ../../components/app_hal/hal_ota.c
     ../../components/app_hal/hal_rcp.c
@@ -129,6 +133,16 @@ target_link_libraries(test_device_locator_registry PRIVATE service_host)
 zg_apply_component_compile_policy(test_device_locator_registry)
 add_test(NAME test_device_locator_registry COMMAND test_device_locator_registry)
 
+add_executable(test_matter_endpoint_registry test_matter_endpoint_registry.cpp)
+target_link_libraries(test_matter_endpoint_registry PRIVATE service_host)
+zg_apply_component_compile_policy(test_matter_endpoint_registry)
+add_test(NAME test_matter_endpoint_registry COMMAND test_matter_endpoint_registry)
+
+add_executable(test_matter_endpoint_remap_stability test_matter_endpoint_remap_stability.cpp)
+target_link_libraries(test_matter_endpoint_remap_stability PRIVATE service_host)
+zg_apply_component_compile_policy(test_matter_endpoint_remap_stability)
+add_test(NAME test_matter_endpoint_remap_stability COMMAND test_matter_endpoint_remap_stability)
+
 add_executable(test_state_persistence_migration test_state_persistence_migration.cpp)
 target_link_libraries(test_state_persistence_migration PRIVATE service_host)
 zg_apply_component_compile_policy(test_state_persistence_migration)
@@ -143,6 +157,16 @@ add_executable(test_common_crc32c test_common_crc32c.cpp ../../components/common
 target_include_directories(test_common_crc32c PRIVATE ../../components/common/include)
 zg_apply_component_compile_policy(test_common_crc32c)
 add_test(NAME test_common_crc32c COMMAND test_common_crc32c)
+
+add_executable(test_common_gateway_id test_common_gateway_id.cpp ../../components/common/gateway_id.cpp)
+target_include_directories(test_common_gateway_id PRIVATE ../../components/common/include)
+zg_apply_component_compile_policy(test_common_gateway_id)
+add_test(NAME test_common_gateway_id COMMAND test_common_gateway_id)
+
+add_executable(test_service_gateway_id test_service_gateway_id.cpp)
+target_link_libraries(test_service_gateway_id PRIVATE service_host)
+zg_apply_component_compile_policy(test_service_gateway_id)
+add_test(NAME test_service_gateway_id COMMAND test_service_gateway_id)
 
 add_executable(test_core_device_id test_core_device_id.cpp)
 target_link_libraries(test_core_device_id PRIVATE core_host)
@@ -382,6 +406,7 @@ target_include_directories(test_mqtt_serializer PRIVATE
     ../../components/mqtt_bridge/include
     ../../components/service/include
     ../../components/core/include
+    ../../components/common/include
 )
 zg_apply_component_compile_policy(test_mqtt_serializer)
 add_test(NAME test_mqtt_serializer COMMAND test_mqtt_serializer)
@@ -395,6 +420,7 @@ target_include_directories(test_mqtt_discovery PRIVATE
     ../../components/mqtt_bridge/include
     ../../components/service/include
     ../../components/core/include
+    ../../components/common/include
 )
 zg_apply_component_compile_policy(test_mqtt_discovery)
 add_test(NAME test_mqtt_discovery COMMAND test_mqtt_discovery)
@@ -476,20 +502,9 @@ target_link_libraries(test_mqtt_status_runtime_feed PRIVATE service_host)
 zg_apply_component_compile_policy(test_mqtt_status_runtime_feed)
 add_test(NAME test_mqtt_status_runtime_feed COMMAND test_mqtt_status_runtime_feed)
 
-add_executable(test_matter_device_map
-    test_matter_device_map.cpp
-    ../../components/matter_bridge/matter_device_map.cpp
-)
-target_include_directories(test_matter_device_map PRIVATE
-    ../../components/matter_bridge/include
-)
-zg_apply_component_compile_policy(test_matter_device_map)
-add_test(NAME test_matter_device_map COMMAND test_matter_device_map)
-
 add_executable(test_matter_bridge
     test_matter_bridge.cpp
     ../../components/matter_bridge/matter_bridge.cpp
-    ../../components/matter_bridge/matter_device_map.cpp
 )
 target_include_directories(test_matter_bridge PRIVATE
     ../../components/matter_bridge/include
@@ -504,7 +519,6 @@ add_test(NAME test_matter_bridge COMMAND test_matter_bridge)
 add_executable(test_matter_runtime_feed
     test_matter_runtime_feed.cpp
     ../../components/matter_bridge/matter_bridge.cpp
-    ../../components/matter_bridge/matter_device_map.cpp
 )
 target_include_directories(test_matter_runtime_feed PRIVATE
     ../../components/matter_bridge/include
@@ -520,7 +534,6 @@ add_test(NAME test_matter_runtime_feed COMMAND test_matter_runtime_feed)
 add_executable(test_matter_snapshot_semantics
     test_matter_snapshot_semantics.cpp
     ../../components/matter_bridge/matter_bridge.cpp
-    ../../components/matter_bridge/matter_device_map.cpp
 )
 target_include_directories(test_matter_snapshot_semantics PRIVATE
     ../../components/matter_bridge/include
@@ -535,7 +548,6 @@ add_test(NAME test_matter_snapshot_semantics COMMAND test_matter_snapshot_semant
 add_executable(test_matter_runtime_attach_contract
     test_matter_runtime_attach_contract.cpp
     ../../components/matter_bridge/matter_bridge.cpp
-    ../../components/matter_bridge/matter_device_map.cpp
 )
 target_include_directories(test_matter_runtime_attach_contract PRIVATE
     ../../components/matter_bridge/include
@@ -551,7 +563,6 @@ add_test(NAME test_matter_runtime_attach_contract COMMAND test_matter_runtime_at
 add_executable(test_matter_runtime_robustness
     test_matter_runtime_robustness.cpp
     ../../components/matter_bridge/matter_bridge.cpp
-    ../../components/matter_bridge/matter_device_map.cpp
 )
 target_include_directories(test_matter_runtime_robustness PRIVATE
     ../../components/matter_bridge/include
@@ -566,7 +577,6 @@ add_test(NAME test_matter_runtime_robustness COMMAND test_matter_runtime_robustn
 add_executable(test_matter_runtime_command_loop
     test_matter_runtime_command_loop.cpp
     ../../components/matter_bridge/matter_bridge.cpp
-    ../../components/matter_bridge/matter_device_map.cpp
 )
 target_include_directories(test_matter_runtime_command_loop PRIVATE
     ../../components/matter_bridge/include

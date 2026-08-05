@@ -7,6 +7,8 @@
 
 namespace {
 
+constexpr uint16_t kTestEndpoint = 50U;
+
 service::MatterBridgeSnapshot make_snapshot(uint32_t revision,
                                             uint16_t short_addr,
                                             bool online,
@@ -28,6 +30,10 @@ service::MatterBridgeSnapshot make_snapshot(uint32_t revision,
     snapshot.devices[0].occupied = occupied;
     snapshot.devices[0].has_contact = false;
     snapshot.devices[0].contact_open = false;
+    // Endpoint resolution is a service-side concern (MatterEndpointRegistry)
+    // this bridge-level test is deliberately decoupled from; supply an
+    // already-resolved endpoint directly.
+    snapshot.devices[0].endpoint = online ? kTestEndpoint : 0U;
     return snapshot;
 }
 
@@ -63,13 +69,8 @@ int main() {
     using matter_bridge::MatterAttributeType;
     using matter_bridge::MatterAttributeUpdate;
     using matter_bridge::MatterBridge;
-    using matter_bridge::MatterEndpointMapEntry;
 
     MatterBridge bridge;
-    const MatterEndpointMapEntry map[] = {
-        {0x2201U, 50U},
-    };
-    assert(bridge.set_endpoint_map(map, 1U));
     assert(bridge.start());
 
     MatterAttributeUpdate updates[matter_bridge::kMatterMaxUpdatesPerSync]{};
@@ -80,10 +81,10 @@ int main() {
     assert(bridge.sync_snapshot(first) == 4U);
     std::size_t drained = bridge.drain_attribute_updates(updates, matter_bridge::kMatterMaxUpdatesPerSync);
     assert(drained == 4U);
-    assert(has_bool_update(updates, drained, MatterAttributeType::kAvailabilityOnline, 50U, true));
-    assert(has_bool_update(updates, drained, MatterAttributeType::kStale, 50U, false));
-    assert(has_int_update(updates, drained, MatterAttributeType::kTemperatureCentiC, 50U, 2150));
-    assert(has_bool_update(updates, drained, MatterAttributeType::kOccupancy, 50U, true));
+    assert(has_bool_update(updates, drained, MatterAttributeType::kAvailabilityOnline, kTestEndpoint, true));
+    assert(has_bool_update(updates, drained, MatterAttributeType::kStale, kTestEndpoint, false));
+    assert(has_int_update(updates, drained, MatterAttributeType::kTemperatureCentiC, kTestEndpoint, 2150));
+    assert(has_bool_update(updates, drained, MatterAttributeType::kOccupancy, kTestEndpoint, true));
 
     // Revision-only changes must not produce deltas when payload is unchanged.
     service::MatterBridgeSnapshot same_payload = first;
@@ -98,7 +99,7 @@ int main() {
     assert(bridge.sync_snapshot(stale_changed) == 1U);
     drained = bridge.drain_attribute_updates(updates, matter_bridge::kMatterMaxUpdatesPerSync);
     assert(drained == 1U);
-    assert(has_bool_update(updates, drained, MatterAttributeType::kStale, 50U, true));
+    assert(has_bool_update(updates, drained, MatterAttributeType::kStale, kTestEndpoint, true));
 
     // Removing the active device must emit offline availability update.
     service::MatterBridgeSnapshot removed{};
@@ -107,7 +108,7 @@ int main() {
     assert(bridge.sync_snapshot(removed) == 1U);
     drained = bridge.drain_attribute_updates(updates, matter_bridge::kMatterMaxUpdatesPerSync);
     assert(drained == 1U);
-    assert(has_bool_update(updates, drained, MatterAttributeType::kAvailabilityOnline, 50U, false));
+    assert(has_bool_update(updates, drained, MatterAttributeType::kAvailabilityOnline, kTestEndpoint, false));
 
     bridge.stop();
     return 0;

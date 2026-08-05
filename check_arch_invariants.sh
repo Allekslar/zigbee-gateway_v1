@@ -250,6 +250,29 @@ run_checks() {
         'kLoaded' \
         "the two-generation persisted state store (PersistedStateStore) must exist"
 
+    check_absent "INV-H007" "high" "components/common/gateway_id.cpp" \
+        'esp_efuse|esp_mac\.h|ESP_PLATFORM|#include[[:space:]]+"esp_' \
+        "GatewayId formatting (components/common) must stay ESP-IDF-free (FD-17 S4 slice); the factory base MAC read belongs at the HAL boundary (hal_identity.c)"
+    check_absent "INV-H007" "high" "components/common/include/gateway_id.hpp" \
+        'esp_efuse|esp_mac\.h|ESP_PLATFORM|#include[[:space:]]+"esp_' \
+        "GatewayId formatting (components/common) must stay ESP-IDF-free (FD-17 S4 slice); the factory base MAC read belongs at the HAL boundary (hal_identity.c)"
+    check_present "INV-H007" "high" "components/app_hal/hal_identity.c" \
+        'esp_efuse_mac_get_default' \
+        "hal_identity.c must own the ESP-IDF factory base MAC read (FD-17 S4 slice)"
+
+    check_present "INV-H008" "high" "components/service/include/matter_endpoint_registry.hpp" \
+        'class[[:space:]]+MatterEndpointRegistry' \
+        "DeviceId-keyed Matter endpoint allocator (plan S4 #20/#23/#24) must exist"
+    check_absent "INV-H008" "high" "components/matter_bridge" \
+        'MatterEndpointMapEntry|kMatterEndpointTemperature|kMatterEndpointOccupancy|kMatterEndpointContact|set_endpoint_map' \
+        "Matter bridge must not contain a class-wide fixed endpoint fallback (plan S4 #22/#25); endpoint resolution is DeviceId-keyed and service-owned"
+    check_present "INV-H008" "high" "components/service/include/matter_runtime_api.hpp" \
+        'uint16_t endpoint' \
+        "MatterBridgeDeviceSnapshot must carry a resolved, service-computed endpoint field"
+    check_present "INV-H008" "high" "components/app_hal/include/hal_matter.h" \
+        'hal_matter_remove_endpoint' \
+        "HAL Matter adapter must expose a tombstone/removal primitive for the S4 two-phase endpoint removal protocol (plan S4 #24)"
+
     check_absent "INV-M001" "medium" "components/app_hal/hal_wifi.c" \
         'calloc[[:space:]]*\(|free[[:space:]]*\(' \
         "hal_wifi scan hot path must not use calloc/free"

@@ -1,0 +1,78 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S4-gateway-id",
+  "stage_name": "S4 slice 1/N: canonical GatewayId (FD-17 identity portion only)",
+  "input_commit_sha": "293e40fd07123235da383781ab4ed847dfc2d303",
+  "output_commit_sha": "293e40fd07123235da383781ab4ed847dfc2d303",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 293e40f (merge of PR #41: S3 versioned persistence + the DeviceId reporting-profile rekey follow-up).",
+  "sequencing_note": "S4 is a large stage (HTTP /api/v1, MQTT v1, HA discovery migration, Matter endpoint persistence, GatewayId). The user was asked how to sequence it and chose GatewayId first, since MQTT v1 and HA discovery both require it and it is otherwise fully independent of the other three pieces. This evidence file covers only that first slice; a full S4-completion.json is not produced yet and will not be until all required S4 changes land.",
+  "changed_files": [
+    "components/common/include/gateway_id.hpp (new)",
+    "components/common/gateway_id.cpp (new)",
+    "components/common/CMakeLists.txt (adds gateway_id.cpp to production SRCS)",
+    "components/app_hal/include/hal_identity.h (new)",
+    "components/app_hal/include/hal_identity_test.h (new)",
+    "components/app_hal/hal_identity.c (new)",
+    "components/app_hal/CMakeLists.txt (adds hal_identity.c to SRCS; adds esp_hw_support to REQUIRES for esp_mac.h)",
+    "components/service/include/service_runtime_api.hpp (new pure virtual gateway_id() on the service facade)",
+    "components/service/include/service_runtime.hpp (gateway_id_ member, gateway_id() override)",
+    "components/service/service_runtime.cpp (resolve_gateway_id() helper; constructor resolves gateway_id_ once; gateway_id() accessor)",
+    "check_arch_invariants.sh (new INV-H007 rule)",
+    "docs/architecture/ARCH_COMPLIANCE_MATRIX.md (INV-H007 row)",
+    "docs/architecture/GATEWAY_IDENTITY.md (new)",
+    "test/host/test_common_gateway_id.cpp (new)",
+    "test/host/test_service_gateway_id.cpp (new)",
+    "test/host/CMakeLists.txt (wires gateway_id.cpp/hal_identity.c into SERVICE_SOURCES/APP_HAL_SOURCES; adds common/include to test_mqtt_serializer and test_mqtt_discovery, which previously lacked it and broke once service_runtime_api.hpp started including gateway_id.hpp; adds test_common_gateway_id and test_service_gateway_id targets)",
+    "test/integration/CMakeLists.txt (wires gateway_id.cpp/hal_identity.c into service_integration's SERVICE_SOURCES/APP_HAL_SERVICE_SOURCES)"
+  ],
+  "frozen_decisions_applied": [
+    "FD-17 (GatewayId clause only): GatewayId is the ESP32 factory base MAC rendered as exactly 12 lowercase hexadecimal characters without separators; it is read from esp_efuse_mac_get_default() (eFuse BLK0), never from a mutable Wi-Fi/BT interface MAC or network configuration.",
+    "FD-19 / S4 route-ownership framing (by extension, not literal text): this piece adds no production route, listener or mutation surface -- it is a pure identity-resolution building block consumed by later S4/S6 work, consistent with S4 not registering a production control plane."
+  ],
+  "work_summary": {
+    "gateway_id_value_type": {
+      "status": "COMPLETE, TESTED",
+      "detail": "components/common/include/gateway_id.hpp + gateway_id.cpp: common::GatewayId, a 6-byte value type with format() (12 lowercase hex chars), valid() (rejects all-zero), and value semantics. Deliberately ESP-IDF-free (INV-H007) and deliberately placed in components/common rather than components/core, so mqtt_bridge/web_ui adapters may reference it directly without violating INV-M026/INV-M030 (which forbid those adapters from naming core:: symbols) -- GatewayId is a transport-facing identity by design, unlike core::DeviceId. Tested in test/host/test_common_gateway_id.cpp: format round trip, byte order, equality, undersized-buffer rejection, default-constructed invalidity."
+    },
+    "hal_boundary": {
+      "status": "COMPLETE, HOST-TESTED, ESP_PLATFORM-BRANCH UNVERIFIED",
+      "detail": "components/app_hal/include/hal_identity.h + hal_identity.c: hal_identity_get_factory_base_mac() calls esp_efuse_mac_get_default() under ESP_PLATFORM, returns a fixed deterministic value on host. hal_identity_test.h (gated by SERVICE_RUNTIME_TEST_HOOKS, mirroring hal_zigbee_test.h) exposes hal_identity_set_mock_base_mac()/hal_identity_reset_mock_base_mac() for host tests; both are unconditionally defined but no-ops under ESP_PLATFORM, so no build profile can be used to spoof gateway identity on real hardware. The ESP_PLATFORM branch itself (the real esp_efuse_mac_get_default() call and the new esp_hw_support component dependency) could not be compiled or exercised in this sandbox -- BLOCKED_TOOLCHAIN, consistent with S0."
+    },
+    "service_runtime_wiring": {
+      "status": "COMPLETE, TESTED",
+      "detail": "ServiceRuntime resolves gateway_id_ exactly once in its constructor via resolve_gateway_id() (a HAL failure yields a default-constructed/invalid GatewayId, never a fabricated one) and exposes it read-only through ServiceRuntimeApi::gateway_id(), the same interface production Web/MQTT/HA call sites already use for capabilities(). No lock is needed for reads since the value never changes after construction. Tested end-to-end in test_service_gateway_id.cpp: a mock base MAC resolves to the expected GatewayId; the same MAC across a freshly constructed ServiceRuntime (reboot simulation) yields an identical GatewayId; two distinct MACs yield two distinct GatewayIds (this is a direct exit-criterion check from the plan: 'two hardware base MACs produce distinct GatewayIds; reboot ... simulation preserve one GatewayId'); the value is reachable through the ServiceRuntimeApi& interface, not only the concrete class."
+    },
+    "collateral_cmake_fix": {
+      "status": "FIXED, CONFIRMED BY BUILD FAILURE THEN SUCCESS",
+      "detail": "Adding '#include \"gateway_id.hpp\"' to service_runtime_api.hpp broke test_mqtt_serializer and test_mqtt_discovery, which transitively include that header but had never listed components/common/include in their target_include_directories (they got away with it before this change because nothing they transitively included needed anything from common). Caught immediately by the first clean rebuild; fixed by adding the missing include directory to both targets in test/host/CMakeLists.txt."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "This is a deliberate partial slice of S4, not a completion. Only the GatewayId identity primitive exists; the HTTP /api/v1 route table, MQTT v1 topics, HA discovery migration and Matter endpoint persistence -- all still required by S4 -- are not implemented in this pass.",
+      "why": "S4 is the largest stage in the plan by a wide margin, spanning four largely-independent subsystems plus this identity primitive. The user was asked how to sequence it (rather than assuming an order) and chose GatewayId first as the shared foundation MQTT v1 and HA discovery both depend on.",
+      "consequence": "No regression to any existing behavior: nothing in this pass touches MQTT, HA, HTTP or Matter code paths. GatewayId is additive and currently has zero production callers. A full docs/implementation/PRODUCTION_HARDENING_PLAN.md-mandated S4-completion.json is not produced by this evidence file and must not be inferred from it; that file is reserved for when the remaining S4 required changes land."
+    }
+  ],
+  "inventories_recomputed": {
+    "new_tests_this_pass": ["test_common_gateway_id", "test_service_gateway_id"],
+    "host_tests_total": 79,
+    "integration_tests_total": 7
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0; includes new INV-H007 rule (GatewayId formatting stays ESP-IDF-free; hal_identity.c exclusively owns esp_efuse_mac_get_default)." },
+    "host_tests": { "result": "PASSED", "detail": "79/79 (100%), clean rebuild (rm -rf build-host first)." },
+    "integration_tests": { "result": "PASSED", "detail": "7/7 (100%), clean rebuild (rm -rf build-integration first)." },
+    "sanitizer_tests": { "result": "PASSED", "detail": "79/79 (100%) under ASan+UBSan, clean rebuild, exact CI flags reproduced (-fsanitize=address,undefined -fno-omit-frame-pointer)." },
+    "cppcheck": { "result": "PASSED", "detail": "All three CI static-analysis jobs (core+service, app_hal, web_ui) reproduced locally via a zgw-host-tools:cppcheck derivative image (cppcheck 2.13.0, not present in the base zgw-host-tools:s0 image) -- exit code 0 on every job. hal_identity.c is not in CI's app_hal file list but was checked anyway as an extra precaution; also exit code 0." }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround (zgw-host-tools:s0 for build/test; a locally built zgw-host-tools:cppcheck derivative, since cppcheck is not part of the base image, for static analysis). ESP-IDF/idf.py remains unavailable, so hal_identity.c's ESP_PLATFORM branch (the real esp_efuse_mac_get_default() call) and the new esp_hw_support component-registration dependency are unverified against real hardware -- BLOCKED_TOOLCHAIN, consistent with S0's recorded status for all target/HIL code.",
+  "unresolved_deviations": [
+    "S4 required changes for HTTP /api/v1, MQTT v1, HA discovery migration and Matter endpoint persistence are not yet implemented -- see docs/architecture/GATEWAY_IDENTITY.md Section 3.2 (consumers) and the plan's S4 required-changes list.",
+    "FD-17's TLS/mDNS/certificate clauses (mDNS host naming, management certificate SAN/rotation, CA trust provisioning, manufacturing duplicate-enrollment rejection) are explicitly out of scope for S4/this pass and owned by S6 -- see docs/architecture/GATEWAY_IDENTITY.md Section 3.1."
+  ],
+  "unresolved_blockers": [
+    "hal_identity.c's ESP_PLATFORM branch (esp_efuse_mac_get_default()) is unverified against real ESP-IDF/hardware -- BLOCKED_TOOLCHAIN, carried over from S0."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

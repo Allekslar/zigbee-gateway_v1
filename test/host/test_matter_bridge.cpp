@@ -22,6 +22,9 @@ service::MatterBridgeSnapshot make_snapshot(uint16_t short_addr,
     snapshot.device_count = online ? 1U : 0U;
     snapshot.devices[0].short_addr = short_addr;
     snapshot.devices[0].online = online;
+    // Endpoint resolution is now a service-side concern (MatterEndpointRegistry);
+    // this bridge-level test supplies an already-resolved endpoint directly.
+    snapshot.devices[0].endpoint = online ? 50U : 0U;
     snapshot.devices[0].primary_class = has_temperature ? service::MatterBridgeDeviceClass::kTemperature
                                                         : (has_occupancy ? service::MatterBridgeDeviceClass::kOccupancy
                                                                          : (has_contact ? service::MatterBridgeDeviceClass::kContact
@@ -68,9 +71,6 @@ int main() {
 
     // Not started => no updates.
     assert(bridge.sync_snapshot(first) == 0U);
-
-    MatterEndpointMapEntry map[] = {{0x2201U, 50U}};
-    assert(bridge.set_endpoint_map(map, 1U));
 
     assert(bridge.start());
     assert(bridge.started());

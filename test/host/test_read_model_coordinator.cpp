@@ -5,11 +5,13 @@
 #include <cstring>
 
 #include "core_registry.hpp"
+#include "matter_endpoint_registry.hpp"
 #include "read_model_coordinator.hpp"
 
 int main() {
     core::CoreRegistry registry{};
-    service::ReadModelCoordinator coordinator(registry);
+    service::MatterEndpointRegistry matter_endpoint_registry{};
+    service::ReadModelCoordinator coordinator(registry, matter_endpoint_registry);
 
     service::ReadModelCoordinator::NetworkPublishInput network_input{};
     network_input.refresh_requests = 7U;

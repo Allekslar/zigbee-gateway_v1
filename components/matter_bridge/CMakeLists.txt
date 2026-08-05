@@ -6,7 +6,6 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/ProjectCompileOptions.cmake")
 idf_component_register(
     SRCS
         "matter_bridge.cpp"
-        "matter_device_map.cpp"
     INCLUDE_DIRS "include"
     REQUIRES core service common app_hal
 )

@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "matter_endpoint_map.hpp"
 #include "matter_runtime_api.hpp"
 
 namespace matter_bridge {
@@ -28,7 +27,6 @@ struct MatterAttributeUpdate {
     int32_t int_value{0};
 };
 
-constexpr std::size_t kMatterMaxEndpointMapEntries = service::kServiceMaxDevices;
 constexpr std::size_t kMatterMaxUpdatesPerSync = service::kServiceMaxDevices * 5U;
 
 class MatterBridge {
@@ -37,7 +35,6 @@ public:
     void stop() noexcept;
     bool started() const noexcept;
     void attach_runtime(service::MatterRuntimeApi* runtime) noexcept;
-    bool set_endpoint_map(const MatterEndpointMapEntry* map, std::size_t size) noexcept;
     service::CommandSubmitStatus post_power_command(
         uint16_t short_addr,
         bool desired_power_on,
@@ -70,8 +67,6 @@ private:
 #endif
 
     std::atomic<bool> started_{false};
-    MatterEndpointMapEntry endpoint_map_[kMatterMaxEndpointMapEntries]{};
-    std::size_t endpoint_map_size_{0};
     service::MatterBridgeSnapshot runtime_snapshot_cache_{};
     DeviceShadow cached_devices_[service::kServiceMaxDevices]{};
     DeviceShadow sync_shadow_scratch_[service::kServiceMaxDevices]{};
