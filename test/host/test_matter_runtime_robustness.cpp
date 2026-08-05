@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include "matter_bridge.hpp"
+#include "matter_endpoint_registry.hpp"
 
 namespace {
 
@@ -15,6 +16,10 @@ service::MatterBridgeSnapshot make_full_snapshot(uint32_t revision, uint16_t sho
     for (std::size_t i = 0; i < service::kServiceMaxDevices; ++i) {
         auto& device = snapshot.devices[i];
         device.short_addr = static_cast<uint16_t>(short_addr_base + static_cast<uint16_t>(i));
+        // Endpoint resolution is a service-side concern (MatterEndpointRegistry)
+        // this bridge-level test is deliberately decoupled from; supply an
+        // already-resolved, distinct endpoint per device directly.
+        device.endpoint = static_cast<uint16_t>(service::MatterEndpointRegistry::kEndpointBase + i);
         device.online = true;
         device.stale = false;
         device.primary_class = service::MatterBridgeDeviceClass::kTemperature;

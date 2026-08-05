@@ -49,7 +49,7 @@ public:
         uint32_t autoconnect_failures{0};
     };
 
-    explicit ReadModelCoordinator(core::CoreRegistry& registry) noexcept;
+    ReadModelCoordinator(core::CoreRegistry& registry, const MatterEndpointRegistry& matter_endpoint_registry) noexcept;
 
     bool publish_devices_api_snapshot(
         const core::CoreState& state,

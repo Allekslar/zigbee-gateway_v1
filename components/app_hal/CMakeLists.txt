@@ -16,6 +16,7 @@ idf_component_register(
         "hal_rcp.c"
         "hal_rcp_uart_backend.c"
         "hal_led.c"
+        "hal_identity.c"
     EMBED_TXTFILES
         "ota_server_root_ca.pem"
     INCLUDE_DIRS "include"
@@ -26,6 +27,7 @@ idf_component_register(
         esp_netif
         esp_timer
         esp_system
+        esp_hw_support
         app_update
         bootloader_support
         esp_http_client

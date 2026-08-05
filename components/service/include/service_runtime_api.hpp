@@ -11,6 +11,7 @@
 #include "config_manager.hpp"
 #include "connectivity_manager.hpp"
 #include "device_descriptor_store.hpp"
+#include "gateway_id.hpp"
 #include "matter_runtime_api.hpp"
 #include "network_manager.hpp"
 #include "ota_manifest.hpp"
@@ -388,6 +389,11 @@ public:
 
     virtual void set_capabilities(const RuntimeCapabilities& capabilities) noexcept = 0;
     virtual RuntimeCapabilities capabilities() const noexcept = 0;
+
+    // Canonical gateway identity (plan FD-17, S4 slice): the factory base
+    // MAC, resolved once at construction and stable for the process
+    // lifetime. Never derived from mutable network configuration.
+    virtual common::GatewayId gateway_id() const noexcept = 0;
 
     virtual uint32_t next_operation_request_id() noexcept override = 0;
     virtual CommandSubmitStatus post_device_power_request(
