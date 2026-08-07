@@ -55,9 +55,10 @@ ReadModelCoordinator::ReadModelCoordinator(
 bool ReadModelCoordinator::publish_devices_api_snapshot(
     const core::CoreState& state,
     const DeviceRuntimeSnapshot& runtime_snapshot,
-    const DeviceDescriptorStore& identity_store) const noexcept {
+    const DeviceDescriptorStore& identity_store,
+    const DeviceLocatorRegistry& locator_registry) const noexcept {
     DevicesApiSnapshot snapshot{};
-    if (!devices_api_snapshot_builder_.build(state, runtime_snapshot, identity_store, &snapshot)) {
+    if (!devices_api_snapshot_builder_.build(state, runtime_snapshot, identity_store, locator_registry, &snapshot)) {
         return false;
     }
 

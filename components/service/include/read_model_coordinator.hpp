@@ -54,7 +54,8 @@ public:
     bool publish_devices_api_snapshot(
         const core::CoreState& state,
         const DeviceRuntimeSnapshot& runtime_snapshot,
-        const DeviceDescriptorStore& identity_store) const noexcept;
+        const DeviceDescriptorStore& identity_store,
+        const DeviceLocatorRegistry& locator_registry) const noexcept;
     bool build_devices_api_snapshot(DevicesApiSnapshot* out) const noexcept;
     bool build_mqtt_bridge_snapshot(MqttBridgeSnapshot* out) const noexcept;
     bool build_matter_bridge_snapshot(MatterBridgeSnapshot* out) const noexcept;

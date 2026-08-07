@@ -99,8 +99,9 @@ target_compile_definitions(service_host PUBLIC SERVICE_RUNTIME_TEST_HOOKS=1)
 target_link_libraries(service_host PUBLIC core_host app_hal_host)
 zg_apply_component_compile_policy(service_host)
 
-add_library(web_ui_host STATIC 
+add_library(web_ui_host STATIC
     ../../components/web_ui/web_handler_common.cpp
+    ../../components/web_ui/web_v1_common.cpp
 )
 target_include_directories(web_ui_host PUBLIC 
     ../../components/web_ui/include
@@ -312,6 +313,11 @@ add_executable(test_web_handlers_config test_web_handlers_config.cpp)
 target_link_libraries(test_web_handlers_config PRIVATE service_host web_ui_host)
 zg_apply_component_compile_policy(test_web_handlers_config)
 add_test(NAME test_web_handlers_config COMMAND test_web_handlers_config)
+
+add_executable(test_web_handlers_v1 test_web_handlers_v1.cpp)
+target_link_libraries(test_web_handlers_v1 PRIVATE service_host web_ui_host)
+zg_apply_component_compile_policy(test_web_handlers_v1)
+add_test(NAME test_web_handlers_v1 COMMAND test_web_handlers_v1)
 
 add_executable(test_web_handlers_config_post test_web_handlers_config_post.cpp)
 target_link_libraries(test_web_handlers_config_post PRIVATE service_host web_ui_host)

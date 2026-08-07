@@ -4,6 +4,7 @@
 #pragma once
 
 #include "device_descriptor_store.hpp"
+#include "device_locator_registry.hpp"
 #include "device_manager.hpp"
 #include "service_runtime_api.hpp"
 
@@ -19,6 +20,7 @@ public:
         const core::CoreState& state,
         const DeviceRuntimeSnapshot& runtime_snapshot,
         const DeviceDescriptorStore& identity_store,
+        const DeviceLocatorRegistry& locator_registry,
         DevicesApiSnapshot* out) const noexcept;
 };
 

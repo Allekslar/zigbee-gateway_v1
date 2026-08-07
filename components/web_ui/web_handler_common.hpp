@@ -18,11 +18,19 @@ typedef int esp_err_t;
 typedef enum {
     HTTP_GET = 1,
     HTTP_POST = 2,
+    HTTP_PUT = 3,
+    HTTP_PATCH = 4,
+    HTTP_DELETE = 5,
 } httpd_method_t;
 
 typedef struct {
     void* user_ctx;
     int content_len;
+    // Mirrors real esp_http_server's httpd_req_t::uri, which every existing
+    // (pre-v1) handler never needed (identifiers came from JSON bodies or
+    // MQTT topic strings instead). v1 path-parameter routes (device_id,
+    // reporting endpoint/cluster_id) need it; tests set it directly.
+    const char* uri;
 } httpd_req_t;
 
 typedef esp_err_t (*httpd_handler_t)(httpd_req_t *r);
