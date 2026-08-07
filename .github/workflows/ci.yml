@@ -564,7 +564,9 @@ jobs:
             components/web_ui/web_routes.cpp \
             components/web_ui/web_handlers_device.cpp \
             components/web_ui/web_handlers_network.cpp \
-            components/web_ui/web_handlers_config.cpp
+            components/web_ui/web_handlers_config.cpp \
+            components/web_ui/web_handlers_v1.cpp \
+            components/web_ui/web_v1_common.cpp
 
   deploy-pages:
     name: Deploy Coverage to Pages

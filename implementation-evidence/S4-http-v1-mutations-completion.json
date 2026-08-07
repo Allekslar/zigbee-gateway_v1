@@ -1,0 +1,108 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S4-http-v1-mutations",
+  "stage_name": "S4 slice 3/N continuation: versioned /api/v1 HTTP contract, mutation routes (plan required changes #1, #4, #5, #9, #28-#30)",
+  "input_commit_sha": "92911d02d4fa468cd17895ce8bd60ab236f6f207",
+  "output_commit_sha": "92911d02d4fa468cd17895ce8bd60ab236f6f207",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 92911d0 and directly continues S4-http-v1 (the GET-only slice recorded in implementation-evidence/S4-http-v1-completion.json), which is itself already committed on top of PR #43/#41.",
+  "sequencing_note": "User was asked (via AskUserQuestion, after the GET-only slice) which S4 sub-piece to do next: MQTT v1, finish HTTP v1 mutations, or HA discovery. User selected 'finish HTTP v1 mutations'. This pass implements every route in the plan's canonical table except the unified GET /api/v1/operations/{operation_id} poll, which the GET-only slice's evidence already identified as needing a distinct OperationResultStore-unification design task.",
+  "changed_files": [
+    "components/web_ui/web_handler_common.hpp (host httpd_req_t shim gains a uri field; host httpd_method_t shim gains HTTP_PUT/HTTP_PATCH/HTTP_DELETE)",
+    "components/service/include/service_runtime_api.hpp (new DeviceIdResolveStatus enum + resolve_short_addr_for_device_id_hex() pure-virtual)",
+    "components/service/include/service_runtime.hpp (override declaration)",
+    "components/service/service_runtime.cpp (resolve_short_addr_for_device_id_hex() implementation: walks CoreState.devices for identity, then DeviceLocatorRegistry for locator freshness, returning a 4-way status)",
+    "components/web_ui/include/web_v1_common.hpp (new: kApiV1DeviceIdHexLength, extract_uri_device_id_hex(), extract_uri_device_id_and_reporting_segments(), send_api_v1_accepted(), send_api_v1_ok())",
+    "components/web_ui/web_v1_common.cpp (implements the above: manual strncmp/strtoul URI parsing, no sscanf, matching codebase convention)",
+    "components/web_ui/web_handlers_v1.cpp (9 new mutation handlers + resolve_device_id_or_send_error_v1()/map_ota_submit_error_v1()/map_rcp_submit_error_v1() helpers + register_ota_routes_v1()/register_rcp_routes_v1() + extended register_device_routes_v1()/register_network_routes_v1()/register_config_routes_v1())",
+    "components/web_ui/include/web_routes.hpp (register_ota_routes_v1/register_rcp_routes_v1 declarations)",
+    "check_arch_invariants.sh (INV-H010's check_absent pattern extended to also cover register_ota_routes_v1|register_rcp_routes_v1)",
+    ".github/workflows/ci.yml (web_ui cppcheck job's file list gains web_handlers_v1.cpp/web_v1_common.cpp -- an S4-http-v1 GET-only-pass gap: those files existed but were never added to the CI static-analysis file list, so they had never actually been cppcheck-verified in CI)",
+    "docs/architecture/HTTP_API_V1.md (Sections 2/3/4/5 rewritten: 12 of 13 routes now implemented, only the operations poll remains deferred)",
+    "test/host/test_web_handlers_v1.cpp (extended: join-window, device delete, reporting PUT, network scans/connections, config PATCH, OTA/RCP operations -- success + every reachable golden-matrix error path per route; new ServiceRuntime fixture setup: initialize_hal_adapter()/mark_wifi_credentials_available() needed for the join-window-open path to actually flip its cache during process_pending())",
+    "test/integration/test_integration_web_handlers_v1.cpp (extended: device_power_post_handler_v1, the one mutation needing esp_timer_get_time() -- success + malformed/unknown/offline device_id + missing-body error paths)"
+  ],
+  "frozen_decisions_applied": [
+    "INV-M030 (web_ui adapters must not spell core:: symbols in source text) applied to a genuinely new situation: writing a DeviceId-keyed ConfigManager::ReportingProfile from an adapter handler. Reused the auto-typed-variable pattern already established in the S3 ConfigManager rekey pass instead of inventing a new workaround.",
+    "S4 HTTP required change #1: 12 of the plan's 13 canonical v1 routes are now implemented (all but the operations poll).",
+    "S4 HTTP required change #4/#9: every new mutation route routes its failures through the same api_v1_error_status() golden matrix built in the GET-only pass -- no new ad hoc status/token pairing was introduced. Two new response helpers (send_api_v1_accepted for 202/pollable, send_api_v1_ok for 200/fire-and-forget) mirror the legacy handlers' own accepted-vs-ok distinction exactly.",
+    "S4 HTTP required change #5: every new route's response carries schema_version:1.",
+    "S4 HTTP required change #28/#29: the 2 new registration functions (register_ota_routes_v1, register_rcp_routes_v1) and the extensions to 3 existing ones are still never called from register_web_routes()/main/app_main.cpp. INV-H010's check_absent pattern was extended to name both new functions explicitly, so the gate still proves what it claims to prove now that the registrable surface grew.",
+    "S4 HTTP required change #30: INV-H010 continues to be the build/static invariant proving no v1 registration path is reachable from production wiring; its coverage now spans all 7 registration functions instead of 5."
+  ],
+  "work_summary": {
+    "device_identity_resolution": {
+      "status": "COMPLETE, TESTED",
+      "detail": "resolve_short_addr_for_device_id_hex() on ServiceRuntimeApi/ServiceRuntime is a string-in/string-typed-enum-out API purpose-built so web_ui never needs to parse or hold a core::DeviceId itself. It distinguishes 4 outcomes (kResolved/kMalformedHex/kUnknownDevice/kNoCurrentLocator) by checking CoreState.devices for identity existence before consulting DeviceLocatorRegistry for locator freshness -- these map 1:1 to the golden matrix's invalid_request(400)/device_not_found(404)/device_offline(409) distinction. Tested directly via the device delete/power/reporting routes' malformed-hex, unknown-device and offline-device paths in both test files."
+    },
+    "uri_path_parsing": {
+      "status": "COMPLETE, TESTED",
+      "detail": "extract_uri_device_id_hex() and extract_uri_device_id_and_reporting_segments() (web_v1_common.cpp) are the first URI path-segment parsers in this codebase, implemented with manual strncmp/strtoul pointer arithmetic (no sscanf, matching established convention). The host httpd_req_t shim gained a uri field (previously absent -- no pre-v1 handler needed one) and the httpd_method_t shim gained HTTP_PUT/HTTP_PATCH/HTTP_DELETE (previously only HTTP_GET/HTTP_POST existed). Tested via well-formed, malformed, and missing-suffix URIs across the device delete/power/reporting routes."
+    },
+    "nine_mutation_handlers": {
+      "status": "COMPLETE, TESTED",
+      "detail": "device_join_window_post_handler_v1, device_power_post_handler_v1, device_delete_handler_v1, device_reporting_put_handler_v1, network_scan_post_handler_v1, network_connect_post_handler_v1, config_patch_handler_v1, ota_operations_post_handler_v1, rcp_update_operations_post_handler_v1 -- each mirrors its legacy counterpart's body-parsing/validation exactly, routed through the golden-matrix helpers. 8 of 9 are host-tested (test_web_handlers_v1.cpp); device_power_post_handler_v1 (the one that stamps issued_at_ms from esp_timer_get_time()) is integration-tested (test_integration_web_handlers_v1.cpp). Every route's success path and every reachable golden-matrix error path (400 invalid_request, 404 device_not_found, 409 device_offline/conflict, 503 no_capacity) is asserted."
+    },
+    "async_state_test_correctness": {
+      "status": "COMPLETE -- required 3 test-authoring corrections during self-verification",
+      "detail": "post_open_join_window(), post_reporting_profile_write() and post_config_write() all only enqueue work; the visible state change (join-window cache flip, ConfigManager mutation, config_snapshot() cache refresh) happens only inside process_pending(), not synchronously on submit. Initial test drafts assumed synchronicity for the join-window-conflict and reporting-profile-readback assertions; both were caught and fixed by inserting explicit process_pending() calls before the dependent assertion, verified by a targeted Explore-agent read of the actual PersistenceManager/NetworkManager drain implementations rather than by assumption. The join-window-open path additionally needed initialize_hal_adapter() + mark_wifi_credentials_available() in the test fixture, since ensure_zigbee_started() (called from handle_open_join_window() during process_pending()) is gated on both."
+    },
+    "cppcheck_gap_closed": {
+      "status": "COMPLETE -- pre-existing gap from the GET-only pass, fixed here",
+      "detail": "The GET-only pass's evidence noted web_handlers_v1.cpp/web_v1_common.cpp were checked with cppcheck as 'an extra precaution' but were never added to .github/workflows/ci.yml's web_ui cppcheck job file list -- meaning CI itself was never actually linting them. Fixed by adding both files to that job's argument list in this pass. Verified locally with the same command CI now runs (exit code 0)."
+    },
+    "loop_to_stl_algorithm_fix": {
+      "status": "COMPLETE",
+      "detail": "cppcheck (core+service job) flagged resolve_short_addr_for_device_id_hex()'s original find-with-break loop over CoreState.devices as a useStlAlgorithm style violation (the CI job runs with --error-exitcode=1, so this would have failed CI). Rewritten as std::any_of (components/service already includes <algorithm>). Re-verified: cppcheck exit code 0, and the full host/integration/sanitizer suites re-run clean after the change."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "GET /api/v1/operations/{operation_id} (the 13th canonical route) remains unimplemented.",
+      "why": "Unchanged from the GET-only pass's finding: OperationResultStore tracks network/config/OTA/RCP results as four separate typed result queues, each with its own take_*_result() method, sharing only a global request_id counter. A generic poll endpoint needs a discriminated union or a try-each-domain caller, neither of which exists; designing one is a distinct unit of work from the route-by-route mutation work this pass did.",
+      "consequence": "Every route this pass added that produces a pollable id (join-window, power, delete, network scan/connect, OTA/RCP) already returns that id in its 202 response body, so the poll route is purely additive once built -- nothing added in this pass needs to change to support it.",
+      "tracked_in": "docs/architecture/HTTP_API_V1.md Section 4.1"
+    },
+    {
+      "deviation": "Plan #7 (legacy read aliases with deprecation metadata) and #8 (legacy mutations return 410 Gone in production) remain unimplemented.",
+      "why": "Unchanged from the GET-only pass: per FD-19 and plan #29, S4 does not touch the production route-registration path at all.",
+      "consequence": "Legacy routes behave exactly as before; this pass's mutation routes are exercised only through direct handler calls in tests, never through the legacy-aliased or production-registered surface.",
+      "tracked_in": "docs/architecture/HTTP_API_V1.md Section 4.2"
+    },
+    {
+      "deviation": "Plan #6 (bundled Web UI migrated atomically to v1 routes and DeviceId) remains unimplemented, even though all the mutation routes app.js would need (power, join, remove, reporting) now exist.",
+      "why": "Migrating app.js is a UI-layer change orthogonal to the backend contract work this pass scoped itself to, and plan #29 keeps S4 out of the production registration path the migrated UI would need to actually reach these routes at runtime -- migrating the UI to call routes that are provably unreachable in production would not be a meaningful atomic migration yet.",
+      "consequence": "assets/app.js is untouched and continues to use only legacy routes.",
+      "tracked_in": "docs/architecture/HTTP_API_V1.md Section 4.3"
+    },
+    {
+      "deviation": "OTA/RCP submit-failure error mapping (map_ota_submit_error_v1/map_rcp_submit_error_v1) collapses roughly ten domain-specific OtaSubmitStatus/RcpUpdateSubmitStatus failure reasons (manifest/board/project/schema/signature mismatches) into a single 400 invalid_request token, rather than adding a fine-grained ApiV1ErrorCode per reason.",
+      "why": "The plan's own 'golden matrix' concept (required change #4/#9) implies a small, stable top-level vocabulary; expanding it by ~10 codes to mirror every internal validation branch would work against that intent. Only kBusy (and, for RCP, kConflict) is distinguished, since 409 conflict vs 400 invalid_request is a genuinely different client-facing category (retry-later vs fix-the-request).",
+      "consequence": "Clients cannot distinguish e.g. 'bad signature' from 'bad board' purely from the v1 error token; both are 400 invalid_request. The underlying detail is still available via server logs. This is a deliberate scope decision, not an oversight, and can be revisited without breaking the matrix's shape if finer granularity is wanted later.",
+      "tracked_in": "docs/architecture/HTTP_API_V1.md Section 3.5"
+    }
+  ],
+  "inventories_recomputed": {
+    "canonical_v1_routes_implemented": 12,
+    "canonical_v1_routes_total": 13,
+    "host_tests_total": 81,
+    "integration_tests_total": 8
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0. One violation found and fixed during this pass: a comment in web_v1_common.hpp spelled 'core::' in prose (INV-M030), rewritten to describe the Core layer without the literal token." },
+    "host_tests": { "result": "PASSED", "detail": "81/81 (100%), clean rebuild. Required 2 test-fixture corrections during self-verification (process_pending() ordering for async state; initialize_hal_adapter()/mark_wifi_credentials_available() for the join-window-open path) -- both found and fixed before this result, not left as known-flaky." },
+    "integration_tests": { "result": "PASSED", "detail": "8/8 (100%), clean rebuild." },
+    "sanitizer_tests": { "result": "PASSED", "detail": "81/81 (100%) under ASan+UBSan, clean rebuild, exact CI flags reproduced (-fsanitize=address,undefined -fno-omit-frame-pointer)." },
+    "cppcheck": { "result": "PASSED", "detail": "All three jobs (core+service, app_hal, web_ui) via the zgw-host-tools:cppcheck derivative image, exit code 0 each -- web_ui run with web_handlers_v1.cpp/web_v1_common.cpp now included, matching the corrected CI file list. One useStlAlgorithm style finding in service_runtime.cpp was fixed (raw find-loop -> std::any_of) before this result." }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround (zgw-host-tools:s0 for build/test/sanitizer; zgw-host-tools:cppcheck for static analysis). ESP-IDF/idf.py remains unavailable. This pass adds no new ESP_PLATFORM-only code paths of its own. The real target httpd_uri_match_wildcard dispatch ordering assumption in register_device_routes_v1() (exact join-window path registered before the three /api/v1/devices/* wildcard handlers, so it is not shadowed) is unverified against a real ESP-IDF httpd instance -- every test here calls handler functions directly rather than through real HTTP dispatch.",
+  "unresolved_deviations": [
+    "GET /api/v1/operations/{operation_id} is unimplemented, blocked on an OperationResultStore domain-unification design task -- see docs/architecture/HTTP_API_V1.md Section 4.1.",
+    "Legacy read-alias deprecation metadata and legacy-mutation 410 Gone behavior remain unimplemented -- see docs/architecture/HTTP_API_V1.md Section 4.2.",
+    "Bundled Web UI migration to v1 remains unimplemented -- see docs/architecture/HTTP_API_V1.md Section 4.3.",
+    "OTA/RCP golden-matrix error mapping is deliberately coarse-grained (400 invalid_request for ~10 distinct internal failure reasons) -- see docs/architecture/HTTP_API_V1.md Section 3.5."
+  ],
+  "unresolved_blockers": [
+    "Real ESP-IDF httpd wildcard-URI dispatch and registration-order behavior of the now-12 implemented v1 routes is unverified against real hardware -- BLOCKED_TOOLCHAIN, carried over from S0."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

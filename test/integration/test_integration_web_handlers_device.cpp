@@ -101,16 +101,31 @@ int main() {
     httpd_req_t req{};
     req.user_ctx = &route_ctx;
 
+    core::DeviceId device_id{};
+    assert(core::DeviceId::parse("00124b0001aa2201", 16, &device_id));
+    // Posting raw core::CoreEvents bypasses the HAL/lifecycle-coordinator
+    // join path that normally populates DeviceLocatorRegistry, so the
+    // /api/v1 "short_addr present only when there is a current locator"
+    // contract (and the legacy handler's short_addr echo) both need it
+    // populated here explicitly.
+    uint32_t device_locator_revision = 0U;
+    assert(
+        runtime.device_locator_registry().remap(device_id, 0x2201U, &device_locator_revision) ==
+        service::DeviceLocatorRemapResult::kInserted);
+
     core::CoreEvent joined{};
     joined.type = core::CoreEventType::kDeviceJoined;
+    joined.device_id = device_id;
     joined.device_short_addr = 0x2201;
     assert(runtime.post_event(joined));
     core::CoreEvent reporting_configured{};
     reporting_configured.type = core::CoreEventType::kDeviceReportingConfigured;
+    reporting_configured.device_id = device_id;
     reporting_configured.device_short_addr = 0x2201;
     assert(runtime.post_event(reporting_configured));
     core::CoreEvent telemetry_temperature{};
     telemetry_temperature.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    telemetry_temperature.device_id = device_id;
     telemetry_temperature.device_short_addr = 0x2201;
     telemetry_temperature.value_u32 = 4242U;
     telemetry_temperature.telemetry_kind = core::CoreTelemetryKind::kTemperatureCentiC;
@@ -119,6 +134,7 @@ int main() {
     assert(runtime.post_event(telemetry_temperature));
     core::CoreEvent telemetry_occupancy{};
     telemetry_occupancy.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    telemetry_occupancy.device_id = device_id;
     telemetry_occupancy.device_short_addr = 0x2201;
     telemetry_occupancy.value_u32 = 4242U;
     telemetry_occupancy.telemetry_kind = core::CoreTelemetryKind::kOccupancy;
@@ -127,6 +143,7 @@ int main() {
     assert(runtime.post_event(telemetry_occupancy));
     core::CoreEvent telemetry_contact{};
     telemetry_contact.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    telemetry_contact.device_id = device_id;
     telemetry_contact.device_short_addr = 0x2201;
     telemetry_contact.value_u32 = 4242U;
     telemetry_contact.telemetry_kind = core::CoreTelemetryKind::kContactIasZoneStatus;
@@ -135,6 +152,7 @@ int main() {
     assert(runtime.post_event(telemetry_contact));
     core::CoreEvent telemetry_battery{};
     telemetry_battery.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    telemetry_battery.device_id = device_id;
     telemetry_battery.device_short_addr = 0x2201;
     telemetry_battery.value_u32 = 4242U;
     telemetry_battery.telemetry_kind = core::CoreTelemetryKind::kBatteryPercent;
@@ -143,6 +161,7 @@ int main() {
     assert(runtime.post_event(telemetry_battery));
     core::CoreEvent telemetry_battery_mv{};
     telemetry_battery_mv.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    telemetry_battery_mv.device_id = device_id;
     telemetry_battery_mv.device_short_addr = 0x2201;
     telemetry_battery_mv.value_u32 = 4242U;
     telemetry_battery_mv.telemetry_kind = core::CoreTelemetryKind::kBatteryVoltageMilliV;
@@ -151,6 +170,7 @@ int main() {
     assert(runtime.post_event(telemetry_battery_mv));
     core::CoreEvent telemetry_lqi{};
     telemetry_lqi.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    telemetry_lqi.device_id = device_id;
     telemetry_lqi.device_short_addr = 0x2201;
     telemetry_lqi.value_u32 = 4242U;
     telemetry_lqi.telemetry_kind = core::CoreTelemetryKind::kLqi;
@@ -159,6 +179,7 @@ int main() {
     assert(runtime.post_event(telemetry_lqi));
     core::CoreEvent telemetry_rssi{};
     telemetry_rssi.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    telemetry_rssi.device_id = device_id;
     telemetry_rssi.device_short_addr = 0x2201;
     telemetry_rssi.value_u32 = 4242U;
     telemetry_rssi.telemetry_kind = core::CoreTelemetryKind::kRssiDbm;

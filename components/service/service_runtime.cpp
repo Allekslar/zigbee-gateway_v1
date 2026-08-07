@@ -560,6 +560,44 @@ core::DeviceId ServiceRuntime::resolve_device_id_for_short_addr(uint16_t short_a
     return core::DeviceId{};
 }
 
+ServiceRuntimeApi::DeviceIdResolveStatus ServiceRuntime::resolve_short_addr_for_device_id_hex(
+    const char* device_id_hex, uint16_t* out_short_addr) noexcept {
+    if (device_id_hex == nullptr || out_short_addr == nullptr) {
+        return DeviceIdResolveStatus::kMalformedHex;
+    }
+
+    core::DeviceId device_id{};
+    if (!core::DeviceId::parse(device_id_hex, std::strlen(device_id_hex), &device_id)) {
+        return DeviceIdResolveStatus::kMalformedHex;
+    }
+
+    if (registry_ == nullptr) {
+        return DeviceIdResolveStatus::kUnknownDevice;
+    }
+    core::CoreRegistry::SnapshotRef snapshot{};
+    if (!registry_->pin_current(&snapshot) || !snapshot.valid()) {
+        return DeviceIdResolveStatus::kUnknownDevice;
+    }
+    const bool device_known = std::any_of(
+        snapshot.state->devices.begin(), snapshot.state->devices.end(),
+        [&device_id](const core::CoreDeviceRecord& device) {
+            return device.device_id.valid() && device.device_id == device_id;
+        });
+    registry_->release_snapshot(&snapshot);
+    if (!device_known) {
+        return DeviceIdResolveStatus::kUnknownDevice;
+    }
+
+    DeviceLocatorEntry entry{};
+    if (!device_locator_registry_.find_by_device_id(device_id, &entry) ||
+        entry.status != DeviceLocatorStatus::kOnline) {
+        return DeviceIdResolveStatus::kNoCurrentLocator;
+    }
+
+    *out_short_addr = entry.short_addr;
+    return DeviceIdResolveStatus::kResolved;
+}
+
 bool ServiceRuntime::post_zigbee_interview_result(
     uint32_t correlation_id,
     uint16_t short_addr,
@@ -1013,7 +1051,8 @@ bool ServiceRuntime::build_devices_api_snapshot(uint32_t now_ms, DevicesApiSnaps
         return false;
     }
 
-    const bool built = read_model_coordinator_.publish_devices_api_snapshot(*snapshot.state, runtime_snapshot, device_descriptor_store_) &&
+    const bool built = read_model_coordinator_.publish_devices_api_snapshot(
+                           *snapshot.state, runtime_snapshot, device_descriptor_store_, device_locator_registry_) &&
                        read_model_coordinator_.build_devices_api_snapshot(out);
     registry_->release_snapshot(&snapshot);
     return built;

@@ -7,6 +7,7 @@
 #include "core_commands.hpp"
 #include "core_events.hpp"
 #include "core_registry.hpp"
+#include "device_id.hpp"
 #include "effect_executor.hpp"
 #include "service_runtime.hpp"
 
@@ -15,11 +16,28 @@ int main() {
     service::EffectExecutor effect_executor;
     service::ServiceRuntime runtime(registry, effect_executor);
 
+    // A resolved DeviceId is required for the device to appear in
+    // DevicesApiSnapshot (FD-01: identity-gated, not short_addr-gated).
+    // Posted directly on the event (rather than through the HAL/lifecycle-
+    // coordinator join path) to keep this test's event-count assertions
+    // below exactly as they were -- that path is exercised end-to-end
+    // elsewhere (test_service_device_identity_wiring.cpp). The locator
+    // registry is populated separately below since posting a raw
+    // core::CoreEvent bypasses it.
+    core::DeviceId device_id{};
+    assert(core::DeviceId::parse("00124b0001aa3301", 16, &device_id));
+
     core::CoreEvent joined{};
     joined.type = core::CoreEventType::kDeviceJoined;
+    joined.device_id = device_id;
     joined.device_short_addr = 0x3301;
     assert(runtime.post_event(joined));
     assert(runtime.process_pending() == 1);
+
+    uint32_t join_locator_revision = 0U;
+    assert(
+        runtime.device_locator_registry().remap(device_id, 0x3301U, &join_locator_revision) ==
+        service::DeviceLocatorRemapResult::kInserted);
     assert(runtime.state().device_count == 1);
     assert(runtime.stats().reporting_retries == 1);
     assert(runtime.stats().reporting_failures == 0);
@@ -91,6 +109,7 @@ int main() {
 
     core::CoreEvent stale{};
     stale.type = core::CoreEventType::kDeviceStale;
+    stale.device_id = device_id;
     stale.device_short_addr = 0x3301;
     assert(runtime.post_event(stale));
     assert(runtime.process_pending() == 1);
@@ -99,6 +118,7 @@ int main() {
 
     core::CoreEvent telemetry{};
     telemetry.type = core::CoreEventType::kDeviceTelemetryUpdated;
+    telemetry.device_id = device_id;
     telemetry.device_short_addr = 0x3301;
     telemetry.value_u32 = 7000;
     assert(runtime.post_event(telemetry));
@@ -150,18 +170,11 @@ int main() {
     }
     assert(telemetry_verified);
 
-    // kUpdateReportingProfile now resolves device_short_addr -> DeviceId
-    // (FD-01) via the locator registry before writing; register the mapping
-    // here since this test posts the kDeviceJoined core event directly and
-    // bypasses the HAL adapter path that normally populates the registry.
-    const core::DeviceId reporting_device_id = [] {
-        core::DeviceId id{};
-        assert(core::DeviceId::parse("00124b0001aa3301", 16, &id));
-        return id;
-    }();
-    uint32_t reporting_device_revision = 0U;
-    assert(runtime.device_locator_registry().remap(reporting_device_id, 0x3301U, &reporting_device_revision) ==
-           service::DeviceLocatorRemapResult::kInserted);
+    // kUpdateReportingProfile resolves device_short_addr -> DeviceId (FD-01)
+    // via the locator registry before writing; the identity-aware join
+    // above already populated it, so just read back what it resolved to.
+    const core::DeviceId reporting_device_id = runtime.resolve_device_id_for_short_addr(0x3301U);
+    assert(reporting_device_id.valid());
 
     core::CoreCommand bad_reporting_cmd{};
     bad_reporting_cmd.type = core::CoreCommandType::kUpdateReportingProfile;

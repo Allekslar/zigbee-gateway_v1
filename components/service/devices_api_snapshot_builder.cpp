@@ -57,6 +57,7 @@ bool DevicesApiSnapshotBuilder::build(
     const core::CoreState& state,
     const DeviceRuntimeSnapshot& runtime_snapshot,
     const DeviceDescriptorStore& identity_store,
+    const DeviceLocatorRegistry& locator_registry,
     DevicesApiSnapshot* out) const noexcept {
     if (out == nullptr) {
         return false;
@@ -69,12 +70,32 @@ bool DevicesApiSnapshotBuilder::build(
 
     for (std::size_t i = 0; i < state.devices.size() && out->device_count < core::kMaxDevices; ++i) {
         const core::CoreDeviceRecord& device = state.devices[i];
-        if (device.short_addr == core::kUnknownDeviceShortAddr) {
+        // FD-01: a device belongs in this API surface once it has a durable
+        // identity, regardless of whether it currently has a locator (a
+        // persisted device that has not yet rejoined after reboot still
+        // has a device_id, but has_locator below will correctly read
+        // false for it -- see the DeviceLocatorRegistry lookup).
+        if (!device.device_id.valid()) {
             continue;
         }
 
         DevicesApiDeviceSnapshot& api_device = out->devices[out->device_count++];
-        api_device.short_addr = device.short_addr;
+        if (!device.device_id.format(api_device.device_id_hex.data(), api_device.device_id_hex.size())) {
+            api_device.device_id_hex[0] = '\0';
+        }
+
+        DeviceLocatorEntry locator_entry{};
+        if (locator_registry.find_by_device_id(device.device_id, &locator_entry) &&
+            locator_entry.status == DeviceLocatorStatus::kOnline) {
+            api_device.has_locator = true;
+            api_device.short_addr = locator_entry.short_addr;
+            api_device.locator_revision = locator_entry.mapping_revision;
+        } else {
+            api_device.has_locator = false;
+            api_device.short_addr = core::kUnknownDeviceShortAddr;
+            api_device.locator_revision = 0U;
+        }
+
         api_device.online = device.online;
         api_device.power_on = device.power_on;
         api_device.reporting_state = to_device_reporting_state(runtime_snapshot.reporting_state[i]);

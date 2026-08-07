@@ -5,6 +5,8 @@
 #include <cstring>
 
 #include "core_registry.hpp"
+#include "device_id.hpp"
+#include "device_locator_registry.hpp"
 #include "matter_endpoint_registry.hpp"
 #include "read_model_coordinator.hpp"
 
@@ -68,8 +70,12 @@ int main() {
     assert(network_snapshot.mqtt.last_connect_error ==
            service::NetworkApiSnapshot::MqttConnectionError::kNone);
 
+    core::DeviceId device_id{};
+    assert(core::DeviceId::parse("00124b0001aaaaaa", 16, &device_id));
+
     core::CoreState state{};
     state.revision = 22U;
+    state.devices[0].device_id = device_id;
     state.devices[0].short_addr = 0x1234U;
     state.devices[0].online = true;
     state.devices[0].power_on = true;
@@ -82,7 +88,13 @@ int main() {
     runtime_snapshot.battery_percent[0] = 88U;
 
     service::DeviceDescriptorStore identity_store{};
-    assert(coordinator.publish_devices_api_snapshot(state, runtime_snapshot, identity_store));
+    service::DeviceLocatorRegistry locator_registry{};
+    uint32_t mapping_revision = 0U;
+    assert(
+        locator_registry.remap(device_id, 0x1234U, &mapping_revision) ==
+        service::DeviceLocatorRemapResult::kInserted);
+    assert(
+        coordinator.publish_devices_api_snapshot(state, runtime_snapshot, identity_store, locator_registry));
 
     service::DevicesApiSnapshot devices_snapshot{};
     assert(coordinator.build_devices_api_snapshot(&devices_snapshot));
@@ -90,7 +102,12 @@ int main() {
     assert(devices_snapshot.device_count == 1U);
     assert(devices_snapshot.join_window_open);
     assert(devices_snapshot.join_window_seconds_left == 17U);
+    char device_id_hex[core::DeviceId::kHexLength + 1U] = {};
+    assert(device_id.format(device_id_hex, sizeof(device_id_hex)));
+    assert(std::strcmp(devices_snapshot.devices[0].device_id_hex.data(), device_id_hex) == 0);
+    assert(devices_snapshot.devices[0].has_locator);
     assert(devices_snapshot.devices[0].short_addr == 0x1234U);
+    assert(devices_snapshot.devices[0].locator_revision == mapping_revision);
     assert(devices_snapshot.devices[0].online);
     assert(devices_snapshot.devices[0].power_on);
     assert(devices_snapshot.devices[0].battery_percent == 88U);

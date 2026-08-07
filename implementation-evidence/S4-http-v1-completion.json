@@ -1,0 +1,106 @@
+{
+  "superseded_note": "This file is a point-in-time record of the GET-only slice and is left unmodified below as historical evidence. It is directly continued (not replaced) by implementation-evidence/S4-http-v1-mutations-completion.json, which implements 8 more of the 9 routes this file lists as unimplemented and corrects the '4 of 13 routes' scope claim below to '12 of 13'. Read both files together for the current state of the /api/v1 contract.",
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S4-http-v1",
+  "stage_name": "S4 slice 3/N: versioned /api/v1 HTTP contract, GET routes only (plan required changes #1-#5, #9, #28-#30)",
+  "input_commit_sha": "92911d02d4fa468cd17895ce8bd60ab236f6f207",
+  "output_commit_sha": "92911d02d4fa468cd17895ce8bd60ab236f6f207",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 92911d0 (merge of PR #43: GatewayId + DeviceId-keyed Matter endpoint identity), which itself followed PR #41 (S3 persistence + reporting-profile rekey).",
+  "sequencing_note": "Third S4 slice, chosen by the user after GatewayId and Matter endpoint identity. The full HTTP v1 route table (13 routes) proved too large for one pass once path-parameter routing and the operations-poll unification were investigated; scope was narrowed mid-implementation to the four GET routes plus the shared DTO/error-matrix/registration infrastructure every other v1 route will also need. See docs/architecture/HTTP_API_V1.md Section 4 for the two concrete blockers found for the remaining routes.",
+  "changed_files": [
+    "components/service/include/service_runtime_api.hpp (DevicesApiDeviceSnapshot gains device_id_hex/has_locator/locator_revision)",
+    "components/service/include/devices_api_snapshot_builder.hpp (build() takes const DeviceLocatorRegistry&)",
+    "components/service/devices_api_snapshot_builder.cpp (identity-gated inclusion instead of short_addr-gated; has_locator/short_addr/locator_revision resolved via DeviceLocatorRegistry)",
+    "components/service/include/read_model_coordinator.hpp (publish_devices_api_snapshot takes const DeviceLocatorRegistry&)",
+    "components/service/read_model_coordinator.cpp (forwards it to the builder)",
+    "components/service/service_runtime.cpp (build_devices_api_snapshot passes device_locator_registry_ through)",
+    "components/web_ui/include/web_v1_common.hpp (new: ApiV1ErrorCode, schema_version constant, golden status/error matrix helpers)",
+    "components/web_ui/web_v1_common.cpp (new)",
+    "components/web_ui/include/web_routes.hpp (register_web_routes_v1 + 4 sub-registration function declarations)",
+    "components/web_ui/web_handlers_v1.cpp (new: capabilities/devices/network/config GET handlers + route registration)",
+    "components/web_ui/CMakeLists.txt (adds web_handlers_v1.cpp, web_v1_common.cpp)",
+    "check_arch_invariants.sh (new INV-H010 rule group)",
+    "docs/architecture/ARCH_COMPLIANCE_MATRIX.md (INV-H010 row)",
+    "docs/architecture/HTTP_API_V1.md (new)",
+    "test/host/test_web_handlers_v1.cpp (new: capabilities/network/config GET routes, host-testable)",
+    "test/integration/test_integration_web_handlers_v1.cpp (new: devices GET route, needs esp_timer_get_time())",
+    "test/host/test_service_runtime.cpp (join event needs a resolved device_id + locator registry entry for the device to remain visible in DevicesApiSnapshot; stale/telemetry events need device_id too, since core_reducer's find_device_index no longer falls back to short_addr-only matching once a device has a valid device_id)",
+    "test/host/test_service_runtime_lifecycle.cpp (post-restore device is now matched by device_id_hex, not short_addr; asserts has_locator == false, since nothing repopulates DeviceLocatorRegistry from persisted state)",
+    "test/host/test_read_model_coordinator.cpp (publish_devices_api_snapshot needs a DeviceLocatorRegistry argument; device now needs a valid device_id to appear at all)",
+    "test/integration/test_integration_web_handlers_device.cpp (same device_id/locator-registry requirement, for the legacy /api/devices route which shares the same builder)",
+    "test/host/CMakeLists.txt (web_ui_host gains web_v1_common.cpp; new test_web_handlers_v1 target)",
+    "test/integration/CMakeLists.txt (web_ui_integration gains web_v1_common.cpp; new test_integration_web_handlers_v1 target)"
+  ],
+  "frozen_decisions_applied": [
+    "FD-01 applied to the devices API surface for the first time: a device belongs in DevicesApiSnapshot once it has a durable DeviceId, regardless of whether it currently has a locator -- not the reverse (the pre-existing short_addr-gated inclusion this pass replaced).",
+    "S4 HTTP required change #2: device DTOs include a canonical device_id string; short_addr is always present as a nullable diagnostic field (integer when there is a current locator, null otherwise) rather than always echoing whatever short_addr happens to be cached in CoreState.",
+    "S4 HTTP required change #4/#9: one authoritative golden HTTP status/error matrix (api_v1_error_status() in web_v1_common.cpp) that every v1 handler must route its failures through; no handler picks its own status/token pairing.",
+    "S4 HTTP required change #5: every v1 response (success and error) carries schema_version:1.",
+    "S4 HTTP required change #28/#29: v1 routes are built, host/integration-tested and registrable via register_web_routes_v1(), but that function is never called from register_web_routes() or main/app_main.cpp -- no production route registration happens in this pass. S6 owns the first production registration path.",
+    "S4 HTTP required change #30 (partial): a build/static invariant (INV-H010) proves main/app_main.cpp never names any v1 registration function, covering the concrete regression this repository could reintroduce for what exists today. It does not (and cannot) prove anything about routes not yet built -- see deviations."
+  ],
+  "work_summary": {
+    "devices_api_identity": {
+      "status": "COMPLETE, TESTED",
+      "detail": "DevicesApiDeviceSnapshot gained device_id_hex (pre-formatted, adapter-safe per the same INV-M030-avoidance pattern already used for GatewayId), has_locator and locator_revision, sourced from a new DeviceLocatorRegistry parameter threaded through DevicesApiSnapshotBuilder -> ReadModelCoordinator -> ServiceRuntime. The snapshot's inclusion gate changed from short_addr-presence to device_id-validity, which is a genuine, deliberate behavior change (a persisted-but-not-yet-rejoined device now correctly appears with has_locator:false instead of being silently absent). This propagated to 3 existing host tests and 1 existing integration test that posted raw core::CoreEvents without a resolved identity/locator -- all fixed by adding the now-required device_id/DeviceLocatorRegistry::remap() calls, following the exact pattern already established for the GatewayId/Matter S4 slices' own test fixes."
+    },
+    "golden_matrix_and_schema_version": {
+      "status": "COMPLETE, TESTED (for the subset GET routes reach)",
+      "detail": "web_v1_common.hpp/.cpp: ApiV1ErrorCode + api_v1_error_status() is the single source of truth mapping every v1 error token to its HTTP status. send_api_v1_error() and every success handler wrap responses in schema_version:1. Only 200 (success) and 503/capability_unavailable (snapshot-build failure) are exercised by GET routes in this pass; the rest of the matrix (400/404/409/410/413/429) becomes reachable once mutation routes are added, reusing this same helper without modification."
+    },
+    "four_get_routes": {
+      "status": "COMPLETE, TESTED",
+      "detail": "capabilities/devices/network/config GET handlers in web_handlers_v1.cpp, mirroring the legacy handlers' snprintf-JSON style exactly (no new serialization abstraction). Tested at host level for capabilities/network/config (test_web_handlers_v1.cpp, using the established direct-#include-the-.cpp pattern) and at integration level for devices (test_integration_web_handlers_v1.cpp, since it needs esp_timer_get_time() like its legacy counterpart). The devices test specifically proves the nullable short_addr contract with both a located and an unlocated device in the same fixture."
+    },
+    "unregistered_by_construction": {
+      "status": "COMPLETE, VERIFIED BY ARCHITECTURE GATE",
+      "detail": "register_web_routes_v1() exists and is fully testable but is never called from register_web_routes() (the function main/app_main.cpp's WebServer::start() actually invokes) or from main/app_main.cpp directly. INV-H010 (new) enforces both the contract's existence and main/app_main.cpp's absence of any call to it. v1 routes consume none of the legacy server's max_uri_handlers=24 budget since they are never registered onto that same httpd instance in production."
+    },
+    "collateral_fix_needed_but_not_a_bug": {
+      "status": "N/A -- design consequence, not a defect",
+      "detail": "Every test file that constructs a CoreEvent/CoreState directly (bypassing the HAL/lifecycle-coordinator join path) and expects the device to appear in DevicesApiSnapshot now needs an explicit device_id (and, if it expects short_addr to be non-null, an explicit DeviceLocatorRegistry::remap() call too). This is not a bug introduced by this pass; it is the correct, intended consequence of gating the devices API on identity rather than locator presence, and every affected test was updated to reflect the plan's actual contract rather than worked around."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only 4 of the 13 canonical v1 routes are implemented (GET capabilities/devices/network/config). The other 9 (all mutations, plus the unified operations-status poll) are not implemented in this pass.",
+      "why": "Two concrete, non-speculative blockers were found while investigating the remaining routes, not just general size: (1) the four routes with a {device_id} (or {endpoint}/{cluster_id}) path segment need URI parsing the host httpd_req_t shim (web_handler_common.hpp) does not support at all today -- it has no uri field, since no existing handler has ever needed one (all read identifiers from JSON bodies or MQTT topic strings instead); (2) GET /api/v1/operations/{operation_id} needs to unify OperationResultStore's four separate typed result queues (network/config/ota/rcp, each with its own take_*_result() method) behind one generic poll, which is a distinct design task from the GET-route infrastructure this pass built.",
+      "consequence": "No regression: the legacy /api/... routes are completely untouched and continue to be the only registered, production-reachable HTTP surface. The GET-route infrastructure built in this pass (DTO identity fields, golden error matrix, schema_version envelope, unregistered-registration pattern, INV-H010) is directly reusable by the mutation routes once the two blockers above are resolved -- nothing here needs to be redesigned to add them.",
+      "tracked_in": "docs/architecture/HTTP_API_V1.md Section 4.1"
+    },
+    {
+      "deviation": "Plan #7 (legacy read aliases with deprecation metadata) and #8 (legacy mutations return 410 Gone in production) are not implemented.",
+      "why": "Per FD-19 and plan #29, S4 does not touch the production route-registration path at all. Implementing #7/#8 for real requires either wiring v1 into the same registration path the legacy routes use (which #29 forbids for S4) or a mechanism S4 does not otherwise need.",
+      "consequence": "Legacy routes behave exactly as they did before this stage began; no deprecation metadata is exposed and no legacy mutation returns 410 yet. This is deferred to whichever stage flips the production listener to v1 (S6, per FD-19).",
+      "tracked_in": "docs/architecture/HTTP_API_V1.md Section 4.2"
+    },
+    {
+      "deviation": "Plan #6 (bundled Web UI migrated atomically to v1 routes and DeviceId) is not implemented.",
+      "why": "The bundled UI (assets/app.js) calls mutation routes (power, join, remove, reporting) that do not exist in v1 yet; migrating it before those exist would either break the UI or require it to keep calling legacy routes for mutations while using v1 for reads, which is not 'atomic' migration as the plan specifies.",
+      "consequence": "assets/app.js is untouched and continues to use only legacy routes.",
+      "tracked_in": "docs/architecture/HTTP_API_V1.md Section 4.3"
+    }
+  ],
+  "inventories_recomputed": {
+    "new_tests_this_pass": ["test_web_handlers_v1", "test_integration_web_handlers_v1"],
+    "host_tests_total": 81,
+    "integration_tests_total": 8
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0; includes new INV-H010 rule group (v1 registration contract must exist; main/app_main.cpp must never call it)." },
+    "host_tests": { "result": "PASSED", "detail": "81/81 (100%), clean rebuild." },
+    "integration_tests": { "result": "PASSED", "detail": "8/8 (100%), clean rebuild." },
+    "sanitizer_tests": { "result": "PASSED", "detail": "81/81 (100%) under ASan+UBSan, clean rebuild, exact CI flags reproduced." },
+    "cppcheck": { "result": "PASSED", "detail": "All three CI static-analysis jobs (core+service, app_hal, web_ui) via the zgw-host-tools:cppcheck derivative image -- exit code 0 on every job. web_handlers_v1.cpp/web_v1_common.cpp are not in CI's explicit web_ui file list but were checked separately as an extra precaution; also exit code 0." }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround (zgw-host-tools:s0 for build/test; zgw-host-tools:cppcheck for static analysis). ESP-IDF/idf.py remains unavailable. This pass adds no new ESP_PLATFORM-only code paths of its own (reuses esp_http_server/esp_timer exactly as the legacy handlers already did), so it introduces no new BLOCKED_TOOLCHAIN surface beyond S0's baseline; the real target wildcard-URI dispatch of these routes is unverified against a real ESP-IDF httpd instance -- every test here calls handler functions directly rather than through real HTTP dispatch.",
+  "unresolved_deviations": [
+    "9 of the 13 canonical v1 routes are unimplemented, blocked on host URI-parsing support and an operations-poll unification design -- see docs/architecture/HTTP_API_V1.md Section 4.1.",
+    "Legacy read-alias deprecation metadata and legacy-mutation 410 Gone behavior are unimplemented -- see docs/architecture/HTTP_API_V1.md Section 4.2.",
+    "Bundled Web UI migration to v1 is unimplemented -- see docs/architecture/HTTP_API_V1.md Section 4.3."
+  ],
+  "unresolved_blockers": [
+    "Real ESP-IDF httpd wildcard-URI dispatch of the four implemented v1 routes is unverified against real hardware -- BLOCKED_TOOLCHAIN, carried over from S0."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

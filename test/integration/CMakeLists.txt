@@ -94,6 +94,7 @@ zg_apply_component_compile_policy(service_integration)
 
 add_library(web_ui_integration STATIC
     ../../components/web_ui/web_handler_common.cpp
+    ../../components/web_ui/web_v1_common.cpp
 )
 target_include_directories(web_ui_integration
     PUBLIC
@@ -151,6 +152,20 @@ target_include_directories(test_integration_web_handlers_device
 target_link_libraries(test_integration_web_handlers_device PRIVATE service_integration web_ui_integration)
 zg_apply_component_compile_policy(test_integration_web_handlers_device)
 add_test(NAME test_integration_web_handlers_device COMMAND test_integration_web_handlers_device)
+
+add_executable(test_integration_web_handlers_v1 test_integration_web_handlers_v1.cpp)
+target_include_directories(test_integration_web_handlers_v1
+    PRIVATE
+        ../../components/web_ui/include
+        ../../components/web_ui
+        ../../components/service/include
+        ../../components/app_hal/include
+        ../../components/common/include
+        ../../components/core/include
+)
+target_link_libraries(test_integration_web_handlers_v1 PRIVATE service_integration web_ui_integration)
+zg_apply_component_compile_policy(test_integration_web_handlers_v1)
+add_test(NAME test_integration_web_handlers_v1 COMMAND test_integration_web_handlers_v1)
 
 add_executable(test_integration_web_handlers_static test_integration_web_handlers_static.cpp)
 target_include_directories(test_integration_web_handlers_static

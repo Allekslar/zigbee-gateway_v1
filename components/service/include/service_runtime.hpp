@@ -101,6 +101,8 @@ public:
     // by hal_event_adapter.cpp and internally so every device-scoped event
     // built after a successful join carries its resolved identity.
     core::DeviceId resolve_device_id_for_short_addr(uint16_t short_addr) noexcept override;
+    DeviceIdResolveStatus resolve_short_addr_for_device_id_hex(
+        const char* device_id_hex, uint16_t* out_short_addr) noexcept override;
     bool post_zigbee_interview_result(
         uint32_t correlation_id,
         uint16_t short_addr,

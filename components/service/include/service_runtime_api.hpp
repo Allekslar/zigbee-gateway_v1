@@ -320,7 +320,21 @@ struct OtaResult {
 };
 
 struct DevicesApiDeviceSnapshot {
+    // Canonical durable identity (FD-01), pre-formatted as exactly 16
+    // lowercase hex characters + a null terminator so adapters (web_ui) can
+    // copy it into JSON without ever naming core::DeviceId directly
+    // (INV-M030). Always populated: a device only appears in this snapshot
+    // at all when its DeviceId is valid (see DevicesApiSnapshotBuilder).
+    std::array<char, core::DeviceId::kHexLength + 1U> device_id_hex{};
+    // short_addr is a diagnostic locator only (FD-01), never identity. It is
+    // meaningful only when has_locator is true -- callers must serialize it
+    // as JSON null otherwise, per plan S4 HTTP #2 ("short_addr always
+    // present as a nullable diagnostic field").
+    bool has_locator{false};
     uint16_t short_addr{kUnknownShortAddr};
+    // Monotonically increasing per DeviceLocatorRegistry::remap() call;
+    // meaningful only when has_locator is true.
+    uint32_t locator_revision{0};
     bool online{false};
     bool power_on{false};
     DeviceReportingState reporting_state{DeviceReportingState::kUnknown};
@@ -389,6 +403,20 @@ public:
 
     virtual void set_capabilities(const RuntimeCapabilities& capabilities) noexcept = 0;
     virtual RuntimeCapabilities capabilities() const noexcept = 0;
+
+    // Resolves a canonical 16-lowercase-hex-character DeviceId string (as
+    // used in /api/v1 device-scoped URL paths) to a current short_addr for
+    // command dispatch, without ever exposing core::DeviceId to callers
+    // (INV-M030: web_ui adapters must not name core:: symbols). String-in,
+    // string-free-out by design.
+    enum class DeviceIdResolveStatus : uint8_t {
+        kResolved = 0,          // known identity with a current locator; *out_short_addr is valid.
+        kMalformedHex = 1,      // not exactly 16 lowercase hex characters.
+        kUnknownDevice = 2,     // well-formed hex, but no device with that identity is known to Core.
+        kNoCurrentLocator = 3,  // known identity, but it has no current locator (offline/not yet joined).
+    };
+    virtual DeviceIdResolveStatus resolve_short_addr_for_device_id_hex(
+        const char* device_id_hex, uint16_t* out_short_addr) noexcept = 0;
 
     // Canonical gateway identity (plan FD-17, S4 slice): the factory base
     // MAC, resolved once at construction and stable for the process
