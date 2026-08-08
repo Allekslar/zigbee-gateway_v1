@@ -1,0 +1,88 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S4-http-v1-operations-poll",
+  "stage_name": "S4 slice 3/N continuation: OperationResultStore domain unification + GET /api/v1/operations/{operation_id} (plan HTTP required change #1, 13th canonical route)",
+  "input_commit_sha": "8d09cfaf5158460c363416c8fda547a7e7f9755d",
+  "output_commit_sha": "8d09cfaf5158460c363416c8fda547a7e7f9755d",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted, continuing the uncommitted S4 work on top of 8d09cfa (merge of PR #45).",
+  "sequencing_note": "User said 'йдемо далі по плану' (let's continue along the plan) after the MQTT v1 + HA discovery migration was completed. With MQTT/HA (items 10-19) fully done, the only remaining S4-scoped (not S5/S6-blocked) work was the OperationResultStore domain unification explicitly named as a distinct unit of work in both docs/architecture/HTTP_API_V1.md and docs/architecture/MQTT_API_V1.md since the earlier HTTP v1 passes. This pass completes the HTTP side (the 13th and final canonical v1 route) and narrows the MQTT command-result blocker to what is genuinely MQTT-specific (see deviations).",
+  "changed_files": [
+    "components/service/include/service_runtime_api.hpp (new OperationDomain, OperationPollStatus, OperationStatusSnapshot types; new poll_operation_status() pure virtual on ServiceRuntimeApi)",
+    "components/service/include/operation_result_store.hpp (poll_operation_status() + private has_config_result_locked() peek helper declarations)",
+    "components/service/operation_result_store.cpp (poll_operation_status() implementation: tries network/ota/rcp_update via their existing get_*_poll_status(), then peeks config's result queue directly since config has no poll-status queue at all)",
+    "components/service/include/service_runtime.hpp (poll_operation_status() override declaration)",
+    "components/service/service_runtime.cpp (poll_operation_status() passthrough implementation)",
+    "components/web_ui/include/web_v1_common.hpp (new ApiV1ErrorCode::kOperationNotFound; new extract_uri_decimal_segment() declaration)",
+    "components/web_ui/web_v1_common.cpp (kOperationNotFound -> 404 in the golden matrix + its error token; extract_uri_decimal_segment() implementation)",
+    "components/web_ui/web_handlers_v1.cpp (new operations_get_handler_v1 handler + operation_domain_token_v1() helper + register_operations_routes_v1(); wired into register_web_routes_v1())",
+    "components/web_ui/include/web_routes.hpp (register_operations_routes_v1 declaration)",
+    "check_arch_invariants.sh (INV-H010's check_absent pattern extended to include register_operations_routes_v1)",
+    "docs/architecture/HTTP_API_V1.md (Section 2 updated to 13/13 routes; new Section 3.6 documents the unification + route; Section 4 renumbered, now only legacy-alias/410 and UI migration remain, both still correctly blocked on S6 per FD-19)",
+    "docs/architecture/MQTT_API_V1.md (Section 4.1 rewritten: the OperationResultStore blocker is resolved; the remaining MQTT command-result gap is now precisely scoped to push-timing and device-scoping/CoreCommandResult-bridging concerns specific to MQTT, not a shared-infrastructure gap)",
+    "test/host/test_operation_result_store.cpp (new coverage for poll_operation_status(): unknown/zero id, all 4 domains' in-progress->ready transitions, config's result-only limitation)",
+    "test/host/test_web_handlers_v1.cpp (new coverage for operations_get_handler_v1: malformed/zero/unknown operation_id, ready-via-real-network-scan with full response-shape assertions, pending-via-real-OTA-start, consume-then-404 on re-poll, null-req/user_ctx)"
+  ],
+  "frozen_decisions_applied": [
+    "S4 HTTP required change #1: all 13 canonical v1 routes are now implemented; GET /api/v1/operations/{operation_id} was the last one.",
+    "S4 HTTP required change #4/#9: the new kOperationNotFound error code slots into the existing golden matrix (api_v1_error_status()) exactly like every other v1 error code -- no handler invents its own status/token pairing for the new route.",
+    "The 'discriminated union across all four domains' design HTTP_API_V1.md's own Section 4.1 (prior revision) proposed verbatim was implemented essentially as described: OperationDomain (the discriminant) + OperationStatusSnapshot (domain + collapsed status), with the actual typed result still fetched via each domain's existing take_*_result() once ready rather than duplicating the 4 result structs into one mega-union -- a smaller, less duplicative implementation of the same idea.",
+    "Deliberate scope narrowing, consistent with the OTA/RCP submit-error-mapping precedent already established in this file: the ready-response payload summarizes each domain's most relevant fields rather than replicating every diagnostic field the legacy per-domain GET handlers expose (full scan records, OTA transport error codes, etc.)."
+  ],
+  "work_summary": {
+    "operation_result_store_unification": {
+      "status": "COMPLETE, TESTED",
+      "detail": "poll_operation_status(request_id) tries network/ota/rcp_update (each already has a get_*_poll_status() method) in turn, then falls back to a non-consuming peek of config's result queue (config never had a poll-status queue at all -- confirmed during this pass that no HTTP/MQTT caller has ever been able to obtain a config request_id to poll with in the first place, since config_patch_handler_v1 responds 200 synchronously with none, so this pre-existing limitation is accurately described, not newly introduced). Dispatch-by-trying-each-domain is safe because all four domains share one global atomic request_id counter (next_operation_request_id()), so a real id can never belong to more than one domain. Tested directly in test_operation_result_store.cpp: unknown id, zero id, and each domain's in-progress -> ready transition (network via scan-queued, OTA via queued, RCP via applying), plus config's result-only visibility."
+    },
+    "unified_poll_route": {
+      "status": "COMPLETE, TESTED",
+      "detail": "operations_get_handler_v1 parses the operation_id path segment via the new extract_uri_decimal_segment() (mirroring the existing hex-segment parsers' exact-match contract), calls poll_operation_status(), and returns: 404 operation_not_found for unknown ids; 200 {\"status\":\"pending\",\"domain\":...} for in-progress; 200 with a domain-specific summary for ready (fetched via the matching take_*_result(), which is destructive -- a second poll of an already-consumed id returns 404, matching the legacy per-domain GET handlers' own existing consume-on-poll semantics exactly, not a new limitation). Registered via register_operations_routes_v1(), wired into register_web_routes_v1() and INV-H010's absence check like every other v1 registration function -- still unregistered by construction in main/app_main.cpp, unchanged from every other S4 HTTP route. Tested end-to-end through a real network scan (post_network_scan -> process_pending -> poll -> ready) and a real OTA start (post_ota_start -> poll while still queued -> pending), not just synthetic OperationResultStore state."
+    },
+    "mqtt_command_result_scope_narrowed": {
+      "status": "N/A -- documentation-only clarification, no code change",
+      "detail": "docs/architecture/MQTT_API_V1.md Section 4.1 rewritten to reflect that the shared-infrastructure blocker (OperationResultStore unification) this section previously named is now resolved by this pass, and to name the two MQTT-specific problems that remain: (1) MQTT is push-based (the bridge must decide when to publish, unlike HTTP's pull-based poll) and (2) OperationResultStore's four domains are not uniformly device-scoped the way the command-result topic's path segment requires, and device power commands (the most likely candidate for a pushed result) do not use OperationResultStore at all -- they use the separate CoreCommand/CoreCommandResult mechanism. This is a more precise, smaller remaining problem than 'needs the same unification blocking the HTTP poll', not new deferred work being introduced."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "The ready-response payload for GET /api/v1/operations/{operation_id} is a deliberately coarse per-domain summary (ok/status_code plus a handful of fields), not a full replica of every field the legacy per-domain GET handlers (web_handlers_network.cpp/web_handlers_ota.cpp/web_handlers_rcp.cpp) already expose (e.g. full network scan records, OTA transport error codes/TLS diagnostics, HTTP status codes from the OTA download itself).",
+      "why": "Consistent with this file's own established precedent (OTA/RCP submit-error mapping, Section 3.5): the golden-matrix/unified-contract philosophy favors a small, stable vocabulary over exposing every internal validation/diagnostic nuance as a top-level v1 field. All four domains' status enums reserve 0 for 'ok', so a generic ok:true/false plus the raw status_code integer is derivable without per-domain enum-to-string mapping duplication, while still exposing the full detail to anyone who needs it via the raw code.",
+      "consequence": "A v1 client cannot distinguish e.g. a specific OTA transport failure reason purely from this endpoint's response; the underlying detail is still available via status_code (and, for now, via the legacy per-domain GET routes, which remain unmodified and fully functional). This is a deliberate, documented scope decision, revisitable later without breaking the response shape (new optional fields could be added).",
+      "tracked_in": "docs/architecture/HTTP_API_V1.md Section 3.6"
+    },
+    {
+      "deviation": "A second poll of an already-ready-and-consumed operation returns 404 operation_not_found, not the golden matrix's '200 completed idempotent replay' framing.",
+      "why": "OperationResultStore's take_*_result() methods are destructive by design (predate this pass, used unchanged) -- this is not a choice made in this pass, it is an existing architectural characteristic of the store being unified. Making the unified poll idempotently re-servable would require either a non-destructive read path for all 4 domains (a larger change to the store's core semantics, affecting the legacy handlers too) or caching the once-fetched result somewhere new. Given this project has no production deployment yet, changing this store-wide is now a legitimate future option, but was judged out of scope for 'unify the domains and build the poll route' specifically.",
+      "consequence": "A client that polls twice after an operation completes will see the result once, then 404 on any subsequent poll -- callers must treat the first ready response as authoritative and final. This matches the legacy handlers' existing behavior exactly, so it is not a regression relative to what a client could already observe via the legacy routes.",
+      "tracked_in": "docs/architecture/HTTP_API_V1.md Section 3.6"
+    },
+    {
+      "deviation": "MQTT command-result publishing (topic_v1_device_command_result()'s payload) remains unimplemented.",
+      "why": "Narrowed and re-scoped, not newly deferred: the shared OperationResultStore-unification blocker this pass resolves was the ONLY blocker named in the prior two MQTT passes' evidence; what remains (push-timing decision, non-uniform device-scoping across domains, device-power commands using a wholly separate CoreCommandResult mechanism) is genuinely new design surface this pass's HTTP-side work does not resolve.",
+      "consequence": "No MQTT consumer of the command-result topic exists yet in either direction; purely additive once designed and built.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Section 4.1"
+    }
+  ],
+  "inventories_recomputed": {
+    "http_v1_canonical_routes_implemented": 13,
+    "http_v1_canonical_routes_total": 13,
+    "host_tests_total": 83
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0. INV-H010's extended check_absent pattern (now covering register_operations_routes_v1 alongside the other 7 registration functions) confirms main/app_main.cpp names none of them." },
+    "host_tests": { "result": "PASSED", "detail": "83/83 (100%), clean rebuild (existing test_operation_result_store.cpp and test_web_handlers_v1.cpp targets extended in place, no new ctest target names added)." },
+    "sanitizer_tests": { "result": "PASSED", "detail": "83/83 (100%) under ASan+UBSan, clean rebuild, exact CI flags reproduced." },
+    "cppcheck": { "result": "PASSED", "detail": "core+service job (covers operation_result_store.cpp/service_runtime.cpp) and web_ui job (covers web_handlers_v1.cpp/web_v1_common.cpp, both already in the CI file list since the mutation-routes pass fixed that gap): exit code 0 on both." },
+    "integration_tests": { "result": "N/A", "detail": "No new integration-level fixture needed -- operations_get_handler_v1 does not call esp_timer_get_time() or need any fixture beyond what the host test's real ServiceRuntime already provides." }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround (zgw-host-tools:s0 for build/test/sanitizer; zgw-host-tools:cppcheck for static analysis). ESP-IDF/idf.py remains unavailable. This pass adds no new ESP_PLATFORM-only code paths of its own (reuses esp_http_server exactly as every other v1 handler already does), so it introduces no new BLOCKED_TOOLCHAIN surface beyond S0's baseline; the real target wildcard-URI dispatch of GET /api/v1/operations/* is unverified against a real ESP-IDF httpd instance, same limitation already recorded for every other v1 route in docs/architecture/HTTP_API_V1.md Section 5.",
+  "unresolved_deviations": [
+    "The operations-poll ready-response payload is a deliberately coarse per-domain summary, not a full replica of the legacy per-domain GET handlers' diagnostic detail -- see docs/architecture/HTTP_API_V1.md Section 3.6.",
+    "A second poll of an already-consumed operation returns 404, not an idempotent 200 replay -- an existing OperationResultStore characteristic (destructive take_*_result()), not new to this pass -- see docs/architecture/HTTP_API_V1.md Section 3.6.",
+    "MQTT command-result publishing remains unimplemented; the remaining blockers are now MQTT-specific (push-timing, non-uniform device-scoping, CoreCommandResult bridging for device-power commands) rather than the OperationResultStore unification this pass resolved -- see docs/architecture/MQTT_API_V1.md Section 4.1.",
+    "Legacy HTTP read-alias/410-legacy-mutation contract and bundled Web UI migration remain deferred, correctly blocked on S6 per FD-19/plan #29 -- see docs/architecture/HTTP_API_V1.md Section 4.1/4.2 (unchanged from prior passes)."
+  ],
+  "unresolved_blockers": [
+    "Real ESP-IDF httpd wildcard-URI dispatch of GET /api/v1/operations/* is unverified against real hardware -- BLOCKED_TOOLCHAIN, carried over from S0."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

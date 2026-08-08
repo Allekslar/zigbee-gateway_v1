@@ -421,6 +421,61 @@ RcpUpdatePollStatus OperationResultStore::get_rcp_update_poll_status(uint32_t re
     return RcpUpdatePollStatus::kNotReady;
 }
 
+bool OperationResultStore::has_config_result_locked(const uint32_t request_id) const noexcept {
+    for (std::size_t i = 0; i < config_result_count_; ++i) {
+        if (config_result_queue_[i].request_id == request_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+OperationStatusSnapshot OperationResultStore::poll_operation_status(const uint32_t request_id) const noexcept {
+    if (request_id == 0U) {
+        return OperationStatusSnapshot{};
+    }
+
+    // Each get_*_poll_status() call below locks and releases internally --
+    // sequential, non-nested acquisitions, not one held across all four.
+    const NetworkOperationPollStatus network_status = get_network_operation_poll_status(request_id);
+    if (network_status != NetworkOperationPollStatus::kNotReady) {
+        return OperationStatusSnapshot{
+            OperationDomain::kNetwork,
+            network_status == NetworkOperationPollStatus::kReady ? OperationPollStatus::kReady
+                                                                   : OperationPollStatus::kInProgress};
+    }
+
+    const OtaPollStatus ota_status = get_ota_poll_status(request_id);
+    if (ota_status != OtaPollStatus::kNotReady) {
+        return OperationStatusSnapshot{
+            OperationDomain::kOta,
+            ota_status == OtaPollStatus::kReady ? OperationPollStatus::kReady : OperationPollStatus::kInProgress};
+    }
+
+    const RcpUpdatePollStatus rcp_status = get_rcp_update_poll_status(request_id);
+    if (rcp_status != RcpUpdatePollStatus::kNotReady) {
+        return OperationStatusSnapshot{
+            OperationDomain::kRcpUpdate,
+            rcp_status == RcpUpdatePollStatus::kReady ? OperationPollStatus::kReady
+                                                        : OperationPollStatus::kInProgress};
+    }
+
+    // Config has no poll-status queue (see class comment/header): only a
+    // published, not-yet-consumed result is observable. No HTTP/MQTT
+    // caller today ever receives a config request_id to poll with in the
+    // first place (config_patch_handler_v1 responds 200 synchronously
+    // with no request_id at all), so "in progress" is unobservable for
+    // this domain -- an existing limitation, not one this poll adds.
+    {
+        RuntimeLockGuard guard(network_result_lock_);
+        if (has_config_result_locked(request_id)) {
+            return OperationStatusSnapshot{OperationDomain::kConfig, OperationPollStatus::kReady};
+        }
+    }
+
+    return OperationStatusSnapshot{};
+}
+
 std::size_t OperationResultStore::pending_config_results() const noexcept {
     RuntimeLockGuard guard(network_result_lock_);
     return config_result_count_;

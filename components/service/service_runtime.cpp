@@ -1200,6 +1200,10 @@ RcpUpdatePollStatus ServiceRuntime::get_rcp_update_poll_status(uint32_t request_
     return operation_result_store_.get_rcp_update_poll_status(request_id);
 }
 
+OperationStatusSnapshot ServiceRuntime::poll_operation_status(uint32_t request_id) const noexcept {
+    return operation_result_store_.poll_operation_status(request_id);
+}
+
 bool ServiceRuntime::is_scan_request_queued(uint32_t request_id) const noexcept {
     return operation_result_store_.get_network_operation_poll_status(request_id) ==
            NetworkOperationPollStatus::kScanQueued;

@@ -17,6 +17,7 @@ constexpr uint32_t kApiV1SchemaVersion = 1U;
 enum class ApiV1ErrorCode : uint8_t {
     kDeviceNotFound,          // 404
     kIdentityUnresolved,      // 404
+    kOperationNotFound,       // 404 -- unknown/expired GET /api/v1/operations/{operation_id}
     kDeviceOffline,           // 409
     kStaleLocator,            // 409
     kCapabilityUnavailable,   // 503
@@ -67,5 +68,11 @@ bool extract_uri_device_id_and_reporting_segments(
     std::size_t out_hex_capacity,
     uint32_t* out_endpoint,
     uint32_t* out_cluster_id) noexcept;
+
+// Parses "<prefix><decimal digits>" -- the whole remainder after prefix
+// must be one or more decimal digits with no separator/suffix (used by
+// GET /api/v1/operations/{operation_id}). Rejects empty, non-digit,
+// leading-zero-only or out-of-range (> UINT32_MAX) segments.
+bool extract_uri_decimal_segment(const char* uri, const char* prefix, uint32_t* out_value) noexcept;
 
 }  // namespace web_ui

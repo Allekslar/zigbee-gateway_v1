@@ -1,4 +1,5 @@
 {
+  "superseded_note": "This file is a point-in-time record and is left unmodified below as historical evidence. Its claim that GET /api/v1/operations/{operation_id} (and the OperationResultStore unification it needs) remains unimplemented is now stale: implementation-evidence/S4-http-v1-operations-poll-completion.json completes that route, making all 13 of 13 canonical v1 HTTP routes implemented. Read both files together for the current state.",
   "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
   "stage_id": "S4-http-v1-mutations",
   "stage_name": "S4 slice 3/N continuation: versioned /api/v1 HTTP contract, mutation routes (plan required changes #1, #4, #5, #9, #28-#30)",

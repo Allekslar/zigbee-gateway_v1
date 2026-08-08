@@ -2,6 +2,7 @@
 /* Copyright (C) 2026 Alex.K. */
 
 #include <cassert>
+#include <cstring>
 
 #include "application_command_mapper.hpp"
 
@@ -73,6 +74,106 @@ int main() {
             "zigbee-gateway/devices/nope/power/set",
             "{\"power_on\":true}",
             &power_request) == service::ApplicationCommandParseStatus::kInvalidTopic);
+
+    // --- Versioned (v1) MQTT command parsers (plan S4 MQTT #10-#13). ---
+    constexpr const char* kDeviceIdHex = "00124b0001aa2201";
+    char device_id_hex[17]{};
+    bool desired_power_on = false;
+
+    assert(
+        service::parse_mqtt_v1_device_power_request(
+            "zigbee-gateway/v1/devices/00124b0001aa2201/power/set",
+            "{\"power_on\":true}",
+            device_id_hex,
+            sizeof(device_id_hex),
+            &desired_power_on) == service::ApplicationCommandParseStatus::kOk);
+    assert(std::strcmp(device_id_hex, kDeviceIdHex) == 0);
+    assert(desired_power_on);
+
+    // Wrong suffix (looks like a config/set topic).
+    assert(
+        service::parse_mqtt_v1_device_power_request(
+            "zigbee-gateway/v1/devices/00124b0001aa2201/config/set",
+            "{\"power_on\":true}",
+            device_id_hex,
+            sizeof(device_id_hex),
+            &desired_power_on) == service::ApplicationCommandParseStatus::kInvalidTopic);
+
+    // Uppercase hex is rejected -- canonical form is lowercase only.
+    assert(
+        service::parse_mqtt_v1_device_power_request(
+            "zigbee-gateway/v1/devices/00124B0001AA2201/power/set",
+            "{\"power_on\":true}",
+            device_id_hex,
+            sizeof(device_id_hex),
+            &desired_power_on) == service::ApplicationCommandParseStatus::kInvalidTopic);
+
+    // Legacy-shaped topic is not accidentally accepted by the v1 parser.
+    assert(
+        service::parse_mqtt_v1_device_power_request(
+            "zigbee-gateway/devices/8705/power/set",
+            "{\"power_on\":true}",
+            device_id_hex,
+            sizeof(device_id_hex),
+            &desired_power_on) == service::ApplicationCommandParseStatus::kInvalidTopic);
+
+    // Undersized output buffer.
+    char tiny_device_id_hex[8]{};
+    assert(
+        service::parse_mqtt_v1_device_power_request(
+            "zigbee-gateway/v1/devices/00124b0001aa2201/power/set",
+            "{\"power_on\":true}",
+            tiny_device_id_hex,
+            sizeof(tiny_device_id_hex),
+            &desired_power_on) == service::ApplicationCommandParseStatus::kInvalidTopic);
+
+    // Malformed payload.
+    assert(
+        service::parse_mqtt_v1_device_power_request(
+            "zigbee-gateway/v1/devices/00124b0001aa2201/power/set",
+            "{\"power_on\":17}",
+            device_id_hex,
+            sizeof(device_id_hex),
+            &desired_power_on) == service::ApplicationCommandParseStatus::kInvalidPayload);
+
+    service::ReportingProfileWriteRequest v1_request{};
+    assert(
+        service::parse_mqtt_v1_reporting_profile_request(
+            "zigbee-gateway/v1/devices/00124b0001aa2201/config/set",
+            "{\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,"
+            "\"max_interval_seconds\":300,\"reportable_change\":25,\"capability_flags\":3}",
+            device_id_hex,
+            sizeof(device_id_hex),
+            &v1_request) == service::ApplicationCommandParseStatus::kOk);
+    assert(std::strcmp(device_id_hex, kDeviceIdHex) == 0);
+    // The v1 path never resolves a short_addr at parse time -- the caller
+    // (mqtt_bridge) resolves device_id_hex to both a short_addr and a
+    // DeviceId via ServiceRuntimeApi after a successful parse.
+    assert(v1_request.short_addr == service::kUnknownShortAddr);
+    assert(!v1_request.profile.key.device_id.valid());
+    assert(v1_request.profile.key.endpoint == 1U);
+    assert(v1_request.profile.key.cluster_id == 0x0402U);
+    assert(v1_request.profile.min_interval_seconds == 10U);
+    assert(v1_request.profile.max_interval_seconds == 300U);
+    assert(v1_request.profile.reportable_change == 25U);
+    assert(v1_request.profile.capability_flags == 3U);
+
+    assert(
+        service::parse_mqtt_v1_reporting_profile_request(
+            "zigbee-gateway/v1/devices/00124b0001aa2201/config/set",
+            "{\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":301,\"max_interval_seconds\":300}",
+            device_id_hex,
+            sizeof(device_id_hex),
+            &v1_request) == service::ApplicationCommandParseStatus::kInvalidProfileBounds);
+
+    // Wrong suffix (looks like a power/set topic).
+    assert(
+        service::parse_mqtt_v1_reporting_profile_request(
+            "zigbee-gateway/v1/devices/00124b0001aa2201/power/set",
+            "{\"endpoint\":1,\"cluster_id\":1026,\"min_interval_seconds\":10,\"max_interval_seconds\":300}",
+            device_id_hex,
+            sizeof(device_id_hex),
+            &v1_request) == service::ApplicationCommandParseStatus::kInvalidTopic);
 
     return 0;
 }

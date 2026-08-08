@@ -652,6 +652,167 @@ esp_err_t rcp_update_operations_post_handler_v1(httpd_req_t* req) {
     return send_api_v1_accepted(req, request.request_id);
 }
 
+const char* operation_domain_token_v1(service::OperationDomain domain) noexcept {
+    switch (domain) {
+        case service::OperationDomain::kNetwork:
+            return "network";
+        case service::OperationDomain::kConfig:
+            return "config";
+        case service::OperationDomain::kOta:
+            return "ota";
+        case service::OperationDomain::kRcpUpdate:
+            return "rcp_update";
+        case service::OperationDomain::kUnknown:
+        default:
+            return "unknown";
+    }
+}
+
+// Deliberately coarse (mirrors the OTA/RCP submit-error-mapping precedent
+// in this same file): every domain's *Result::status enum reserves 0 for
+// "ok" (NetworkOperationStatus::kOk, OtaOperationStatus::kOk,
+// RcpUpdateOperationStatus::kOk all equal 0), so "ok" is derived generically
+// from the raw numeric code rather than switching on each domain's own
+// ~15-value enum; the raw status_code is still exposed for full detail.
+// Domain-specific diagnostic fields (e.g. OTA transport error details, full
+// network scan records) are intentionally not surfaced here -- this is the
+// unified poll's stable summary contract, not a replacement for the
+// legacy per-domain result GETs.
+esp_err_t operations_get_handler_v1(httpd_req_t* req) {
+    if (req == nullptr || req->user_ctx == nullptr) {
+        return ESP_FAIL;
+    }
+
+    uint32_t operation_id = 0U;
+    if (!extract_uri_decimal_segment(req->uri, "/api/v1/operations/", &operation_id) || operation_id == 0U) {
+        return send_api_v1_error(req, ApiV1ErrorCode::kInvalidRequest);
+    }
+
+    auto* context = static_cast<WebRouteContext*>(req->user_ctx);
+    const service::OperationStatusSnapshot snapshot = context->runtime->poll_operation_status(operation_id);
+    if (snapshot.domain == service::OperationDomain::kUnknown) {
+        return send_api_v1_error(req, ApiV1ErrorCode::kOperationNotFound);
+    }
+
+    (void)httpd_resp_set_type(req, "application/json");
+
+    if (snapshot.status != service::OperationPollStatus::kReady) {
+        char pending_response[128]{};
+        const int written = std::snprintf(
+            pending_response,
+            sizeof(pending_response),
+            "{\"schema_version\":%u,\"request_id\":%" PRIu32 ",\"domain\":\"%s\",\"status\":\"pending\"}",
+            static_cast<unsigned>(kApiV1SchemaVersion),
+            operation_id,
+            operation_domain_token_v1(snapshot.domain));
+        if (written <= 0 || written >= static_cast<int>(sizeof(pending_response))) {
+            return ESP_FAIL;
+        }
+        return httpd_resp_send(req, pending_response, HTTPD_RESP_USE_STRLEN);
+    }
+
+    char response[512]{};
+    int written = 0;
+    switch (snapshot.domain) {
+        case service::OperationDomain::kNetwork: {
+            service::NetworkResult result{};
+            if (!context->runtime->take_network_result(operation_id, &result)) {
+                return send_api_v1_error(req, ApiV1ErrorCode::kOperationNotFound);
+            }
+            char short_addr_json[16]{};
+            if (result.device_short_addr == service::kUnknownShortAddr) {
+                std::snprintf(short_addr_json, sizeof(short_addr_json), "null");
+            } else {
+                std::snprintf(
+                    short_addr_json, sizeof(short_addr_json), "%u", static_cast<unsigned>(result.device_short_addr));
+            }
+            written = std::snprintf(
+                response,
+                sizeof(response),
+                "{\"schema_version\":%u,\"request_id\":%" PRIu32
+                ",\"domain\":\"network\",\"status\":\"ready\",\"ok\":%s,\"status_code\":%u,"
+                "\"operation_type\":%u,\"short_addr\":%s,\"ssid\":\"%s\",\"saved\":%s,"
+                "\"join_window_seconds\":%u,\"scan_count\":%u}",
+                static_cast<unsigned>(kApiV1SchemaVersion),
+                operation_id,
+                result.status == service::NetworkOperationStatus::kOk ? "true" : "false",
+                static_cast<unsigned>(result.status),
+                static_cast<unsigned>(result.operation),
+                short_addr_json,
+                result.ssid,
+                result.saved ? "true" : "false",
+                static_cast<unsigned>(result.join_window_seconds),
+                static_cast<unsigned>(result.scan_count));
+            break;
+        }
+        case service::OperationDomain::kOta: {
+            service::OtaResult result{};
+            if (!context->runtime->take_ota_result(operation_id, &result)) {
+                return send_api_v1_error(req, ApiV1ErrorCode::kOperationNotFound);
+            }
+            written = std::snprintf(
+                response,
+                sizeof(response),
+                "{\"schema_version\":%u,\"request_id\":%" PRIu32
+                ",\"domain\":\"ota\",\"status\":\"ready\",\"ok\":%s,\"status_code\":%u,"
+                "\"reboot_required\":%s,\"downloaded_bytes\":%" PRIu32 ",\"image_size\":%" PRIu32
+                ",\"image_size_known\":%s,\"target_version\":\"%s\"}",
+                static_cast<unsigned>(kApiV1SchemaVersion),
+                operation_id,
+                result.status == service::OtaOperationStatus::kOk ? "true" : "false",
+                static_cast<unsigned>(result.status),
+                result.reboot_required ? "true" : "false",
+                result.downloaded_bytes,
+                result.image_size,
+                result.image_size_known ? "true" : "false",
+                result.target_version.data());
+            break;
+        }
+        case service::OperationDomain::kRcpUpdate: {
+            service::RcpUpdateResult result{};
+            if (!context->runtime->take_rcp_update_result(operation_id, &result)) {
+                return send_api_v1_error(req, ApiV1ErrorCode::kOperationNotFound);
+            }
+            written = std::snprintf(
+                response,
+                sizeof(response),
+                "{\"schema_version\":%u,\"request_id\":%" PRIu32
+                ",\"domain\":\"rcp_update\",\"status\":\"ready\",\"ok\":%s,\"status_code\":%u,"
+                "\"written_bytes\":%" PRIu32 ",\"target_version\":\"%s\"}",
+                static_cast<unsigned>(kApiV1SchemaVersion),
+                operation_id,
+                result.status == service::RcpUpdateOperationStatus::kOk ? "true" : "false",
+                static_cast<unsigned>(result.status),
+                result.written_bytes,
+                result.target_version.data());
+            break;
+        }
+        case service::OperationDomain::kConfig: {
+            service::ConfigResult result{};
+            if (!context->runtime->take_config_result(operation_id, &result)) {
+                return send_api_v1_error(req, ApiV1ErrorCode::kOperationNotFound);
+            }
+            written = std::snprintf(
+                response,
+                sizeof(response),
+                "{\"schema_version\":%u,\"request_id\":%" PRIu32
+                ",\"domain\":\"config\",\"status\":\"ready\",\"ok\":true,\"status_code\":%u}",
+                static_cast<unsigned>(kApiV1SchemaVersion),
+                operation_id,
+                static_cast<unsigned>(result.last_command_status));
+            break;
+        }
+        case service::OperationDomain::kUnknown:
+        default:
+            return send_api_v1_error(req, ApiV1ErrorCode::kOperationNotFound);
+    }
+
+    if (written <= 0 || written >= static_cast<int>(sizeof(response))) {
+        return ESP_FAIL;
+    }
+    return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
+}
+
 }  // namespace
 
 bool register_capabilities_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
@@ -804,6 +965,19 @@ bool register_rcp_routes_v1(void* server_handle, WebRouteContext* context) noexc
     return httpd_register_uri_handler(static_cast<httpd_handle_t>(server_handle), &rcp_operations_uri) == ESP_OK;
 }
 
+bool register_operations_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
+    if (server_handle == nullptr || context == nullptr) {
+        return false;
+    }
+
+    httpd_uri_t operations_get_uri{};
+    operations_get_uri.uri = "/api/v1/operations/*";
+    operations_get_uri.method = HTTP_GET;
+    operations_get_uri.handler = operations_get_handler_v1;
+    operations_get_uri.user_ctx = context;
+    return httpd_register_uri_handler(static_cast<httpd_handle_t>(server_handle), &operations_get_uri) == ESP_OK;
+}
+
 bool register_web_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
     if (server_handle == nullptr || context == nullptr || context->runtime == nullptr) {
         return false;
@@ -825,6 +999,9 @@ bool register_web_routes_v1(void* server_handle, WebRouteContext* context) noexc
         return false;
     }
     if (!register_rcp_routes_v1(server_handle, context)) {
+        return false;
+    }
+    if (!register_operations_routes_v1(server_handle, context)) {
         return false;
     }
 

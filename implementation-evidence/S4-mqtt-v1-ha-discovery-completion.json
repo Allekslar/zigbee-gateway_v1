@@ -1,0 +1,80 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S4-mqtt-v1-ha-discovery",
+  "stage_name": "S4 slice 4/N continuation: Home Assistant discovery migration + HA-discovery tombstone (plan required changes #14 HA portion, #16-#19)",
+  "input_commit_sha": "8d09cfaf5158460c363416c8fda547a7e7f9755d",
+  "output_commit_sha": "8d09cfaf5158460c363416c8fda547a7e7f9755d",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted and directly continues S4-mqtt-v1-cutover (implementation-evidence/S4-mqtt-v1-cutover-completion.json), all uncommitted on top of 8d09cfa (merge of PR #45).",
+  "sequencing_note": "User's explicit correction after the cutover pass's summary flagged HA discovery migration as urgent-but-deferred: 'проет ще не в продакшн тож зміни можливі радикальні без додаткових міграцій' (the project isn't in production yet, so radical changes are possible without additional migrations). This directly resolves the stated reason the cutover pass deferred tombstoning legacy HA discovery topics (protecting the operator's real, live Home Assistant entities -- which do not exist, since there is no production deployment). This pass therefore completes the HA-discovery portion of plan #14 together with the #16-#19 migration itself, in the same window, exactly as the plan's own cutover-order section (Stage S4, steps 4-5) already specified.",
+  "changed_files": [
+    "components/mqtt_bridge/include/mqtt_discovery.hpp (build_homeassistant_discovery_messages gains a gateway_id_hex parameter; new build_legacy_homeassistant_discovery_tombstones declaration)",
+    "components/mqtt_bridge/mqtt_discovery.cpp (rewritten in place -- no parallel legacy/v1 discovery code kept, unlike the topic/serializer files, since the caution that justified that pattern no longer applies: all 5 entity builders now derive unique_id/object_id/device-identifiers from gateway_id_hex+device_id_hex, point state/command/availability topics at the v1 tree, and gained an availability_template needed by the v1 availability payload's JSON format; new build_legacy_discovery_tombstone helper + build_legacy_homeassistant_discovery_tombstones public function)",
+    "components/mqtt_bridge/mqtt_bridge.cpp (publish_homeassistant_discovery rewritten: new one-time legacy-discovery-tombstone sweep via legacy_discovery_tombstoned_, gateway_id_hex_ threaded into the new-discovery call, schema-change cache lookup switched from short_addr-keyed find_cached_device_by_short to device_id_hex-keyed find_cached_device_by_device_id_hex -- the now-unused find_cached_device_by_short was removed; devices with no resolved device_id_hex are skipped; reset_sync_cache() resets the new tombstone-sweep flag)",
+    "components/mqtt_bridge/include/mqtt_bridge.hpp (new legacy_discovery_tombstoned_ member)",
+    "docs/architecture/MQTT_API_V1.md (title/Section 1 updated to cover items 10-19 across three passes; Section 3.5 simplified; new Section 3.7 documents the discovery migration and tombstone; Section 4 deduplicated/renumbered; Section 5 cppcheck note corrected)",
+    "test/host/test_mqtt_discovery.cpp (rewritten: v1 identifiers/topics/availability_template assertions, 4 rejection-path assertions, new tombstone-builder coverage)",
+    "test/host/CMakeLists.txt (test_mqtt_discovery target gains mqtt_topics_v1.cpp, needed by mqtt_discovery.cpp's new dependency on the v1 topic builders)"
+  ],
+  "frozen_decisions_applied": [
+    "S4 MQTT required change #16: unique_id, the discovery topic's object_id segment, and the device 'identifiers' field are all now derived from both DeviceId (device_id_hex) and the canonical FD-17 GatewayId (gateway_id_hex) -- zgw_<gateway_id_hex>_<device_id_hex>[_<suffix>] -- so cloning the firmware image to different hardware yields a different discovered identity while reboot/reset on the same hardware does not.",
+    "S4 MQTT required change #17: build_legacy_homeassistant_discovery_tombstones() publishes deletion (empty retained) payloads for the old short-address discovery entities, and MqttBridge::publish_homeassistant_discovery() runs that sweep before its new-discovery-publish loop in the same function call, matching the plan's literal ordering.",
+    "S4 MQTT required change #18: entity type/capabilities are preserved across the identity change by construction -- the same 5 entity builders (switch/power, sensor/temperature, binary_sensor/occupancy, binary_sensor/contact, sensor/battery) with the same capability-gating logic (has_temperature, occupancy_state != kUnknown, etc.) were kept, only their identifiers/topics changed. The 'exactly one controlled deletion-and-recreation migration' language is satisfied by the tombstone sweep firing exactly once per MqttBridge lifetime (legacy_discovery_tombstoned_).",
+    "S4 MQTT required change #19: every entity's command_topic (switch/power) now targets the v1 DeviceId-keyed power/set topic; state_topic/availability_topic were also moved to the v1 tree in the same change (not explicitly named by #19's text, but required for the discovered entity to remain functional given Section 3.4 of this document already moved all live-content publishing to v1-only).",
+    "The HA-discovery portion of plan #14 (deferred by the prior cutover pass) is now implemented, per the user's explicit confirmation that no production deployment exists to protect."
+  ],
+  "work_summary": {
+    "discovery_identity_rewrite": {
+      "status": "COMPLETE, TESTED",
+      "detail": "mqtt_discovery.cpp rewritten in place (not paralleled) to derive every identifier from gateway_id_hex+device_id_hex and every topic reference from the v1 tree. A new availability_template field was added to every entity, a necessary correctness consequence of the v1 availability payload being JSON rather than the legacy bare online/offline string. build_homeassistant_discovery_messages() now requires a non-empty device.device_id_hex and a non-null gateway_id_hex, skipping devices without a resolved identity."
+    },
+    "legacy_discovery_tombstone": {
+      "status": "COMPLETE, TESTED",
+      "detail": "build_legacy_homeassistant_discovery_tombstones() builds all 5 possible legacy discovery topic tombstones unconditionally for a given short_addr (a caller cannot generally know which subset a device actually had published). Wired into publish_homeassistant_discovery() via a new one-time-per-bridge-lifetime trigger (legacy_discovery_tombstoned_), separate from the state/telemetry/availability tombstone sweep in sync_snapshot() because discovery publishing bypasses the pending-publication queue entirely (direct hal_mqtt_publish() calls)."
+    },
+    "remap_safety_for_discovery": {
+      "status": "COMPLETE",
+      "detail": "publish_homeassistant_discovery()'s schema-change cache lookup switched from short_addr-keyed to device_id_hex-keyed (find_cached_device_by_device_id_hex, new), mirroring the outbound-publishing remap-safety fix from the prior cutover pass -- a short_addr remap no longer looks like a new device to the discovery-republish decision either, avoiding a spurious (harmless but wasteful) discovery republish. The now-unused short_addr-keyed find_cached_device_by_short was removed rather than left as dead code."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "state_topic and availability_topic in the discovery payloads were moved to the v1 tree, even though plan #19's text only names 'discovery command templates' (i.e. command_topic) explicitly.",
+      "why": "Leaving state_topic/availability_topic pointed at the legacy tree while Section 3.4 of this document already moved all live-content publishing to v1-only exclusively would mean every discovered entity silently stops updating the moment this firmware runs -- the entity would exist in HA but never report a new value. This is a correctness requirement implied by the rest of this pass's own prior work, not a new scope decision.",
+      "consequence": "None negative -- discovered entities remain functional. This is recorded because it is technically broader than the plan's literal #19 text, not because it caused any regression.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Section 3.7"
+    },
+    {
+      "deviation": "No parallel 'legacy discovery' code path was kept in mqtt_discovery.cpp the way mqtt_topics.hpp/mqtt_serializer.hpp were kept alongside their v1 counterparts in the earlier passes.",
+      "why": "The earlier passes' pattern (keep legacy code reachable for host tests/dev use, just unregistered/unsubscribed in production) existed specifically to avoid an irreversible production behavior change without review. Discovery-building is a pure function with no production-reachability distinction to preserve (nothing ever called the legacy discovery builders directly except the one call site inside publish_homeassistant_discovery(), which this pass rewrote outright) -- keeping a second, now-completely-unused copy of 5 near-identical builder functions would be dead weight with no test or dev-profile value.",
+      "consequence": "None -- legacy discovery topic strings needed only for tombstoning are reconstructed by the small, dedicated build_legacy_discovery_tombstone() helper, which is a much smaller surface than keeping full duplicate entity builders.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Section 3.7"
+    },
+    {
+      "deviation": "The MQTT command-result topic's payload contract remains undesigned, unchanged from the prior two passes.",
+      "why": "Unchanged reasoning: blocked on the same OperationResultStore domain-unification blocking the HTTP operations-poll route.",
+      "consequence": "No consumer of this topic exists yet in either direction; purely additive once built.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Section 4.1"
+    }
+  ],
+  "inventories_recomputed": {
+    "mqtt_v1_plan_items_implemented": "10, 11, 12, 13, 14 (complete), 15, 16, 17, 18, 19 of 10-19",
+    "mqtt_v1_plan_items_remaining": "none -- all of plan #10-#19 (MQTT v1 + HA discovery) is now implemented",
+    "host_tests_total": 83
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0." },
+    "host_tests": { "result": "PASSED", "detail": "83/83 (100%), clean rebuild. Only test_mqtt_discovery.cpp needed rewriting for this pass; test_mqtt_bridge_commands/test_mqtt_device_sync/test_mqtt_runtime_feed/test_mqtt_status_runtime_feed all continued to pass unmodified, since discovery publishing bypasses the pending-publication queue those tests observe (host builds never actually call hal_mqtt_publish, so discovery content changes are invisible to them by construction, not because they were untested -- discovery itself is fully covered directly in test_mqtt_discovery.cpp)." },
+    "sanitizer_tests": { "result": "PASSED", "detail": "83/83 (100%) under ASan+UBSan, clean rebuild, exact CI flags reproduced." },
+    "cppcheck": { "result": "PASSED for all new/changed code; 5 pre-existing findings confirmed carried-over, not new", "detail": "mqtt_bridge component (no CI job; run manually as in prior passes): same 5 findings as the cutover pass's evidence, verified line-by-line to be the exact same conditional idiom copied verbatim during the rewrite (e.g. 'previous == nullptr || (previous != nullptr && ...)' in publish_homeassistant_discovery(), 'count < capacity && build_switch_discovery(...)' in build_homeassistant_discovery_messages()) rather than a new issue." },
+    "integration_tests": { "result": "N/A", "detail": "No integration-level fixture needed." }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround (zgw-host-tools:s0 for build/test/sanitizer; zgw-host-tools:cppcheck for static analysis, run manually against mqtt_bridge). ESP-IDF/idf.py remains unavailable, so hal_mqtt_publish() call behavior for both the new-discovery loop and the tombstone loop is unverified against real hardware/a real broker -- only the pure builder functions (build_homeassistant_discovery_messages, build_legacy_homeassistant_discovery_tombstones) are directly host-tested; the ESP_PLATFORM-gated publish loop itself cannot be compiled or exercised in this sandbox.",
+  "unresolved_deviations": [
+    "The MQTT command-result payload contract is undesigned, pending the same OperationResultStore unification blocking the HTTP operations-poll route -- see docs/architecture/MQTT_API_V1.md Section 4.1.",
+    "No architecture-gate rule guards against a future regression reintroducing a legacy hal_mqtt_subscribe() call into subscribe_command_topics() (carried over from the cutover pass's evidence, still unresolved)."
+  ],
+  "unresolved_blockers": [
+    "Real ESP-IDF MQTT client/broker interaction (actual discovery publish behavior, actual tombstone delivery, actual HA-side entity deletion-and-recreation as observed by a real Home Assistant instance) is unverified against real hardware/a real broker/a real HA instance -- BLOCKED_TOOLCHAIN, carried over from S0."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

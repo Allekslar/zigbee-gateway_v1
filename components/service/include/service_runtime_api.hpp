@@ -140,6 +140,38 @@ enum class NetworkOperationPollStatus : uint8_t {
     kReady = 3,
 };
 
+// Unified operation-result poll (plan S4 HTTP #1: GET /api/v1/operations/
+// {operation_id}; a distinct unit of work called out explicitly in
+// docs/architecture/HTTP_API_V1.md Section 4.1). OperationResultStore
+// tracks network/config/OTA/RCP results as four separate typed queues,
+// each keyed by a request_id drawn from one shared global counter
+// (next_operation_request_id()) -- request_ids across domains can never
+// collide, so a poll can safely dispatch by trying each domain in turn
+// and reporting which one claimed the id.
+enum class OperationDomain : uint8_t {
+    kUnknown = 0,
+    kNetwork = 1,
+    kConfig = 2,
+    kOta = 3,
+    kRcpUpdate = 4,
+};
+
+// Collapses each domain's own finer-grained mid-flight states (scan
+// queued/in-progress, OTA downloading, RCP applying) into one generic
+// kInProgress for this domain-agnostic poll surface; the full
+// domain-specific detail is still available by fetching the result once
+// kReady (take_network_result()/take_ota_result()/etc.).
+enum class OperationPollStatus : uint8_t {
+    kUnknown = 0,     // request_id not tracked in any domain
+    kInProgress = 1,
+    kReady = 2,
+};
+
+struct OperationStatusSnapshot {
+    OperationDomain domain{OperationDomain::kUnknown};
+    OperationPollStatus status{OperationPollStatus::kUnknown};
+};
+
 enum class OtaStage : uint8_t {
     kIdle = 0,
     kQueued = 1,
@@ -371,6 +403,11 @@ struct DevicesApiSnapshot {
 
 struct MqttBridgeDeviceSnapshot {
     uint16_t short_addr{kUnknownShortAddr};
+    // Empty (device_id_hex[0] == '\0') when the device's identity has not
+    // resolved to a valid DeviceId yet (plan S4 MQTT #10-#12: v1 topics are
+    // DeviceId-keyed, so a device without one cannot be published under a
+    // v1 topic and is skipped by v1 publishing until it resolves).
+    std::array<char, core::DeviceId::kHexLength + 1U> device_id_hex{};
     bool online{false};
     bool power_on{false};
     bool has_temperature{false};
@@ -465,6 +502,7 @@ public:
     virtual NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept = 0;
     virtual OtaPollStatus get_ota_poll_status(uint32_t request_id) const noexcept = 0;
     virtual RcpUpdatePollStatus get_rcp_update_poll_status(uint32_t request_id) const noexcept = 0;
+    virtual OperationStatusSnapshot poll_operation_status(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_queued(uint32_t request_id) const noexcept = 0;
     virtual bool is_scan_request_in_progress(uint32_t request_id) const noexcept = 0;
     virtual bool initialize_hal_adapter() noexcept = 0;

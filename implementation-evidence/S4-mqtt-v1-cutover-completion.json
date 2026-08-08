@@ -1,0 +1,104 @@
+{
+  "superseded_note": "This file is a point-in-time record of the command/state/telemetry cutover (items 13-15), which deliberately deferred tombstoning legacy Home Assistant discovery topics to protect live entities. That deferral's stated reason was resolved by explicit user confirmation that this project has no production deployment yet; implementation-evidence/S4-mqtt-v1-ha-discovery-completion.json completes the HA-discovery tombstone (the deferred HA portion of #14) together with the #16-#19 HA discovery migration itself. Read both files together for the current state.",
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S4-mqtt-v1-cutover",
+  "stage_name": "S4 slice 4/N continuation: live MQTT v1 cutover (plan required changes #13-#15)",
+  "input_commit_sha": "8d09cfaf5158460c363416c8fda547a7e7f9755d",
+  "output_commit_sha": "8d09cfaf5158460c363416c8fda547a7e7f9755d",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted and directly continues S4-mqtt-v1-foundation (implementation-evidence/S4-mqtt-v1-foundation-completion.json), which is itself uncommitted on top of 8d09cfa (merge of PR #45: HTTP API v1 contract and mutation routes).",
+  "sequencing_note": "User's explicit instruction after the foundation pass: 'Наступний крок — cutover (13-15)' (next step: cutover 13-15). This pass wires the previously-additive-only v1 topic/payload foundation into the live, already-running MqttBridge -- the first pass in this whole S4 HTTP+MQTT effort that changes actual production runtime behavior (every prior S4 slice, HTTP included, was either unregistered by construction or purely additive with zero call sites from live code).",
+  "changed_files": [
+    "components/service/include/service_runtime_api.hpp (MqttBridgeDeviceSnapshot gains device_id_hex)",
+    "components/service/bridge_snapshot_builder.cpp (populates device_id_hex from core::CoreDeviceRecord::device_id, same pattern as DevicesApiSnapshotBuilder)",
+    "components/service/include/application_command_mapper.hpp (parse_mqtt_v1_device_power_request, parse_mqtt_v1_reporting_profile_request declarations)",
+    "components/service/application_command_mapper.cpp (implements both + extract_device_id_hex_from_v1_topic() private helper)",
+    "components/mqtt_bridge/include/mqtt_bridge.hpp (includes mqtt_topics_v1.hpp/mqtt_serializer_v1.hpp; new private handle_config_command_v1/handle_power_command_v1/ensure_gateway_id_hex declarations; new gateway_id_hex_/gateway_id_hex_ready_ members)",
+    "components/mqtt_bridge/mqtt_bridge.cpp (handle_command_message routes by v1 prefix first; new handle_config_command_v1/handle_power_command_v1/ensure_gateway_id_hex; sync_device_state switched to v1-only publishing; subscribe_command_topics switched to v1 wildcards -- literal implementation of plan #13; attach_runtime calls ensure_gateway_id_hex)",
+    "components/mqtt_bridge/mqtt_device_sync.cpp (full rewrite: device_id_hex-keyed diff cache instead of short_addr-keyed -- plan #15's remap-safety mechanism; v1-only publish builders; one-time first-sync legacy tombstone sweep -- plan #14 for the 3 per-device legacy topics; legacy HA discovery topics deliberately excluded from the sweep, see deviations)",
+    "components/mqtt_bridge/include/mqtt_bridge_test_access.hpp (new test-only seam: set_gateway_id_hex_for_test())",
+    "docs/architecture/MQTT_API_V1.md (Sections 2-5 rewritten to document the cutover; new subsections 3.2-3.6)",
+    "test/host/test_mqtt_bridge_commands.cpp (device fixture now carries a resolved DeviceId from the start; new v1 config/power command coverage alongside kept legacy coverage)",
+    "test/host/test_mqtt_device_sync.cpp (rewritten: v1 topic/payload assertions, first-sync tombstone-sweep coverage, remap-produces-zero-publications coverage, late-identity-resolution coverage)",
+    "test/host/test_mqtt_runtime_feed.cpp (rewritten through the real ServiceRuntime/CoreState path: v1 publications + tombstone sweep + device-gone v1 availability:false)",
+    "test/host/test_application_command_mapper.cpp (new coverage for both v1 MQTT command parsers)",
+    "test/host/CMakeLists.txt (4 existing mqtt targets that compile mqtt_bridge.cpp/mqtt_device_sync.cpp gain mqtt_topics_v1.cpp/mqtt_serializer_v1.cpp; test_mqtt_device_sync gains MQTT_BRIDGE_TEST_HOOKS=1)"
+  ],
+  "frozen_decisions_applied": [
+    "S4 MQTT required change #13: subscribe_command_topics() subscribes only to the v1 DeviceId-keyed wildcards; the legacy short-address wildcards are never subscribed in production. The legacy parse/dispatch code stays in the binary (reachable directly for host tests/dev use, matching the HTTP v1 precedent of keeping-but-not-registering legacy paths) but is unreachable via a real broker once nothing subscribes it.",
+    "S4 MQTT required change #14 (partial, deliberately): a one-time (per boot), idempotent retained-empty-payload tombstone sweep runs on the first sync after start() for the 3 per-device legacy topics (state/telemetry/availability) of every device active at that moment. The HA-discovery portion of #14 is deliberately deferred alongside #16-#19 -- see deviations.",
+    "S4 MQTT required change #15: the device-sync diff cache is now keyed by DeviceId (device_id_hex) instead of short_addr, so a short_addr remap is recognized as the same device rather than a disappearance+recreation. This is the actual mechanism that guarantees a remap never touches a legacy topic again after cutover (the tombstone sweep only ever fires once, on the very first sync, regardless of any later remap).",
+    "FD-01/FD-03 applied to MQTT command ingress for the first time: an MQTT v1 command for an unresolvable device_id is rejected outright (via ServiceRuntimeApi::resolve_short_addr_for_device_id_hex(), the same golden-matrix-adjacent API HTTP v1 already uses), never silently written under a synthetic/guessed identity.",
+    "INV-M026 (mqtt_bridge adapters must not name core:: symbols) satisfied via the same auto-typed resolve_device_id_for_short_addr() pattern already established for the legacy handler and for HTTP v1's reporting-profile write; common::GatewayId is named directly (INV-M026 does not restrict common::, only core::), consistent with the foundation pass's own documented reasoning."
+  ],
+  "work_summary": {
+    "command_subscription_cutover": {
+      "status": "COMPLETE, TESTED",
+      "detail": "subscribe_command_topics() now calls hal_mqtt_subscribe() with topic_v1_device_config_set_wildcard()/topic_v1_device_power_set_wildcard() instead of the legacy equivalents -- the literal, complete implementation of plan #13. Verified by grep (the legacy topic_device_config_wildcard()/topic_device_power_set_wildcard() calls no longer appear in subscribe_command_topics()) and by the new v1 command tests in test_mqtt_bridge_commands.cpp/test_application_command_mapper.cpp."
+    },
+    "outbound_publishing_cutover": {
+      "status": "COMPLETE, TESTED",
+      "detail": "mqtt_device_sync.cpp's sync_snapshot() and mqtt_bridge.cpp's sync_device_state() publish exclusively to v1 topics for live content (availability/state/telemetry) from this pass onward; the diff cache that decides what changed is keyed by device_id_hex, not short_addr. A device with no resolved identity yet is tracked but generates no v1 publications until it resolves. Tested via test_mqtt_device_sync.cpp's full rewrite and test_mqtt_runtime_feed.cpp's rewrite through the real ServiceRuntime path."
+    },
+    "remap_safety": {
+      "status": "COMPLETE, TESTED",
+      "detail": "The device_id_hex-keyed diff cache means a short_addr remap of an already-known device produces zero publications (no availability flicker, and -- critically -- no legacy topic is ever touched for the device's new short_addr, satisfying plan #15's literal text). Directly tested: test_mqtt_device_sync.cpp's remap test asserts sync_snapshot() returns 0 for a snapshot that only changes an already-cached device's short_addr."
+    },
+    "legacy_tombstone_sweep": {
+      "status": "COMPLETE, TESTED, DELIBERATELY PARTIAL (per-device topics only, not HA discovery)",
+      "detail": "build_legacy_tombstone_publication() publishes a retained empty payload to each active device's 3 legacy topics (state/telemetry/availability), gated to fire only on the very first sync_snapshot() call after start()/reset_sync_cache() (cache_initialized_ false->true transition). Publishing the same empty payload again on a later boot remains idempotent by ordinary MQTT retained-message semantics. Tested: test_mqtt_device_sync.cpp asserts exactly 6 publications (3 v1 + 3 tombstones) on the first sync, 0 extra tombstones on the second sync for an unchanged device, and that a device whose identity resolves only on a *later* sync still gets its one-time tombstone on the sync where it first appears active (not retroactively, not repeated)."
+    },
+    "ha_discovery_tombstone_deferred": {
+      "status": "DELIBERATE DEVIATION -- see deviations_from_literal_plan_text",
+      "detail": "Plan #14's text names 'HA discovery topics' alongside state/availability/telemetry as things to tombstone during the upgrade. This pass does not tombstone legacy HA discovery topics, because doing so without also publishing v1-based discovery (plan #16-#19, unstarted) would delete the operator's real Home Assistant entities with nothing to replace them -- a functional regression on a live system, not a reviewed migration. mqtt_discovery.cpp is completely unmodified by this pass."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Plan #14's HA-discovery-topic tombstoning is not implemented in this pass; only the 3 per-device legacy topics (state/telemetry/availability) are tombstoned.",
+      "why": "The plan's own cutover-order section (Stage S4, 'Migration, compatibility and rollout behavior', steps 4-5) places tombstoning old HA discovery immediately before publishing new v1 discovery -- the two are meant to happen together, in the same transition window. Tombstoning HA discovery now, with plan #16-#19 (the v1 discovery replacement) entirely unimplemented, would delete the operator's real Home Assistant entities and publish nothing to replace them: a genuine functional regression on a system this plan's own FD/invariant language treats as already running in production (main/app_main.cpp already starts MqttBridge unconditionally today), not a defensible reading of 'during upgrade.'",
+      "consequence": "Legacy HA discovery entities remain exactly as they were before this pass; Home Assistant continues to show them, driven by the legacy short_addr-keyed state/availability topics this pass's tombstone sweep just wiped. This is itself a real interaction to be aware of before this firmware is ever built and flashed: once flashed, any device active at that moment gets its legacy state/availability/telemetry retained messages cleared, but its HA discovery config (which points at those now-empty legacy topics) is left in place and unreplaced until #16-#19 lands -- meaning that device's HA entities would go stale/unavailable in the operator's dashboard until the HA migration pass completes. This is the direct, load-bearing reason #16-#19 is now the explicit next step, not an optional follow-up.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Sections 3.5, 4.1, 4.2"
+    },
+    {
+      "deviation": "Home Assistant discovery migration (plan #16-#19) remains entirely unimplemented; mqtt_discovery.cpp is untouched.",
+      "why": "Explicitly out of scope for 'cutover (13-15)' as the user framed this step; blocked on #13-#15 completing per plan item #19, which is now true, making it the natural next unit of work rather than something to fold into this pass.",
+      "consequence": "See the HA-entity-staleness consequence above -- this is not a cosmetically-deferred item, it has a real, user-visible interaction with what this pass already did once flashed to real hardware.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Section 4.1"
+    },
+    {
+      "deviation": "The MQTT command-result topic's payload contract (topic_v1_device_command_result()) remains undesigned, unchanged from the foundation pass.",
+      "why": "Unchanged reasoning from the prior evidence file: blocked on the same OperationResultStore domain-unification blocking the HTTP operations-poll route.",
+      "consequence": "No consumer of this topic exists yet in either direction; purely additive once built.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Section 4.3"
+    },
+    {
+      "deviation": "No new architecture-gate rule was added to enforce that production topic subscriptions stay v1-only going forward (no equivalent of INV-H010 for 'must not subscribe legacy wildcards').",
+      "why": "Unlike HTTP v1's registration functions (a single named call site that could be reintroduced accidentally), subscribe_command_topics() is one function with an inline, directly-readable pair of hal_mqtt_subscribe() calls; a grep-based invariant naming the legacy topic constants would be straightforward to add but was judged lower priority than the substantial functional-behavior work this pass already covers with direct tests (subscribe_command_topics() itself is exercised implicitly through the ESP_PLATFORM-gated code path, which the host/sanitizer suite cannot compile or run at all -- see unresolved_blockers).",
+      "consequence": "A future edit could reintroduce a legacy hal_mqtt_subscribe() call to subscribe_command_topics() without any automated check catching it before real hardware. This is an explicit, named gap for a future pass to close, not an oversight.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Section 3.3 (implicitly; recorded explicitly here)"
+    }
+  ],
+  "inventories_recomputed": {
+    "mqtt_v1_plan_items_implemented": "10, 11, 12, 13, 14 (partial), 15 of 10-19",
+    "mqtt_v1_plan_items_remaining": "14 (HA-discovery portion), 16, 17, 18, 19",
+    "host_tests_total": 84
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0. INV-M026's core::-absence grep over components/mqtt_bridge passes for every new/changed line in this pass (the auto-typed device_id resolution pattern and the common::GatewayId direct-naming choice both comply)." },
+    "host_tests": { "result": "PASSED", "detail": "84/84 (100%), clean rebuild (83 pre-existing/from the foundation pass + 1 net-new file's worth of assertions folded into already-counted targets; test_mqtt_bridge_commands/test_mqtt_device_sync/test_mqtt_runtime_feed/test_application_command_mapper all substantially extended). 3 tests failed on first rebuild after the cutover code landed (test_mqtt_device_sync, test_mqtt_bridge_commands, test_mqtt_runtime_feed) -- all 3 were pre-existing tests whose fixtures/assertions still encoded pre-cutover (legacy-topic, short_addr-only) expectations; all 3 fixed by updating fixtures to carry a resolved DeviceId and updating assertions to the new v1-topic/tombstone-sweep behavior, not by weakening any check." },
+    "sanitizer_tests": { "result": "PASSED", "detail": "83/83 host targets (84th target's assertions are folded into an existing target, not a new ctest entry) under ASan+UBSan, clean rebuild, exact CI flags reproduced." },
+    "cppcheck": { "result": "PASSED for all new/changed code; 5 pre-existing findings confirmed out-of-scope", "detail": "core+service job (covers bridge_snapshot_builder.cpp, application_command_mapper.cpp): exit code 0. mqtt_bridge component (no CI job; run manually as in the foundation pass): 5 style findings (useStlAlgorithm x2, knownConditionTrueFalse x3), all verified by line-range comparison against this pass's diff to be inside functions this pass did not touch (publish_pending_publications, set_power_override, publish_homeassistant_discovery in mqtt_bridge.cpp; build_homeassistant_discovery_messages in mqtt_discovery.cpp) -- pre-existing baseline noise from the still-unaddressed lack of a CI job for this component, not introduced by this pass." },
+    "integration_tests": { "result": "N/A", "detail": "No integration-level fixture needed; every new/changed code path is host-testable without esp_timer_get_time() or an integration-only fixture." }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround (zgw-host-tools:s0 for build/test/sanitizer; zgw-host-tools:cppcheck for static analysis, run manually against mqtt_bridge). ESP-IDF/idf.py remains unavailable, so the #ifdef ESP_PLATFORM branch of subscribe_command_topics() (the actual hal_mqtt_subscribe() call sequence) and on_transport_message()'s real dispatch cannot be compiled or exercised at all in this sandbox -- only the non-ESP_PLATFORM host branches and the transport-agnostic handler/parser/sync logic are verified. This is the same BLOCKED_TOOLCHAIN limitation carried since S0, now specifically load-bearing for this pass's #13 claim: the *code* that subscribes only to v1 wildcards is verified to exist and to be the only subscription call site (by direct reading and by the fact that it is the only code path compiled into subscribe_command_topics() for ESP_PLATFORM builds), but the actual on-the-wire broker interaction is unverified against real hardware.",
+  "unresolved_deviations": [
+    "Legacy HA discovery topics are not tombstoned yet (only the 3 per-device state/telemetry/availability topics are) -- deliberately deferred alongside the HA discovery migration itself; see docs/architecture/MQTT_API_V1.md Section 3.5/4.2.",
+    "Home Assistant discovery migration (plan #16-#19) is unimplemented -- this is now the direct next step, not an optional follow-up, given the HA-entity-staleness interaction this pass introduces once flashed. See docs/architecture/MQTT_API_V1.md Section 4.1.",
+    "The MQTT command-result payload contract is undesigned, pending the same OperationResultStore unification blocking the HTTP operations-poll route -- see docs/architecture/MQTT_API_V1.md Section 4.3.",
+    "No architecture-gate rule guards against a future regression reintroducing a legacy hal_mqtt_subscribe() call into subscribe_command_topics() -- see deviations above."
+  ],
+  "unresolved_blockers": [
+    "Real ESP-IDF MQTT client/broker interaction (actual wildcard subscription behavior, actual retained-tombstone delivery, actual v1 command message receipt) is unverified against real hardware/a real broker -- BLOCKED_TOOLCHAIN, carried over from S0. This is more load-bearing for this pass than for the foundation pass, since this pass's entire purpose is changing what the live bridge actually subscribes to and publishes."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

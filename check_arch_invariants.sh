@@ -277,7 +277,7 @@ run_checks() {
         'register_web_routes_v1[[:space:]]*\(' \
         "the versioned /api/v1 route contract (plan S4 HTTP #1-#5) must exist"
     check_absent "INV-H010" "high" "main/app_main.cpp" \
-        'register_web_routes_v1|register_capabilities_routes_v1|register_device_routes_v1|register_network_routes_v1|register_config_routes_v1|register_ota_routes_v1|register_rcp_routes_v1' \
+        'register_web_routes_v1|register_capabilities_routes_v1|register_device_routes_v1|register_network_routes_v1|register_config_routes_v1|register_ota_routes_v1|register_rcp_routes_v1|register_operations_routes_v1' \
         "plan S4 required changes #28/#29: S4 must not register production /api/v1 routes; S6 owns the first production registration path. A partially completed S4/S5 image with this path enabled is NON-RELEASABLE."
 
     check_absent "INV-M001" "medium" "components/app_hal/hal_wifi.c" \
