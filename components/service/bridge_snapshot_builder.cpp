@@ -54,6 +54,12 @@ bool BridgeSnapshotBuilder::build_mqtt_snapshot(MqttBridgeSnapshot* out) const n
 
         MqttBridgeDeviceSnapshot& mqtt_device = out->devices[out->device_count++];
         mqtt_device.short_addr = device.short_addr;
+        if (device.device_id.valid() &&
+            device.device_id.format(mqtt_device.device_id_hex.data(), mqtt_device.device_id_hex.size())) {
+            mqtt_device.device_id_hex[core::DeviceId::kHexLength] = '\0';
+        } else {
+            mqtt_device.device_id_hex[0] = '\0';
+        }
         mqtt_device.online = device.online;
         mqtt_device.power_on = device.power_on;
         mqtt_device.has_temperature = device.has_temperature;

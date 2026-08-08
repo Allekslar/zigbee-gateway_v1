@@ -1,0 +1,87 @@
+{
+  "superseded_note": "This file is a point-in-time record of the foundation-only slice (topic/payload schema, never wired into the live bridge) and is left unmodified below as historical evidence. It is directly continued by implementation-evidence/S4-mqtt-v1-cutover-completion.json, which wires this foundation into the live MqttBridge (plan items 13-15) -- the first S4 change in this whole HTTP+MQTT effort that alters actual production runtime behavior. Read both files together for the current state of the MQTT /v1 contract.",
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S4-mqtt-v1-foundation",
+  "stage_name": "S4 slice 4/N: versioned MQTT /v1 topic and payload schema foundation (plan required changes #10-#12)",
+  "input_commit_sha": "8d09cfaf5158460c363416c8fda547a7e7f9755d",
+  "output_commit_sha": "8d09cfaf5158460c363416c8fda547a7e7f9755d",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 8d09cfa (merge of PR #45: versioned HTTP API v1 contract and mutation routes), which itself followed PR #43 (GatewayId + DeviceId-keyed Matter endpoint identity).",
+  "sequencing_note": "User said 'йдемо в наступний крок' (next step) after HTTP v1 mutations were merged. Per the plan's S4 section, MQTT v1 (items 10-15) is next in the required-changes ordering and HA discovery (16-19) is explicitly blocked on it (item #19). This pass implements only items 10-12 (topic root/DeviceId-keyed builders, versioned payload schema, topic parser) -- see docs/architecture/MQTT_API_V1.md Section 2 for why the live-cutover items (13-15) are deliberately not attempted in the same pass: unlike the HTTP v1 mutation routes (which plan FD-19/#28-#29 explicitly forbid S4 from registering into production), MQTT has no such exemption and main/app_main.cpp already instantiates and unconditionally starts the live MqttBridge today, so a literal one-pass implementation of #10-#15 would mean changing already-running production MQTT behavior (unsubscribing real topics, publishing real retained tombstones) in the same change as designing the new schema -- judged a materially different risk category deserving its own reviewed pass.",
+  "changed_files": [
+    "components/mqtt_bridge/include/mqtt_topics_v1.hpp (new: kV1DeviceIdHexLength, kV1TopicMaxLen, 9 topic builder/wildcard/parser declarations)",
+    "components/mqtt_bridge/mqtt_topics_v1.cpp (new: DeviceId-hex-keyed topic builders under zigbee-gateway/v1/..., parse_v1_device_id_from_topic() mirroring web_ui::extract_uri_device_id_hex()'s exact validation contract)",
+    "components/mqtt_bridge/include/mqtt_serializer_v1.hpp (new: kV1GatewayIdHexLength, kV1MqttPayloadMaxLen, 4 serializer declarations)",
+    "components/mqtt_bridge/mqtt_serializer_v1.cpp (new: state/availability/sensor/gateway-state serializers, each wrapping schema_version:1 + gateway_id + device_id + revision/observed_at_ms around new or legacy-equivalent payload fields)",
+    "components/mqtt_bridge/CMakeLists.txt (adds mqtt_topics_v1.cpp, mqtt_serializer_v1.cpp to production SRCS)",
+    "docs/architecture/MQTT_API_V1.md (new)",
+    "test/host/test_mqtt_topics_v1.cpp (new: every builder + wildcard constant + parser, including malformed/wrong-length/wrong-case/wrong-prefix/wrong-suffix rejection paths)",
+    "test/host/test_mqtt_serializer_v1.cpp (new: all 4 serializers, full/empty MqttSensorSnapshot, malformed-identity rejection paths)",
+    "test/host/CMakeLists.txt (new test_mqtt_topics_v1 and test_mqtt_serializer_v1 targets)"
+  ],
+  "frozen_decisions_applied": [
+    "FD-01/FD-04 applied to the MQTT surface for the first time: canonical topic device key becomes DeviceId (16 lowercase hex), payload schema starts at schema_version:1 -- both built and tested, matching the plan's canonical topic list and payload envelope exactly.",
+    "S4 MQTT required change #10: canonical v1 topic root zigbee-gateway/v1/devices/<device_id>/... implemented for state/telemetry/availability/config/set/power/set/commands/<operation_id>/result, plus zigbee-gateway/v1/gateway/state.",
+    "S4 MQTT required change #11: every v1 payload carries schema_version:1, gateway_id (FD-17 canonical, 12 lowercase hex), device_id where applicable (16 lowercase hex), and an observation timestamp/revision.",
+    "S4 MQTT required change #12: parse_v1_device_id_from_topic() rejects any topic whose device-id segment is not exactly 16 lowercase hex characters, or whose prefix/suffix does not match exactly.",
+    "INV-M026 (MQTT bridge adapters must not depend on core headers or core:: symbols directly) satisfied structurally rather than via the auto-typing workaround used elsewhere: both new files take device_id_hex/gateway_id_hex as plain strings and never touch a Core-namespaced or common::-namespaced identity type at all."
+  ],
+  "work_summary": {
+    "v1_topic_builders_and_parser": {
+      "status": "COMPLETE, TESTED",
+      "detail": "mqtt_topics_v1.hpp/.cpp: 7 DeviceId-keyed topic builders + 2 wildcard constants + parse_v1_device_id_from_topic(). Builders validate device_id_hex length only (callers are expected to already hold a trusted, pre-validated hex string, matching the DevicesApiDeviceSnapshot::device_id_hex precedent from HTTP v1); the parser does full validation (exact prefix/suffix, exactly 16 lowercase hex characters) for untrusted inbound topic text, directly reusing the same prefix+hex+suffix contract shape already proven out by web_ui::extract_uri_device_id_hex() in the HTTP v1 mutation-routes pass. Tested in test_mqtt_topics_v1.cpp: every builder's exact output string, both wildcard constants, undersized-buffer/null-arg rejection, and the parser's well-formed round-trip plus 6 distinct malformed-input rejection cases (wrong length short/long, uppercase, non-hex character, wrong prefix, wrong suffix)."
+    },
+    "v1_payload_serializers": {
+      "status": "COMPLETE, TESTED",
+      "detail": "mqtt_serializer_v1.hpp/.cpp: state/availability/sensor(telemetry)/gateway-state serializers, each wrapping the schema_version/gateway_id/device_id/revision envelope. The sensor serializer reuses the legacy MqttSensorSnapshot struct verbatim rather than duplicating its field set, so it stays byte-for-byte consistent with what serialize_sensor_payload() already emits for the fields that carry over. The availability serializer is a deliberate format upgrade: the legacy availability payload is a bare retained string (\"online\"/\"offline\", not JSON at all), while v1 must be JSON to carry schema_version -- this is not a bug or oversight, it is required by plan #11's own schema_version requirement. Tested in test_mqtt_serializer_v1.cpp: every serializer's field content for both a full and an empty/default snapshot, and malformed-gateway_id/malformed-device_id/null-buffer rejection for all four."
+    },
+    "unwired_by_construction": {
+      "status": "COMPLETE, VERIFIED BY GREP (no new architecture-gate rule added -- see deviation)",
+      "detail": "components/mqtt_bridge/mqtt_bridge.cpp, mqtt_device_sync.cpp and mqtt_discovery.cpp are unmodified by this pass. grep -rn for mqtt_topics_v1|mqtt_serializer_v1|topic_v1_|serialize_v1_ across mqtt_bridge.cpp, mqtt_device_sync.cpp, mqtt_discovery.cpp and main/app_main.cpp returns zero matches (verified as part of this pass, not assumed). The live g_mqtt instance in main/app_main.cpp continues to run exclusively on the legacy zigbee-gateway/... topic tree; production MQTT behavior is byte-for-byte unchanged by this pass."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only plan items #10-#12 (topic root, DeviceId-keyed builders, versioned payload schema, topic parser) are implemented. Items #13-#15 (unsubscribe legacy command wildcards in production, publish retained tombstones for legacy topics, never recreate a legacy topic after cutover) are not implemented in this pass, and items #16-#19 (Home Assistant discovery migration, explicitly blocked on #10-#15 completing per item #19) are entirely unstarted.",
+      "why": "Unlike the HTTP v1 mutation routes, MQTT has no plan-text exemption from production wiring in S4 (FD-19/#28-#29 name HTTP route registration and a management listener specifically). main/app_main.cpp already instantiates and unconditionally starts the live MqttBridge today (gated only by the mqtt_available capability), so implementing #13-#15 literally in this same pass would mean changing already-running production MQTT behavior -- unsubscribing real topics, publishing real retained tombstones to a real broker's retained-message state -- in the same change as designing the new schema. That is a materially different, higher-blast-radius risk category from building new, side-effect-free serialization/parsing code that nothing calls yet, and was judged to deserve its own dedicated, reviewable pass rather than being bundled in.",
+      "consequence": "No regression: the live MQTT bridge's behavior (topics, payload shapes, retained state, HA discovery) is byte-for-byte unchanged by this pass, grep-verified. Every topic/payload primitive the cutover pass will need (builders, parser, serializers) already exists and is tested, so the cutover pass is a wiring change to mqtt_bridge.cpp/mqtt_device_sync.cpp rather than a new-contract-design problem.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Section 4.1 and 4.2"
+    },
+    {
+      "deviation": "No new architecture-gate rule (no INV-M0xx/INV-H0xx analogous to HTTP v1's INV-H010) proves that mqtt_bridge.cpp does not call the new v1 functions.",
+      "why": "Unlike register_web_routes_v1() (a single named entry point that could be accidentally called from main/app_main.cpp), the v1 topic/serializer functions here are plain string-formatting/parsing utilities with 9+13 call sites across two files -- a grep-based check_absent rule naming every symbol would be brittle and would need updating on every future v1 helper added, for a foundation layer that currently has zero call sites anywhere. The actual risk this would guard against (someone wiring these into mqtt_bridge.cpp without doing the corresponding legacy-unsubscribe/tombstone work alongside it) is better caught by review at cutover time, when there is an actual behavior change to review.",
+      "consequence": "Nothing currently prevents a future edit from calling these functions from mqtt_bridge.cpp without the full cutover being done. This is a judgment call, not an oversight, and is explicitly flagged for reconsideration once the cutover pass begins.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Section 3.3"
+    },
+    {
+      "deviation": "components/mqtt_bridge has no CI cppcheck job at all (not even for the pre-existing legacy files), so the two new v1 files were verified with cppcheck manually rather than through an existing/extended CI job the way the HTTP v1 web_ui gap was fixed in the previous pass.",
+      "why": "Unlike the web_ui gap (a cppcheck job existed and was simply missing the new files from its argument list -- a one-line fix), mqtt_bridge has never had a cppcheck job in .github/workflows/ci.yml for any of its files. Adding a first-ever cppcheck job for an entire component is a larger, unrelated-to-this-slice CI change that also implicitly asserts the legacy mqtt_bridge files are cppcheck-clean, which was not verified as part of this pass.",
+      "consequence": "The two new files are locally verified clean (cppcheck --std=c++17 --enable=warning,style,performance,portability --error-exitcode=1, exit code 0) but not continuously checked by CI. This pre-existing gap is now explicitly documented rather than silently left unmentioned.",
+      "tracked_in": "docs/architecture/MQTT_API_V1.md Section 5"
+    }
+  ],
+  "inventories_recomputed": {
+    "mqtt_v1_topics_implemented": 7,
+    "mqtt_v1_topics_canonical_total": 7,
+    "plan_mqtt_items_implemented": "10, 11, 12 of 10-15",
+    "host_tests_total": 83
+  },
+  "tests_and_checks": {
+    "architecture_gate": { "result": "PASSED", "detail": "high=0, medium=0, low=0, suppressed=0. INV-M026's existing core::-absence check over components/mqtt_bridge passes for the two new files (neither names a Core-namespaced symbol -- both take plain hex strings)." },
+    "host_tests": { "result": "PASSED", "detail": "83/83 (100%), clean rebuild (81 pre-existing + 2 new: test_mqtt_topics_v1, test_mqtt_serializer_v1)." },
+    "sanitizer_tests": { "result": "PASSED", "detail": "83/83 (100%) under ASan+UBSan, clean rebuild, exact CI flags reproduced (-fsanitize=address,undefined -fno-omit-frame-pointer)." },
+    "cppcheck": { "result": "PASSED (manual, no CI job exists for this component)", "detail": "cppcheck --std=c++17 --enable=warning,style,performance,portability --error-exitcode=1 --inline-suppr against mqtt_topics_v1.cpp and mqtt_serializer_v1.cpp: exit code 0." },
+    "integration_tests": { "result": "N/A", "detail": "No new integration coverage needed -- neither new file depends on esp_timer_get_time() or any fixture beyond what the host tests already exercise, and no integration test directory exists for mqtt_bridge today (grep-confirmed: test/integration/ has no mqtt-named file)." }
+  },
+  "environment_note": "All verification ran via the Docker host-tools workaround (zgw-host-tools:s0 for build/test/sanitizer; zgw-host-tools:cppcheck for static analysis, run manually against the two new files since components/mqtt_bridge has no CI cppcheck job). ESP-IDF/idf.py remains unavailable. This pass adds no new ESP_PLATFORM-only code paths.",
+  "unresolved_deviations": [
+    "MQTT v1 live cutover (plan #13-#15: unsubscribe legacy command wildcards, publish retained tombstones, never recreate a legacy topic) is unimplemented -- see docs/architecture/MQTT_API_V1.md Section 4.1.",
+    "Home Assistant discovery migration (plan #16-#19) is unimplemented, blocked on the cutover above per plan item #19 -- see docs/architecture/MQTT_API_V1.md Section 4.2.",
+    "The MQTT command-result payload contract (topic_v1_device_command_result()'s payload shape) is undesigned, pending the same OperationResultStore domain-unification blocking the HTTP operations-poll route -- see docs/architecture/MQTT_API_V1.md Section 4.3.",
+    "No architecture-gate rule proves mqtt_bridge.cpp does not call the new v1 functions; only a point-in-time grep verified it for this pass -- see docs/architecture/MQTT_API_V1.md Section 3.3.",
+    "components/mqtt_bridge has no CI cppcheck job at all (pre-existing gap, not introduced by this pass) -- see docs/architecture/MQTT_API_V1.md Section 5."
+  ],
+  "unresolved_blockers": [
+    "Real ESP-IDF MQTT client/broker interaction (retained message tombstoning, actual wildcard subscription behavior) is unverified against real hardware/a real broker -- BLOCKED_TOOLCHAIN, carried over from S0."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

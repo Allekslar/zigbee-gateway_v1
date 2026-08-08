@@ -24,6 +24,8 @@ const char* api_v1_error_token(ApiV1ErrorCode code) noexcept {
             return "device_not_found";
         case ApiV1ErrorCode::kIdentityUnresolved:
             return "identity_unresolved";
+        case ApiV1ErrorCode::kOperationNotFound:
+            return "operation_not_found";
         case ApiV1ErrorCode::kDeviceOffline:
             return "device_offline";
         case ApiV1ErrorCode::kStaleLocator:
@@ -50,6 +52,7 @@ const char* api_v1_error_status(ApiV1ErrorCode code) noexcept {
     switch (code) {
         case ApiV1ErrorCode::kDeviceNotFound:
         case ApiV1ErrorCode::kIdentityUnresolved:
+        case ApiV1ErrorCode::kOperationNotFound:
             return "404 Not Found";
         case ApiV1ErrorCode::kDeviceOffline:
         case ApiV1ErrorCode::kStaleLocator:
@@ -154,6 +157,31 @@ bool extract_uri_device_id_and_reporting_segments(
     out_hex[kApiV1DeviceIdHexLength] = '\0';
     *out_endpoint = static_cast<uint32_t>(endpoint_value);
     *out_cluster_id = static_cast<uint32_t>(cluster_value);
+    return true;
+}
+
+bool extract_uri_decimal_segment(const char* uri, const char* prefix, uint32_t* out_value) noexcept {
+    if (uri == nullptr || prefix == nullptr || out_value == nullptr) {
+        return false;
+    }
+
+    const std::size_t prefix_len = std::strlen(prefix);
+    if (std::strncmp(uri, prefix, prefix_len) != 0) {
+        return false;
+    }
+
+    const char* digits = uri + prefix_len;
+    if (digits[0] == '\0') {
+        return false;
+    }
+
+    char* end = nullptr;
+    const unsigned long value = std::strtoul(digits, &end, 10);
+    if (end == digits || *end != '\0' || value > std::numeric_limits<uint32_t>::max()) {
+        return false;
+    }
+
+    *out_value = static_cast<uint32_t>(value);
     return true;
 }
 

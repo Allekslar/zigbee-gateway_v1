@@ -94,5 +94,67 @@ int main() {
     assert(config_out.last_command_status == 2U);
     assert(!store.take_config_result(100U, &config_out));
 
+    // --- poll_operation_status(): unified domain-agnostic poll (plan S4
+    // HTTP #1's GET /api/v1/operations/{operation_id}). ---
+    {
+        service::OperationStatusSnapshot unknown = store.poll_operation_status(999999U);
+        assert(unknown.domain == service::OperationDomain::kUnknown);
+        assert(unknown.status == service::OperationPollStatus::kUnknown);
+
+        assert(store.poll_operation_status(0U).domain == service::OperationDomain::kUnknown);
+
+        // Network: in-progress (scan) -> ready -> consumed -> unknown again.
+        store.note_network_poll_status(501U, service::NetworkOperationPollStatus::kScanQueued);
+        service::OperationStatusSnapshot net_in_progress = store.poll_operation_status(501U);
+        assert(net_in_progress.domain == service::OperationDomain::kNetwork);
+        assert(net_in_progress.status == service::OperationPollStatus::kInProgress);
+
+        assert(store.publish_network_result(make_result(501U, service::NetworkOperationStatus::kOk)));
+        service::OperationStatusSnapshot net_ready = store.poll_operation_status(501U);
+        assert(net_ready.domain == service::OperationDomain::kNetwork);
+        assert(net_ready.status == service::OperationPollStatus::kReady);
+
+        service::NetworkResult consumed_network{};
+        assert(store.take_network_result(501U, &consumed_network));
+        assert(store.poll_operation_status(501U).domain == service::OperationDomain::kUnknown);
+
+        // OTA: queued -> ready.
+        store.note_ota_poll_status(502U, service::OtaPollStatus::kQueued);
+        service::OperationStatusSnapshot ota_in_progress = store.poll_operation_status(502U);
+        assert(ota_in_progress.domain == service::OperationDomain::kOta);
+        assert(ota_in_progress.status == service::OperationPollStatus::kInProgress);
+
+        service::OtaResult ota_result_for_poll{};
+        ota_result_for_poll.request_id = 502U;
+        ota_result_for_poll.status = service::OtaOperationStatus::kOk;
+        assert(store.publish_ota_result(ota_result_for_poll));
+        assert(store.poll_operation_status(502U).domain == service::OperationDomain::kOta);
+        assert(store.poll_operation_status(502U).status == service::OperationPollStatus::kReady);
+
+        // RCP update: applying -> ready.
+        store.note_rcp_update_poll_status(503U, service::RcpUpdatePollStatus::kApplying);
+        service::OperationStatusSnapshot rcp_in_progress = store.poll_operation_status(503U);
+        assert(rcp_in_progress.domain == service::OperationDomain::kRcpUpdate);
+        assert(rcp_in_progress.status == service::OperationPollStatus::kInProgress);
+
+        service::RcpUpdateResult rcp_result_for_poll{};
+        rcp_result_for_poll.request_id = 503U;
+        rcp_result_for_poll.status = service::RcpUpdateOperationStatus::kOk;
+        assert(store.publish_rcp_update_result(rcp_result_for_poll));
+        assert(store.poll_operation_status(503U).domain == service::OperationDomain::kRcpUpdate);
+        assert(store.poll_operation_status(503U).status == service::OperationPollStatus::kReady);
+
+        // Config: no in-progress signal exists (documented limitation) --
+        // only a published result is observable.
+        assert(store.poll_operation_status(504U).domain == service::OperationDomain::kUnknown);
+        service::ConfigResult config_for_poll{};
+        config_for_poll.request_id = 504U;
+        config_for_poll.last_command_status = 3U;
+        assert(store.publish_config_result(config_for_poll));
+        service::OperationStatusSnapshot config_ready = store.poll_operation_status(504U);
+        assert(config_ready.domain == service::OperationDomain::kConfig);
+        assert(config_ready.status == service::OperationPollStatus::kReady);
+    }
+
     return 0;
 }

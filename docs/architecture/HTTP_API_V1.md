@@ -19,11 +19,12 @@ plan's versioned, `DeviceId`-based external contract.
 
 ## 2. Scope of this pass
 
-This document now covers two passes. The first implemented the four read
-(`GET`) routes and the shared DTO/golden-matrix/registration
-infrastructure every route needs. The second (this update) implements
-every remaining route in the plan's canonical table except the unified
-operation-status poll:
+This document now covers three passes. The first implemented the four
+read (`GET`) routes and the shared DTO/golden-matrix/registration
+infrastructure every route needs. The second implemented every remaining
+route in the plan's canonical table except the unified operation-status
+poll. The third (this update) implements that poll, via an
+`OperationResultStore` domain-unification:
 
 - `GET /api/v1/capabilities`
 - `GET /api/v1/devices`
@@ -38,15 +39,14 @@ operation-status poll:
 - `PATCH /api/v1/config`
 - `POST /api/v1/ota/operations`
 - `POST /api/v1/rcp-update/operations`
+- `GET /api/v1/operations/{operation_id}`
 
-**12 of the 13 canonical routes are implemented.** Only
-`GET /api/v1/operations/{operation_id}` remains unimplemented -- see
-Section 4.1, unchanged from the first pass: it needs an
-`OperationResultStore` domain-unification that is a distinct unit of work.
-The legacy read-alias/`410`-legacy-mutation contract (plan #7/#8) and the
-bundled Web UI migration (plan #6) also remain deferred, per FD-19/plan
-#29 (S4 does not touch the production route-registration path at all) --
-see Sections 4.2 and 4.3.
+**All 13 of the plan's canonical v1 routes are now implemented.** The
+legacy read-alias/`410`-legacy-mutation contract (plan #7/#8) and the
+bundled Web UI migration (plan #6) remain deferred, per FD-19/plan #29 (S4
+does not touch the production route-registration path at all) -- see
+Sections 4.1 and 4.2 (renumbered from 4.2/4.3 now that the operations-poll
+deferral itself is resolved).
 
 ## 3. What is implemented and tested
 
@@ -219,22 +219,22 @@ synchronously on submit).
 
 ### 3.4 Unregistered by construction (plan #28, #29, #30)
 
-`register_web_routes_v1()` and its seven sub-registration functions
+`register_web_routes_v1()` and its eight sub-registration functions
 (`register_capabilities_routes_v1`, `register_device_routes_v1`,
 `register_network_routes_v1`, `register_config_routes_v1`,
-`register_ota_routes_v1`, `register_rcp_routes_v1` -- the last two new in
-this pass) are declared in `web_routes.hpp` and defined in
-`web_handlers_v1.cpp`, but **nothing in `register_web_routes()` (the
-function `main/app_main.cpp` actually calls via `WebServer::start()`)
-calls any of them.** They exist only as a registrable contract, invoked
-directly by host/integration tests and never by the production
-route-registration path.
+`register_ota_routes_v1`, `register_rcp_routes_v1`,
+`register_operations_routes_v1` -- the last new in the third pass) are
+declared in `web_routes.hpp` and defined in `web_handlers_v1.cpp`, but
+**nothing in `register_web_routes()` (the function `main/app_main.cpp`
+actually calls via `WebServer::start()`) calls any of them.** They exist
+only as a registrable contract, invoked directly by host/integration
+tests and never by the production route-registration path.
 
 New architecture rule `INV-H010` enforces both halves of this: the v1
 registration contract must exist (`check_present` on `web_routes.hpp`), and
-`main/app_main.cpp` must never name any of the seven `register_*_routes_v1`
-functions (`check_absent`, extended in this pass to add the two new OTA/RCP
-registration functions to the pattern). This is the "build/static
+`main/app_main.cpp` must never name any of the eight `register_*_routes_v1`
+functions (`check_absent`, extended across all three passes to keep pace
+with the growing registration surface). This is the "build/static
 invariant proving that no S4/S5 production artifact contains an enabled
 production control-plane registration path" the plan calls for (#30),
 scoped to what this pass actually built.
@@ -253,29 +253,70 @@ server's `max_uri_handlers` budget (currently 20 of 24 used, per the S4
 recon at the start of this stage) -- host/integration tests that exercise
 v1 routes do so without ever starting the legacy route set at all.
 
+### 3.6 The unified operation-status poll (plan #1, `OperationResultStore` unification)
+
+`GET /api/v1/operations/{operation_id}` is now implemented via a
+domain-unification on `OperationResultStore` (`operation_result_store.hpp`/
+`.cpp`, `components/service`), which previously tracked network/config/
+OTA/RCP results as four **separate** typed result queues, each with its
+own `take_*_result()` method, sharing only a single global `request_id`
+counter and nothing else.
+
+`poll_operation_status(request_id)` (new, on both `OperationResultStore`
+and `ServiceRuntimeApi`) dispatches by trying each domain's existing
+`get_*_poll_status()` in turn, safe because all four domains draw from one
+shared atomic counter (`next_operation_request_id()`) so a real id can
+never collide across domains. It returns an `OperationStatusSnapshot`
+(`OperationDomain` + `OperationPollStatus`), where `OperationPollStatus`
+deliberately collapses each domain's own finer-grained mid-flight states
+(scan queued/in-progress, OTA downloading, RCP applying) into one generic
+`kInProgress` -- the full domain-specific detail is still available by
+fetching the actual result once `kReady`, exactly as the legacy per-domain
+GET handlers already did.
+
+**Config is a documented exception**: it has no poll-status queue at all
+(never did), so `poll_operation_status()` can only observe a config
+request_id once its result is *published*, not while still queued -- but
+this is moot for any real caller, since `config_patch_handler_v1`
+(Section 3.5) responds `200` synchronously with no `request_id` at all, so
+no client can ever obtain a config request_id to poll with in the first
+place. This is an accurate description of the existing limitation, not a
+new gap introduced by the unification.
+
+`operations_get_handler_v1` (new) parses the `operation_id` path segment
+via a new `extract_uri_decimal_segment()` helper (`web_v1_common.cpp`,
+mirroring the existing hex-segment parsers' exact-match contract), then:
+unknown id -> `404 operation_not_found` (new `ApiV1ErrorCode` added to the
+golden matrix); in-progress -> `200` with `{"status":"pending","domain":
+"..."}`; ready -> `200` with a domain-specific summary (`ok`/`status_code`
+plus a handful of the most relevant fields per domain -- e.g. OTA's
+`downloaded_bytes`/`image_size`/`target_version`, not its full transport
+diagnostics). This summary contract is **deliberately coarser** than the
+legacy per-domain GET handlers' payloads (which include full scan records,
+transport error codes, etc.) -- the same "small, stable vocabulary over
+exhaustive internal detail" judgment call already applied to OTA/RCP
+submit-error mapping in Section 3.5, not an oversight. `take_*_result()`
+is destructive (removes the entry once read), matching the legacy
+handlers' own consume-on-poll semantics exactly -- a second poll of an
+already-consumed operation returns `404`, not a "`200` idempotent replay";
+this is an existing characteristic of `OperationResultStore` itself
+(bounded, consume-on-read queues), not something this pass changes.
+
+Registered via new `register_operations_routes_v1()` (`GET /api/v1/
+operations/*`), added to `register_web_routes_v1()` and `INV-H010`'s
+`check_absent` pattern like every other v1 registration function (Section
+3.4).
+
+Tested in `test/host/test_operation_result_store.cpp` (all 4 domains'
+in-progress->ready transitions, unknown/zero id, config's
+result-only-no-in-progress limitation) and `test/host/
+test_web_handlers_v1.cpp` (malformed/zero operation_id, unknown id,
+ready-via-real-network-scan, pending-via-real-OTA-start, consume-then-404
+on re-poll, null-req/user_ctx).
+
 ## 4. What is explicitly deferred
 
-### 4.1 The unified operation-status poll
-
-`GET /api/v1/operations/{operation_id}` is not implemented. It needs a
-result-domain unification this repository does not have yet:
-`OperationResultStore` (`operation_result_store.hpp`) tracks network/
-config/OTA/RCP results as four **separate** typed result queues, each with
-its own `take_*_result()` method, sharing only a single global
-`request_id` counter. A generic `/operations/{id}` endpoint needs either a
-discriminated union across all four domains or a caller that tries each
-domain in turn; neither exists today and designing one is a distinct unit
-of work from the route infrastructure this pass built. Every route this
-pass added that produces a pollable `request_id`/correlation id
-(join-window, power, delete, network scan/connect, OTA/RCP) returns it in
-the 202 response body, so the poll route is purely additive once built --
-no other route needs to change to support it later.
-
-The path-parameter-parsing blocker recorded against this section in the
-first pass (the host `httpd_req_t` shim had no `uri` field) is resolved:
-Section 3.5 covers the URI parsing this pass added.
-
-### 4.2 Legacy read-alias deprecation metadata and legacy-mutation `410 Gone`
+### 4.1 Legacy read-alias deprecation metadata and legacy-mutation `410 Gone`
 
 Plan #7 (legacy `/api/...` reads proxy v1 with deprecation metadata) and
 #8 (legacy mutations return `410 legacy_mutation_disabled` in production)
@@ -288,12 +329,17 @@ need; this is deferred to whichever stage actually flips the production
 listener over to v1 (S6, per FD-19: "S6 is the first and only stage that
 wires production management routes into the composition root").
 
-### 4.3 Bundled Web UI migration to v1 (plan #6)
+### 4.2 Bundled Web UI migration to v1 (plan #6)
 
 `assets/app.js` (and the rest of the bundled UI) still calls the legacy
-`/api/...` routes. Migrating it is meaningless before the mutation routes
-it needs (device power, join, remove, reporting) exist, so it is deferred
-alongside them.
+`/api/...` routes. Every v1 route it would need now exists (Sections 3.1-
+3.6), so this is no longer blocked on missing routes -- it is blocked on
+the same production-registration constraint as Section 4.1: the bundled
+UI is served by, and its fetches would hit, the same production HTTP
+listener that FD-19/plan #29 forbid S4 from wiring v1 routes into.
+Migrating the UI to call routes that are provably unreachable in
+production would not be a meaningful migration yet; this is deferred to
+S6 alongside 4.1.
 
 ## 5. Environment limitation
 

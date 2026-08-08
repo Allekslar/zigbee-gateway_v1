@@ -9,7 +9,9 @@
 
 #include "mqtt_discovery.hpp"
 #include "mqtt_serializer.hpp"
+#include "mqtt_serializer_v1.hpp"
 #include "mqtt_topics.hpp"
+#include "mqtt_topics_v1.hpp"
 #include "runtime_lock.hpp"
 #include "service_runtime_api.hpp"
 
@@ -49,6 +51,8 @@ private:
 
     bool handle_config_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
     bool handle_power_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
+    bool handle_config_command_v1(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
+    bool handle_power_command_v1(const char* topic, const char* payload, uint32_t correlation_id) noexcept;
     void publish_runtime_status() noexcept;
     void set_runtime_status(
         bool enabled,
@@ -65,6 +69,10 @@ private:
     bool publish_homeassistant_discovery(const service::MqttBridgeSnapshot& snapshot, bool force_republish) noexcept;
     void sync_device_state(uint16_t short_addr, bool on) noexcept;
     uint32_t next_command_correlation_id() noexcept;
+    // Formats the canonical FD-17 gateway_id into gateway_id_hex_ once
+    // (stable for the process lifetime) the first time it is needed by v1
+    // publishing; a no-op once already populated.
+    void ensure_gateway_id_hex() noexcept;
 #ifdef ESP_PLATFORM
     static void task_entry(void* arg) noexcept;
     static void on_transport_connected(void* context) noexcept;
@@ -99,6 +107,9 @@ private:
     HomeAssistantDiscoveryMessage discovery_messages_scratch_[kMaxDiscoveryMessagesPerDevice]{};
     PendingPowerOverride power_overrides_[service::kServiceMaxDevices]{};
     mutable service::RuntimeLock state_lock_{};
+    char gateway_id_hex_[kV1GatewayIdHexLength + 1U]{};
+    bool gateway_id_hex_ready_{false};
+    bool legacy_discovery_tombstoned_{false};
 #ifdef ESP_PLATFORM
     void* task_handle_{nullptr};
 #endif

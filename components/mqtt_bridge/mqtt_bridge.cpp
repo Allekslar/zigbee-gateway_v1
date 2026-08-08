@@ -15,6 +15,7 @@
 #include "sdkconfig.h"
 #endif
 #include "application_command_mapper.hpp"
+#include "gateway_id.hpp"
 #include "log_tags.h"
 #include "mqtt_discovery.hpp"
 #include "service_runtime_api.hpp"
@@ -63,15 +64,19 @@ uint32_t monotonic_now_ms() noexcept {
     return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
 }
 
-const service::MqttBridgeDeviceSnapshot* find_cached_device_by_short(
+// Identity-keyed (plan S4 MQTT #15's remap-safety principle, applied here
+// too): a short_addr remap must not look like "new device" for discovery
+// schema-change detection, or it would trigger a spurious (harmless but
+// wasteful) discovery republish.
+const service::MqttBridgeDeviceSnapshot* find_cached_device_by_device_id_hex(
     const service::MqttBridgeDeviceSnapshot* devices,
     const uint16_t count,
-    const uint16_t short_addr) noexcept {
-    if (devices == nullptr) {
+    const char* device_id_hex) noexcept {
+    if (devices == nullptr || device_id_hex == nullptr || device_id_hex[0] == '\0') {
         return nullptr;
     }
     for (uint16_t i = 0; i < count; ++i) {
-        if (devices[i].short_addr == short_addr) {
+        if (devices[i].device_id_hex[0] != '\0' && std::strcmp(devices[i].device_id_hex.data(), device_id_hex) == 0) {
             return &devices[i];
         }
     }
@@ -116,6 +121,7 @@ bool MqttBridge::started() const noexcept {
 
 void MqttBridge::attach_runtime(service::ServiceRuntimeApi* runtime) noexcept {
     runtime_ = runtime;
+    ensure_gateway_id_hex();
     publish_runtime_status();
 #ifdef ESP_PLATFORM
     (void)ensure_task_started();
@@ -127,6 +133,21 @@ bool MqttBridge::handle_command_message(const char* topic, const char* payload, 
         return false;
     }
 
+    constexpr const char* kV1DevicesPrefix = "zigbee-gateway/v1/devices/";
+    if (std::strncmp(topic, kV1DevicesPrefix, std::strlen(kV1DevicesPrefix)) == 0) {
+        if (service::mqtt_topic_has_suffix(topic, "/config/set")) {
+            return handle_config_command_v1(topic, payload, correlation_id);
+        }
+        if (service::mqtt_topic_has_suffix(topic, "/power/set")) {
+            return handle_power_command_v1(topic, payload, correlation_id);
+        }
+        return false;
+    }
+
+    // Legacy short-address command topics: kept reachable only for host
+    // tests and any explicit dev-profile use. subscribe_command_topics()
+    // no longer subscribes to these wildcards in production (plan S4 MQTT
+    // #13), so a real broker never delivers a legacy-shaped topic here.
     if (service::mqtt_topic_has_suffix(topic, "/config")) {
         return handle_config_command(topic, payload, correlation_id);
     }
@@ -135,6 +156,74 @@ bool MqttBridge::handle_command_message(const char* topic, const char* payload, 
     }
 
     return false;
+}
+
+bool MqttBridge::handle_config_command_v1(
+    const char* topic, const char* payload, uint32_t correlation_id) noexcept {
+    if (runtime_ == nullptr || correlation_id == service::kNoCorrelationId) {
+        return false;
+    }
+
+    char device_id_hex[kV1DeviceIdHexLength + 1U]{};
+    service::ReportingProfileWriteRequest request{};
+    if (service::parse_mqtt_v1_reporting_profile_request(
+            topic, payload, device_id_hex, sizeof(device_id_hex), &request) !=
+        service::ApplicationCommandParseStatus::kOk) {
+        return false;
+    }
+
+    uint16_t short_addr = 0U;
+    if (runtime_->resolve_short_addr_for_device_id_hex(device_id_hex, &short_addr) !=
+        service::ServiceRuntimeApi::DeviceIdResolveStatus::kResolved) {
+        return false;
+    }
+
+    // Deliberately `auto`, not a spelled-out Core-namespaced type: MQTT
+    // bridge adapters must not name Core symbols directly (INV-M026) --
+    // mirrors handle_config_command()'s exact pattern.
+    const auto device_id = runtime_->resolve_device_id_for_short_addr(short_addr);
+    if (!device_id.valid()) {
+        return false;
+    }
+    request.profile.key.device_id = device_id;
+
+    return runtime_->post_reporting_profile_write(request.profile);
+}
+
+bool MqttBridge::handle_power_command_v1(const char* topic, const char* payload, uint32_t correlation_id) noexcept {
+    if (runtime_ == nullptr || correlation_id == service::kNoCorrelationId) {
+        return false;
+    }
+
+    char device_id_hex[kV1DeviceIdHexLength + 1U]{};
+    bool desired_power_on = false;
+    if (service::parse_mqtt_v1_device_power_request(
+            topic, payload, device_id_hex, sizeof(device_id_hex), &desired_power_on) !=
+        service::ApplicationCommandParseStatus::kOk) {
+        return false;
+    }
+
+    uint16_t short_addr = 0U;
+    if (runtime_->resolve_short_addr_for_device_id_hex(device_id_hex, &short_addr) !=
+        service::ServiceRuntimeApi::DeviceIdResolveStatus::kResolved) {
+        return false;
+    }
+
+    service::DevicePowerCommandRequest request{};
+    request.correlation_id = correlation_id;
+    request.short_addr = short_addr;
+    request.desired_power_on = desired_power_on;
+    request.issued_at_ms = monotonic_now_ms();
+    if (runtime_->post_device_power_request(request) != service::CommandSubmitStatus::kAccepted) {
+        return false;
+    }
+
+    {
+        service::RuntimeLockGuard guard(state_lock_);
+        set_power_override(short_addr, desired_power_on);
+        sync_device_state(short_addr, desired_power_on);
+    }
+    return true;
 }
 
 bool MqttBridge::handle_config_command(const char* topic, const char* payload, uint32_t correlation_id) noexcept {
@@ -250,16 +339,36 @@ void MqttBridge::sync_device_state(const uint16_t short_addr, const bool on) noe
         }
 
         device.power_on = on;
-        MqttPublishedMessage publication{};
-        if (!topic_device_state(device.short_addr, publication.topic, sizeof(publication.topic))) {
+        // v1-only: this optimistic post-command update targets the
+        // DeviceId-keyed v1 state topic exclusively (plan S4 MQTT #13/#15
+        // -- legacy topics are never written with live content after
+        // cutover, only tombstoned once). A device without a resolved
+        // identity yet cannot be published under a v1 topic; it is simply
+        // skipped here, matching the pre-existing silent-skip convention
+        // for any other publication-build failure in this function.
+        if (device.device_id_hex[0] == '\0') {
             return;
         }
-        const int written = std::snprintf(
-            publication.payload,
-            sizeof(publication.payload),
-            "{\"power_on\":%s}",
-            device.power_on ? "true" : "false");
-        if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(publication.payload)) {
+        ensure_gateway_id_hex();
+        if (!gateway_id_hex_ready_) {
+            return;
+        }
+
+        MqttPublishedMessage publication{};
+        if (!topic_v1_device_state(device.device_id_hex.data(), publication.topic, sizeof(publication.topic))) {
+            return;
+        }
+        std::size_t payload_len = 0U;
+        if (!serialize_v1_state_payload(
+                gateway_id_hex_,
+                device.device_id_hex.data(),
+                runtime_snapshot_cache_.revision,
+                device.power_on,
+                monotonic_now_ms(),
+                publication.payload,
+                sizeof(publication.payload),
+                &payload_len) ||
+            payload_len == 0U) {
             return;
         }
         publication.retain = true;
@@ -269,6 +378,19 @@ void MqttBridge::sync_device_state(const uint16_t short_addr, const bool on) noe
         pending_publications_[pending_publication_count_++] = publication;
         return;
     }
+}
+
+void MqttBridge::ensure_gateway_id_hex() noexcept {
+    if (gateway_id_hex_ready_ || runtime_ == nullptr) {
+        return;
+    }
+
+    const common::GatewayId gateway_id = runtime_->gateway_id();
+    if (!gateway_id.valid() || !gateway_id.format(gateway_id_hex_, sizeof(gateway_id_hex_))) {
+        return;
+    }
+    gateway_id_hex_[kV1GatewayIdHexLength] = '\0';
+    gateway_id_hex_ready_ = true;
 }
 
 void MqttBridge::publish_runtime_status() noexcept {
@@ -317,6 +439,7 @@ void MqttBridge::reset_sync_cache() noexcept {
     service::RuntimeLockGuard guard(state_lock_);
     cached_device_count_ = 0;
     cache_initialized_ = false;
+    legacy_discovery_tombstoned_ = false;
     pending_publication_count_ = 0;
     command_topics_subscribed_.store(false, std::memory_order_release);
     discovery_republish_requested_ = true;
@@ -394,17 +517,58 @@ bool MqttBridge::publish_homeassistant_discovery(
     if (!transport_enabled_.load(std::memory_order_acquire)) {
         return false;
     }
+    ensure_gateway_id_hex();
 
     bool published_any = false;
+
+    // One-time legacy discovery cleanup (plan S4 MQTT #14/#17: publish
+    // deletion payloads for old short-address discovery entities before
+    // publishing DeviceId-based discovery). Fires at most once per
+    // MqttBridge lifetime (reset alongside the rest of the sync state by
+    // reset_sync_cache()) -- discovery publishing bypasses the pending-
+    // publication queue entirely (it calls hal_mqtt_publish() directly, so
+    // it is not observable via drain_publications()), so it needs its own
+    // one-time trigger independent of sync_snapshot()'s tombstone sweep.
+    if (!legacy_discovery_tombstoned_) {
+        for (std::size_t i = 0; i < snapshot.device_count && i < snapshot.devices.size(); ++i) {
+            const service::MqttBridgeDeviceSnapshot& current = snapshot.devices[i];
+            if (current.short_addr == service::kUnknownShortAddr || !current.online) {
+                continue;
+            }
+            const std::size_t tombstone_count = build_legacy_homeassistant_discovery_tombstones(
+                current.short_addr, discovery_messages_scratch_, kMaxDiscoveryMessagesPerDevice);
+            for (std::size_t msg_idx = 0; msg_idx < tombstone_count; ++msg_idx) {
+#ifdef ESP_PLATFORM
+                if (hal_mqtt_publish(
+                        discovery_messages_scratch_[msg_idx].topic,
+                        discovery_messages_scratch_[msg_idx].payload,
+                        true,
+                        kMqttQosAtLeastOnce) == HAL_MQTT_STATUS_OK) {
+                    published_any = true;
+                }
+#else
+                published_any = true;
+#endif
+            }
+        }
+        legacy_discovery_tombstoned_ = true;
+    }
+
+    if (!gateway_id_hex_ready_) {
+        return published_any;
+    }
+
     for (std::size_t i = 0; i < snapshot.device_count && i < snapshot.devices.size(); ++i) {
         const service::MqttBridgeDeviceSnapshot& current = snapshot.devices[i];
-        if (current.short_addr == service::kUnknownShortAddr || !current.online) {
+        if (current.short_addr == service::kUnknownShortAddr || !current.online ||
+            current.device_id_hex[0] == '\0') {
             continue;
         }
 
         const service::MqttBridgeDeviceSnapshot* previous = nullptr;
         if (cache_initialized_) {
-            previous = find_cached_device_by_short(cached_devices_, cached_device_count_, current.short_addr);
+            previous = find_cached_device_by_device_id_hex(
+                cached_devices_, cached_device_count_, current.device_id_hex.data());
         }
 
         const bool should_publish = force_republish || previous == nullptr ||
@@ -414,6 +578,7 @@ bool MqttBridge::publish_homeassistant_discovery(
         }
 
         const std::size_t count = build_homeassistant_discovery_messages(
+            gateway_id_hex_,
             current,
             discovery_messages_scratch_,
             kMaxDiscoveryMessagesPerDevice);
@@ -586,13 +751,19 @@ bool MqttBridge::subscribe_command_topics() noexcept {
         return true;
     }
 
-    if (hal_mqtt_subscribe(topic_device_config_wildcard(), kMqttQosAtLeastOnce) != HAL_MQTT_STATUS_OK) {
-        ESP_LOGW(kTag, "MQTT config topic subscription failed");
+    // Plan S4 MQTT #13: legacy short-address command wildcards are not
+    // subscribed in production. Only the v1 DeviceId-keyed wildcards are
+    // subscribed here; handle_command_message()'s legacy branch remains in
+    // the binary for host tests/dev-profile use but a real broker never
+    // delivers a legacy-shaped topic to it once this is the only
+    // subscription made.
+    if (hal_mqtt_subscribe(topic_v1_device_config_set_wildcard(), kMqttQosAtLeastOnce) != HAL_MQTT_STATUS_OK) {
+        ESP_LOGW(kTag, "MQTT v1 config topic subscription failed");
         handle_transport_subscribe_failure();
         return false;
     }
-    if (hal_mqtt_subscribe(topic_device_power_set_wildcard(), kMqttQosAtLeastOnce) != HAL_MQTT_STATUS_OK) {
-        ESP_LOGW(kTag, "MQTT power topic subscription failed");
+    if (hal_mqtt_subscribe(topic_v1_device_power_set_wildcard(), kMqttQosAtLeastOnce) != HAL_MQTT_STATUS_OK) {
+        ESP_LOGW(kTag, "MQTT v1 power topic subscription failed");
         handle_transport_subscribe_failure();
         return false;
     }

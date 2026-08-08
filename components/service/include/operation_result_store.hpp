@@ -36,6 +36,16 @@ public:
     NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept;
     OtaPollStatus get_ota_poll_status(uint32_t request_id) const noexcept;
     RcpUpdatePollStatus get_rcp_update_poll_status(uint32_t request_id) const noexcept;
+
+    // Domain-agnostic poll (plan S4 HTTP #1's GET /api/v1/operations/
+    // {operation_id}): tries each domain in turn (safe -- all 4 share one
+    // request_id counter, so a real id can only ever belong to one) and
+    // reports which one claimed it, collapsing that domain's own
+    // finer-grained poll status into OperationPollStatus. Config has no
+    // dedicated poll-status queue (see .cpp) -- it is peeked for a
+    // published result only, since no HTTP/MQTT caller today ever
+    // receives a config request_id to poll with in the first place.
+    OperationStatusSnapshot poll_operation_status(uint32_t request_id) const noexcept;
     std::size_t pending_config_results() const noexcept;
     std::size_t pending_network_results() const noexcept;
     std::size_t pending_ota_results() const noexcept;
@@ -63,6 +73,10 @@ private:
     void remove_ota_poll_status_locked(uint32_t request_id) noexcept;
     bool upsert_rcp_update_poll_status_locked(uint32_t request_id, RcpUpdatePollStatus status) noexcept;
     void remove_rcp_update_poll_status_locked(uint32_t request_id) noexcept;
+    // Non-consuming presence check (unlike take_config_result(), which
+    // removes the entry) -- used only by poll_operation_status(), which
+    // must not destroy a result a caller has not yet actually fetched.
+    bool has_config_result_locked(uint32_t request_id) const noexcept;
 
     std::atomic<uint32_t> next_request_id_{1U};
     mutable RuntimeLock network_result_lock_{};

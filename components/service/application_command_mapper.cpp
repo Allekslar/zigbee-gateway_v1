@@ -151,6 +151,53 @@ ApplicationCommandParseStatus extract_device_short_addr_from_topic(
     return ApplicationCommandParseStatus::kOk;
 }
 
+bool is_lowercase_hex_char(char c) noexcept {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+}
+
+// Mirrors extract_device_short_addr_from_topic()'s exact shape for the
+// versioned MQTT topic tree (plan S4 MQTT #10, #12): a fixed prefix, a
+// 16-lowercase-hex-character DeviceId segment, then a fixed suffix.
+// Deliberately duplicates the prefix/hex-validation logic here rather than
+// depending on mqtt_bridge's mqtt_topics_v1.hpp -- components/service must
+// not depend on components/mqtt_bridge (wrong dependency direction), and
+// this file already duplicates its own small topic/JSON parsing helpers
+// rather than sharing them across components.
+constexpr std::size_t kMqttV1DeviceIdHexLength = 16U;
+
+ApplicationCommandParseStatus extract_device_id_hex_from_v1_topic(
+    const char* topic, const char* suffix, char* out_device_id_hex, const std::size_t out_capacity) noexcept {
+    if (topic == nullptr || suffix == nullptr || out_device_id_hex == nullptr ||
+        out_capacity < kMqttV1DeviceIdHexLength + 1U) {
+        return ApplicationCommandParseStatus::kInvalidTopic;
+    }
+
+    constexpr const char* kPrefix = "zigbee-gateway/v1/devices/";
+    const std::size_t prefix_len = std::strlen(kPrefix);
+    const std::size_t suffix_len = std::strlen(suffix);
+    const std::size_t topic_len = std::strlen(topic);
+    if (topic_len != prefix_len + kMqttV1DeviceIdHexLength + suffix_len) {
+        return ApplicationCommandParseStatus::kInvalidTopic;
+    }
+    if (std::strncmp(topic, kPrefix, prefix_len) != 0) {
+        return ApplicationCommandParseStatus::kInvalidTopic;
+    }
+    if (std::strcmp(topic + prefix_len + kMqttV1DeviceIdHexLength, suffix) != 0) {
+        return ApplicationCommandParseStatus::kInvalidTopic;
+    }
+
+    const char* hex = topic + prefix_len;
+    for (std::size_t i = 0; i < kMqttV1DeviceIdHexLength; ++i) {
+        if (!is_lowercase_hex_char(hex[i])) {
+            return ApplicationCommandParseStatus::kInvalidTopic;
+        }
+    }
+
+    std::memcpy(out_device_id_hex, hex, kMqttV1DeviceIdHexLength);
+    out_device_id_hex[kMqttV1DeviceIdHexLength] = '\0';
+    return ApplicationCommandParseStatus::kOk;
+}
+
 ApplicationCommandParseStatus parse_reporting_profile_payload(
     const char* payload,
     const uint16_t short_addr,
@@ -332,6 +379,65 @@ ApplicationCommandParseStatus parse_mqtt_reporting_profile_request(
     }
 
     return parse_reporting_profile_payload(payload, short_addr, out_request);
+}
+
+ApplicationCommandParseStatus parse_mqtt_v1_device_power_request(
+    const char* topic,
+    const char* payload,
+    char* out_device_id_hex,
+    const std::size_t out_device_id_hex_capacity,
+    bool* out_desired_power_on) noexcept {
+    if (payload == nullptr || out_desired_power_on == nullptr) {
+        return ApplicationCommandParseStatus::kInvalidPayload;
+    }
+
+    const ApplicationCommandParseStatus device_id_status = extract_device_id_hex_from_v1_topic(
+        topic, "/power/set", out_device_id_hex, out_device_id_hex_capacity);
+    if (device_id_status != ApplicationCommandParseStatus::kOk) {
+        return device_id_status;
+    }
+
+    bool desired_power_on = false;
+    if (!find_json_bool_field(payload, "power_on", &desired_power_on)) {
+        return ApplicationCommandParseStatus::kInvalidPayload;
+    }
+
+    *out_desired_power_on = desired_power_on;
+    return ApplicationCommandParseStatus::kOk;
+}
+
+ApplicationCommandParseStatus parse_mqtt_v1_reporting_profile_request(
+    const char* topic,
+    const char* payload,
+    char* out_device_id_hex,
+    const std::size_t out_device_id_hex_capacity,
+    ReportingProfileWriteRequest* out_request) noexcept {
+    if (payload == nullptr || out_request == nullptr) {
+        return ApplicationCommandParseStatus::kInvalidPayload;
+    }
+
+    const ApplicationCommandParseStatus device_id_status = extract_device_id_hex_from_v1_topic(
+        topic, "/config/set", out_device_id_hex, out_device_id_hex_capacity);
+    if (device_id_status != ApplicationCommandParseStatus::kOk) {
+        return device_id_status;
+    }
+
+    // parse_reporting_profile_payload() takes a short_addr purely to run
+    // its own kUnknownShortAddr/0 bounds check; the v1 path has no
+    // short_addr at parse time (the topic carries device_id_hex, not
+    // short_addr) and profile.key is not short_addr-keyed at all, so a
+    // dummy value that passes the bounds check is supplied and then
+    // immediately reset to kUnknownShortAddr below -- out_request->
+    // short_addr must never be read by v1 callers; resolving device_id_hex
+    // to a real short_addr (for command dispatch) and to a real DeviceId
+    // (for profile.key.device_id) both happen in the caller via
+    // ServiceRuntimeApi, exactly like the legacy short_addr-keyed path's
+    // own division of responsibility.
+    const ApplicationCommandParseStatus status = parse_reporting_profile_payload(payload, 1U, out_request);
+    if (status == ApplicationCommandParseStatus::kOk) {
+        out_request->short_addr = kUnknownShortAddr;
+    }
+    return status;
 }
 
 }  // namespace service

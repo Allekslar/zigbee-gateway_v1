@@ -417,10 +417,36 @@ target_include_directories(test_mqtt_serializer PRIVATE
 zg_apply_component_compile_policy(test_mqtt_serializer)
 add_test(NAME test_mqtt_serializer COMMAND test_mqtt_serializer)
 
+add_executable(test_mqtt_topics_v1
+    test_mqtt_topics_v1.cpp
+    ../../components/mqtt_bridge/mqtt_topics_v1.cpp
+)
+target_include_directories(test_mqtt_topics_v1 PRIVATE
+    ../../components/mqtt_bridge/include
+)
+zg_apply_component_compile_policy(test_mqtt_topics_v1)
+add_test(NAME test_mqtt_topics_v1 COMMAND test_mqtt_topics_v1)
+
+add_executable(test_mqtt_serializer_v1
+    test_mqtt_serializer_v1.cpp
+    ../../components/mqtt_bridge/mqtt_serializer.cpp
+    ../../components/mqtt_bridge/mqtt_serializer_v1.cpp
+    ../../components/mqtt_bridge/mqtt_topics_v1.cpp
+)
+target_include_directories(test_mqtt_serializer_v1 PRIVATE
+    ../../components/mqtt_bridge/include
+    ../../components/service/include
+    ../../components/core/include
+    ../../components/common/include
+)
+zg_apply_component_compile_policy(test_mqtt_serializer_v1)
+add_test(NAME test_mqtt_serializer_v1 COMMAND test_mqtt_serializer_v1)
+
 add_executable(test_mqtt_discovery
     test_mqtt_discovery.cpp
     ../../components/mqtt_bridge/mqtt_discovery.cpp
     ../../components/mqtt_bridge/mqtt_topics.cpp
+    ../../components/mqtt_bridge/mqtt_topics_v1.cpp
 )
 target_include_directories(test_mqtt_discovery PRIVATE
     ../../components/mqtt_bridge/include
@@ -436,7 +462,9 @@ add_executable(test_mqtt_device_sync
     ../../components/mqtt_bridge/mqtt_bridge.cpp
     ../../components/mqtt_bridge/mqtt_device_sync.cpp
     ../../components/mqtt_bridge/mqtt_topics.cpp
+    ../../components/mqtt_bridge/mqtt_topics_v1.cpp
     ../../components/mqtt_bridge/mqtt_serializer.cpp
+    ../../components/mqtt_bridge/mqtt_serializer_v1.cpp
     ../../components/mqtt_bridge/mqtt_discovery.cpp
 )
 target_include_directories(test_mqtt_device_sync PRIVATE
@@ -447,6 +475,7 @@ target_include_directories(test_mqtt_device_sync PRIVATE
     ../../components/common/include
 )
 target_link_libraries(test_mqtt_device_sync PRIVATE service_host)
+target_compile_definitions(test_mqtt_device_sync PRIVATE MQTT_BRIDGE_TEST_HOOKS=1)
 zg_apply_component_compile_policy(test_mqtt_device_sync)
 add_test(NAME test_mqtt_device_sync COMMAND test_mqtt_device_sync)
 
@@ -456,7 +485,9 @@ add_executable(test_mqtt_bridge_commands
     ../../components/mqtt_bridge/mqtt_discovery.cpp
     ../../components/mqtt_bridge/mqtt_device_sync.cpp
     ../../components/mqtt_bridge/mqtt_topics.cpp
+    ../../components/mqtt_bridge/mqtt_topics_v1.cpp
     ../../components/mqtt_bridge/mqtt_serializer.cpp
+    ../../components/mqtt_bridge/mqtt_serializer_v1.cpp
 )
 target_include_directories(test_mqtt_bridge_commands PRIVATE
     ../../components/mqtt_bridge/include
@@ -474,7 +505,9 @@ add_executable(test_mqtt_runtime_feed
     ../../components/mqtt_bridge/mqtt_bridge.cpp
     ../../components/mqtt_bridge/mqtt_device_sync.cpp
     ../../components/mqtt_bridge/mqtt_topics.cpp
+    ../../components/mqtt_bridge/mqtt_topics_v1.cpp
     ../../components/mqtt_bridge/mqtt_serializer.cpp
+    ../../components/mqtt_bridge/mqtt_serializer_v1.cpp
     ../../components/mqtt_bridge/mqtt_discovery.cpp
 )
 target_include_directories(test_mqtt_runtime_feed PRIVATE
@@ -493,7 +526,9 @@ add_executable(test_mqtt_status_runtime_feed
     ../../components/mqtt_bridge/mqtt_bridge.cpp
     ../../components/mqtt_bridge/mqtt_device_sync.cpp
     ../../components/mqtt_bridge/mqtt_topics.cpp
+    ../../components/mqtt_bridge/mqtt_topics_v1.cpp
     ../../components/mqtt_bridge/mqtt_serializer.cpp
+    ../../components/mqtt_bridge/mqtt_serializer_v1.cpp
     ../../components/mqtt_bridge/mqtt_discovery.cpp
 )
 target_include_directories(test_mqtt_status_runtime_feed PRIVATE

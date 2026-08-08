@@ -144,6 +144,7 @@ public:
     NetworkOperationPollStatus get_network_operation_poll_status(uint32_t request_id) const noexcept override;
     OtaPollStatus get_ota_poll_status(uint32_t request_id) const noexcept override;
     RcpUpdatePollStatus get_rcp_update_poll_status(uint32_t request_id) const noexcept override;
+    OperationStatusSnapshot poll_operation_status(uint32_t request_id) const noexcept override;
     bool is_scan_request_queued(uint32_t request_id) const noexcept override;
     bool is_scan_request_in_progress(uint32_t request_id) const noexcept override;
     bool initialize_hal_adapter() noexcept override;

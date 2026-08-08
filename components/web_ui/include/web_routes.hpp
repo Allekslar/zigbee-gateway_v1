@@ -39,5 +39,6 @@ bool register_network_routes_v1(void* server_handle, WebRouteContext* context) n
 bool register_config_routes_v1(void* server_handle, WebRouteContext* context) noexcept;
 bool register_ota_routes_v1(void* server_handle, WebRouteContext* context) noexcept;
 bool register_rcp_routes_v1(void* server_handle, WebRouteContext* context) noexcept;
+bool register_operations_routes_v1(void* server_handle, WebRouteContext* context) noexcept;
 
 }  // namespace web_ui

@@ -341,6 +341,72 @@ int main() {
     assert(g_last_status == "400 Bad Request");
     assert(g_last_response.find("\"error\":\"invalid_request\"") != std::string::npos);
 
+    // --- GET /api/v1/operations/{operation_id} ---
+    clear_http_capture();
+    req.uri = "/api/v1/operations/not-a-number";
+    req.content_len = 0;
+    g_request_body.clear();
+    assert(web_ui::operations_get_handler_v1(&req) == ESP_OK);
+    assert(g_last_status == "400 Bad Request");
+    assert(g_last_response.find("\"error\":\"invalid_request\"") != std::string::npos);
+
+    clear_http_capture();
+    req.uri = "/api/v1/operations/0";
+    assert(web_ui::operations_get_handler_v1(&req) == ESP_OK);
+    assert(g_last_status == "400 Bad Request");
+
+    clear_http_capture();
+    req.uri = "/api/v1/operations/999999999";
+    assert(web_ui::operations_get_handler_v1(&req) == ESP_OK);
+    assert(g_last_status == "404 Not Found");
+    assert(g_last_response.find("\"error\":\"operation_not_found\"") != std::string::npos);
+
+    // A completed network scan: request_id resolves through
+    // poll_operation_status() to domain=network, status=ready.
+    const uint32_t scan_request_id = runtime.next_operation_request_id();
+    assert(runtime.post_network_scan(scan_request_id));
+    runtime.process_pending();
+    char scan_op_uri[48] = {};
+    std::snprintf(scan_op_uri, sizeof(scan_op_uri), "/api/v1/operations/%u", scan_request_id);
+    clear_http_capture();
+    req.uri = scan_op_uri;
+    assert(web_ui::operations_get_handler_v1(&req) == ESP_OK);
+    assert(g_last_status.empty());  // 200 OK
+    assert(g_last_response.find("\"schema_version\":1") != std::string::npos);
+    assert(g_last_response.find("\"domain\":\"network\"") != std::string::npos);
+    assert(g_last_response.find("\"status\":\"ready\"") != std::string::npos);
+    assert(g_last_response.find("\"ok\":true") != std::string::npos);
+
+    // Re-polling the same (now-consumed) operation is 404 -- the store's
+    // take_*_result() is destructive, matching the legacy per-domain GET
+    // handlers' existing consume-on-read semantics.
+    clear_http_capture();
+    req.uri = scan_op_uri;
+    assert(web_ui::operations_get_handler_v1(&req) == ESP_OK);
+    assert(g_last_status == "404 Not Found");
+
+    // A queued-but-not-yet-ready OTA operation reports status:"pending".
+    const uint32_t ota_request_id = runtime.next_operation_request_id();
+    runtime.mark_wifi_credentials_available();
+    service::OtaStartRequest ota_request{};
+    ota_request.request_id = ota_request_id;
+    std::snprintf(ota_request.manifest.url.data(), ota_request.manifest.url.size(), "https://example.invalid/fw.bin");
+    (void)runtime.post_ota_start(ota_request);
+    char ota_op_uri[48] = {};
+    std::snprintf(ota_op_uri, sizeof(ota_op_uri), "/api/v1/operations/%u", ota_request_id);
+    clear_http_capture();
+    req.uri = ota_op_uri;
+    assert(web_ui::operations_get_handler_v1(&req) == ESP_OK);
+    assert(g_last_status.empty());  // 200 OK
+    assert(g_last_response.find("\"domain\":\"ota\"") != std::string::npos);
+    assert(g_last_response.find("\"status\":\"pending\"") != std::string::npos);
+
+    // Null user_ctx / null req are rejected without crashing.
+    assert(web_ui::operations_get_handler_v1(nullptr) == ESP_FAIL);
+    httpd_req_t bare_operations_req{};
+    bare_operations_req.user_ctx = nullptr;
+    assert(web_ui::operations_get_handler_v1(&bare_operations_req) == ESP_FAIL);
+
     // --- register_web_routes_v1 wires up all routes. ---
     assert(web_ui::register_web_routes_v1(reinterpret_cast<void*>(1), &route_ctx));
     assert(!web_ui::register_web_routes_v1(nullptr, &route_ctx));
