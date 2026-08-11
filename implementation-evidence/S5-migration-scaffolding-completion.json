@@ -1,0 +1,90 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-migration-scaffolding",
+  "stage_name": "S5 slice 7/N: restart-safe migration scaffolding for legacy plaintext values (plan required change #11 ONLY -- #13/#14/#16-18 remain unimplemented, not hardware-blocked)",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of the still-uncommitted S5 slices 1-6.",
+  "sequencing_note": "User's message named 'наступний крок, що спирається одразу на #10 і #12' (the next step that builds directly on both #10 and #12) -- this is plan #11, the restart-safe migration scaffolding, which the prior sub-slice's own evidence file had already named as the natural next piece.",
+  "changed_files": [
+    "components/app_hal/include/hal_nvs.h (extended: hal_nvs_erase_key() declaration)",
+    "components/app_hal/hal_nvs.c (extended: hal_nvs_erase_key() implementation -- ESP_PLATFORM wraps real nvs_erase_key(); host mock searches all three internal per-type tables and clears whichever holds the key)",
+    "components/service/include/secure_storage_port.hpp (extended: SecureStorageEraseResult enum, secure_storage_erase() declaration)",
+    "components/service/secure_storage_port.cpp (extended: secure_storage_erase() implementation)",
+    "components/service/include/secure_storage_migration.hpp (new: SecureStorageMigrationResult enum, kSecureStorageMigrationMaxValueBytes, SecureStorageMigrationStringValidator, secure_storage_migrate_str() declaration)",
+    "components/service/secure_storage_migration.cpp (new: the six-step restart-safe migration sequence)",
+    "test/host/test_secure_storage_port.cpp (extended: 3 new erase tests)",
+    "test/host/test_secure_storage_migration.cpp (new: 7 tests)",
+    "components/service/CMakeLists.txt (extended: secure_storage_migration.cpp added to SRCS)",
+    "test/host/CMakeLists.txt (extended: secure_storage_migration.cpp added to SERVICE_SOURCES; new test_secure_storage_migration executable/ctest registration)",
+    "docs/security/PRODUCTION_HARDENING.md (Section 2 heading widened to 'sub-slices 1-7... plan #1-#5 + #9 + #10 + #11 + #12 + #15'; new Section 2.10 documenting this work; Section 3.3/3.4/4 updated to reflect #11 done, #13/#14/#16-18 remaining)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #11: 'Add restart-safe migration scaffolding for legacy plaintext values: read legacy, validate, write encrypted, read back/verify, then erase plaintext. No automatic migration executes until S6 authorization/physical-presence policy exists.' -- implemented exactly this six-step sequence (check destination first for restart-safety, then read/validate/write/read-back-verify/erase), entirely on top of the existing Section 2.7-2.9 primitives; nothing in this repository calls secure_storage_migrate_str(), matching the plan's own 'no automatic migration executes' text literally.",
+    "S5's 'Error, transaction and concurrency behavior' contract text: 'Interrupted encrypted migration remains restart-safe and never deletes plaintext before encrypted readback succeeds.' -- directly implemented via the destination-first restart-safety check and the strict ordering (erase only ever happens after a successful readback-verify, whether that verify happened this call or a previous one).",
+    "This project's established real-tool-grounding discipline was applied to the new nvs_erase_key() call exactly as it was to esp_flash_encryption_enabled() in the prior sub-slice: the real signature and documented return codes (including ESP_ERR_NVS_NOT_FOUND for an already-erased/never-written key) were confirmed via grep inside espressif/idf:release-v5.5 before writing any code referencing it."
+  ],
+  "work_summary": {
+    "erase_primitive_implemented": {
+      "status": "COMPLETE",
+      "detail": "hal_nvs_erase_key() follows hal_nvs.c's exact existing per-function pattern (nvs_open/operation/nvs_commit/nvs_close on ESP_PLATFORM). Confirmed the real nvs_erase_key(nvs_handle_t, const char*) signature and its ESP_ERR_NVS_NOT_FOUND-for-nonexistent-key behavior via a real grep inside espressif/idf:release-v5.5 before implementing. Host mock is type-agnostic: searches all three internal per-type tables (u32/str/blob) since a real NVS key carries no type tag at this API level, and clears whichever table actually holds it. secure_storage_erase() layers the same namespace-ownership gate as the read/write paths on top, and treats NOT_FOUND as success (kErased) -- deliberately idempotent, since a caller retrying an interrupted cleanup step must not have to distinguish 'already gone' from 'just removed'."
+    },
+    "migration_scaffolding_implemented": {
+      "status": "COMPLETE",
+      "detail": "secure_storage_migrate_str() implements the plan's own six-step sequence entirely through Sections 2.7-2.9's existing primitives (secure_storage_get_str/set_str/erase), so their namespace-ownership, fail-closed-encryption-gate and idempotent-erase guarantees apply automatically. Destination is checked first (restart-safety: an existing valid destination value means a prior call already migrated, so no re-read/re-validate/re-write happens, only a best-effort source cleanup retry). Source read failure states (not-provisioned, corrupt, unavailable) each get a distinct result value. A caller-supplied validator gates migration on content. The destination write goes through the plan #12 encryption-verified gate automatically. Readback verification happens strictly before any erase attempt."
+    },
+    "design_flaw_found_and_fixed_during_this_pass": {
+      "status": "COMPLETE -- caught by writing this sub-slice's own tests, not a separate review",
+      "detail": "An initial draft allowed source and destination to name the literal same namespace+key (reasoning this project's transparent whole-partition NVS Encryption might make an in-place rewrite a valid real migration path). Attempting to write a test for that case surfaced that the destination-first restart-safety check cannot distinguish 'already migrated' from 'legacy value simply present, never migrated' when source and destination are the same slot -- meaning the plan #12 encryption-verified write gate would be silently, permanently bypassed for any pre-existing value. Fixed by adding an explicit upfront rejection (SecureStorageMigrationResult::kInvalidSameSourceAndDestination) before secure_storage_migrate_str() touches storage at all, and documenting the reasoning directly in the header. Verified via a dedicated test (test_same_source_and_destination_rejected_outright)."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "3 new erase tests appended to test/host/test_secure_storage_port.cpp; 7 new tests in the new test/host/test_secure_storage_migration.cpp (using real registered keys from the Section 2.7 registry as generic string test slots, e.g. kOperationJournalDiagnostics's ota_dbg_req/ota_dbg_step, kCoreDeviceState's dstate_a/dstate_b, kWifiCredentials's wifi_ssid/wifi_password -- matching how other host tests in this repository already reuse real keys as generic test slots unrelated to their production meaning). Full repository ctest suite: 87/87 passing (86 pre-existing + this sub-slice's additions). cppcheck: zero findings against hal_nvs.c, secure_storage_port.cpp and secure_storage_migration.cpp. check_arch_invariants.sh: high=0/medium=0/low=0, unchanged. Additionally verified against a full real idf.py -B build-migration-test set-target esp32c6 build inside espressif/idf:release-v5.5: 1182/1182 steps (one more than the prior sub-slice's 1181, from the added source file), nvs_erase_key linked correctly with no missing-symbol/missing-include errors."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only plan #11 (migration scaffolding) is implemented in this sub-slice; #13 (TLS/provisioning storage interfaces), #14 (redaction), #16/#17 (erase/preserve enforcement) and #18 (reset-journal storage port) are not, and no production call site invokes secure_storage_migrate_str() -- there is no boot hook or S6 authorization flow yet, matching the plan's own literal 'no automatic migration executes until S6 authorization/physical-presence policy exists' text.",
+      "why": "The user's instruction named exactly plan #11 as the next step, and #11's own plan text explicitly forbids wiring it to run automatically before S6 exists.",
+      "consequence": "wifi_ssid/wifi_password and every other existing NVS key remain completely unmigrated and behaviorally unchanged by this sub-slice -- this adds a fully tested, real-ESP-IDF-verified mechanism that nothing currently calls. Wiring it to a real S6 authorization flow, and deciding the real destination key/namespace scheme, is future work.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 2.10's closing paragraph and Section 3.3"
+    },
+    {
+      "deviation": "secure_storage_migrate_str() only supports string-valued secrets (matching the two real existing plaintext credentials, wifi_ssid/wifi_password, which are both strings); u32/blob migration variants do not exist.",
+      "why": "Every currently-real plaintext credential in this codebase is a string; building generic u32/blob variants now would be speculative surface for a need that does not exist yet in this repository's real data.",
+      "consequence": "A future secret that needs migrating and is not string-valued would need a new function, not a reuse of this one.",
+      "tracked_in": "components/service/include/secure_storage_migration.hpp module docstring"
+    },
+    {
+      "deviation": "secure_storage_migrate_str() now rejects source_namespace+source_key == dest_namespace+dest_key outright, meaning any real migration needs a genuinely distinct destination -- a decision Section 2.7's evidence had already flagged as open (real per-category ESP-IDF namespace routing vs. today's single shared namespace) but this sub-slice confirms now matters concretely, not just in the abstract, since same-key was found to be actively unsafe, not merely unimplemented.",
+      "why": "See 'design_flaw_found_and_fixed_during_this_pass' above -- a real correctness problem, not a stylistic preference.",
+      "consequence": "Wiring this scaffolding to any real credential requires first deciding a genuinely distinct destination key or namespace, which is still an open product/architecture decision.",
+      "tracked_in": "components/service/include/secure_storage_migration.hpp scoping note, docs/security/PRODUCTION_HARDENING.md Section 2.10"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3, 4 (fully), 5 (fully), 9 (fully), 10 (fully), 11 (fully), 12 (fully), 15 (fully); 8 (partial: signing-key/insecure-escape-hatch handling from slice 1, template-format redaction from slice 2 -- burn-time enforcement still not implemented)",
+    "plan_s5_items_remaining": "6, 7, 8 (burn-time enforcement remainder), 13, 14, 16, 17, 18",
+    "cpp_host_tests_total_this_repo": 87,
+    "cpp_new_test_executables_this_sub_slice": 1,
+    "cpp_host_test_assertions_this_sub_slice_new": 10
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "87/87 (100%) via ctest inside zgw-host-tools:s0, including the new test_secure_storage_migration (7 tests) and test_secure_storage_port's 3 new erase tests. Full rebuild from a clean host-build directory." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/app_hal/hal_nvs.c, components/service/secure_storage_port.cpp and components/service/secure_storage_migration.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "real_esp_idf_build": { "result": "PASSED", "detail": "idf.py -B build-migration-test set-target esp32c6 build inside espressif/idf:release-v5.5 (ordinary, non-ZGW_PRODUCTION_BUILD build): 1182/1182 steps, real nvs_erase_key() from nvs_flash linked correctly. Build artifacts cleaned up via docker run ... rm -rf (root-owned); dependencies.lock restored via git checkout -- confirmed via git status the working tree returned to only the intended source-file changes." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (build + full 87-test ctest suite) and zgw-host-tools:cppcheck (static analysis) for the host-testable logic, AND via a full real idf.py build inside espressif/idf:release-v5.5 for the new real ESP-IDF function call (nvs_erase_key()). No real ESP32-C6 hardware or manufacturing/eFuse environment was needed.",
+  "unresolved_deviations": [
+    "Plan S5 items #13, #14, #16-18 remain entirely unimplemented, and no production call site invokes secure_storage_migrate_str() yet -- see docs/security/PRODUCTION_HARDENING.md Section 3.3 and this file's deviations above.",
+    "secure_storage_migrate_str() supports string values only; u32/blob variants do not exist -- see this file's deviations above.",
+    "The real-per-category-namespace-routing question (flagged open since Section 2.7) now has a confirmed concrete consequence: this sub-slice's same-key rejection means it must be resolved before any real migration can be wired up -- see this file's deviations above.",
+    "Plan S5 items #6-8 (burn-time enforcement remainder, BLOCKED_SECURITY_PROVISIONING), the ESP-IDF-version-check-vs-dependencies.lock discrepancy, and prior sub-slices' own unresolved items remain unchanged, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks plan #6-#8 and every Secure Boot/Flash Encryption/NVS Encryption target/HIL test in S5's test list. This sub-slice's work (the erase primitive and migration scaffolding) is not blocked by this -- it is pure software, verified against the real ESP-IDF toolchain, fully implemented and tested."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

@@ -1,0 +1,75 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-idf-version-check",
+  "stage_name": "S5 slice 3/N: ESP-IDF version check in the production security profile verifier (plan required change #4, second half -- completes plan #4)",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of the still-uncommitted S5 slices 1 (production security profile) and 2 (eFuse provisioning template).",
+  "sequencing_note": "User asked 'куди можемо йти далі?' (where can we go next?) a second time; presented 4 options via AskUserQuestion, user selected 'S5 #4 (друга половина): перевірка версії ESP-IDF' (the version-check half of plan #4). Implementing it required resolving a previously explicitly-deferred project-policy question (docs/security/PRODUCTION_HARDENING.md Section 2.3/3.1 in the prior sub-slice: plan text pins exactly 5.5.2, but this project's actual CI tracks the release-v5.5 branch and resolves to 5.5.5) -- asked the user directly via a second AskUserQuestion rather than deciding unilaterally; user chose 'allow any 5.5.x'.",
+  "changed_files": [
+    "scripts/verify_production_security_profile.py (extended: EXPECTED_IDF_VERSION_MAJOR/MINOR constants, parse_idf_version(), read_idf_version_from_project_description(), verify_idf_version(), new --project-description CLI flag wired into main())",
+    "scripts/test_verify_production_security_profile.py (extended: 15 new tests -- ParseIdfVersionTest, VerifyIdfVersionTest, ReadIdfVersionFromProjectDescriptionTest, plus 4 new MainTest cases -- bringing the suite to 31/31)",
+    "scripts/testdata/project_description_esp32c6_real.json (new: a trimmed, REAL idf.py reconfigure-generated project_description.json captured from this repository's own build inside espressif/idf:release-v5.5 -- real key/value pairs, not fabricated, including the real git_revision 'v5.5.5-316-g1a1a5aa6513')",
+    "docs/security/PRODUCTION_HARDENING.md (Section 2.3 rewritten from 'discrepancy noted, not resolved' to 'discrepancy noted, policy decided by user, now enforced'; new Section 2.3.1 documenting the implementation/grounding/tests; Section 3.1 rewritten from 'not yet implemented' to '(Resolved)', noting the one still-open related item -- dependencies.lock's own 5.5.2 pin; Section 4 environment note extended)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #4, second half: 'the resolved ESP-IDF version is not exactly 5.5.2' -- implemented as a real, build-grounded check, with the exact-vs-branch-tracking policy question resolved by explicit user decision (allow any 5.5.x) rather than assumed.",
+    "This project's existing verification discipline (grep/run real ESP-IDF tooling rather than trust documentation or memory alone, see [[esp-idf-available-via-docker]]) was applied again here: an initial assumption that project_description.json would have an 'idf_version' field was checked against a real idf.py reconfigure run and found wrong (no such field exists in ESP-IDF 5.5.5's project_description.json schema) before committing to the real 'git_revision' field instead."
+  ],
+  "work_summary": {
+    "version_check_implemented": {
+      "status": "COMPLETE",
+      "detail": "verify_idf_version()/read_idf_version_from_project_description() check MAJOR.MINOR==5.5 (EXPECTED_IDF_VERSION_MAJOR/MINOR module constants), PATCH unconstrained, sourced from a real project_description.json's git_revision field (ESP-IDF's own `git describe` output for the actual IDF_PATH checkout that produced a build, e.g. 'v5.5.5-316-g1a1a5aa6513') rather than a static source-tree file. New --project-description PATH CLI flag on verify_production_security_profile.py; omitting it skips the version check entirely (backward compatible with every existing invocation, including the sdkconfig-only RepositoryLayeredProfileTest simulation which has no real build directory)."
+    },
+    "real_fixture_capture": {
+      "status": "COMPLETE",
+      "detail": "Ran `idf.py -B build-ver-test set-target esp32c6 && idf.py -B build-ver-test reconfigure` (cmake-configure-only, deliberately not a full build, to generate project_description.json quickly) inside espressif/idf:release-v5.5 against this repository. Inspected all keys in the real output first (did not assume a field name) -- found no 'idf_version' key, found 'git_revision': 'v5.5.5-316-g1a1a5aa6513' instead. Captured a trimmed real copy (8 real fields: version, project_name, project_version, git_revision, target, idf_path, build_dir, config_file) as scripts/testdata/project_description_esp32c6_real.json."
+    },
+    "policy_question_resolved": {
+      "status": "COMPLETE -- by explicit user decision, not assumed",
+      "detail": "Asked the user directly (AskUserQuestion) which rule the verifier should enforce, given the real, previously-documented discrepancy: exact 5.5.2 (matching the plan's literal text), any 5.5.x (matching this project's actual release-v5.5-tracking CI), update the plan's own pin to 5.5.5, or defer the decision further. User chose 'allow any 5.5.x'. Implemented exactly that -- MAJOR.MINOR pinned, PATCH unconstrained."
+    },
+    "dependencies_lock_discrepancy_found": {
+      "status": "NOTED, NOT ACTED ON (see deviations)",
+      "detail": "While capturing the real project_description.json fixture, `idf.py reconfigure`'s Component Manager step rewrote this repository's own git-tracked dependencies.lock (`idf: version: 5.5.2` -> `5.5.5`) as a side effect -- an independent, build-verified confirmation that the plan's originally written 5.5.2 pin is not just prose but also exists in a tracked repo file, and that a real build already disagrees with it. Reverted via `git checkout -- dependencies.lock` before finishing (this project's established Docker-artifact-cleanup discipline, see [[esp-idf-available-via-docker]]) -- updating a git-tracked lock file is a separate, reviewable change not folded into this pass."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "The version check enforces MAJOR.MINOR==5.5 with any PATCH, not exactly 5.5.2 as the plan's literal text states.",
+      "why": "The user explicitly resolved this previously-flagged, previously-deferred policy discrepancy (docs/security/PRODUCTION_HARDENING.md Section 2.3 from the prior sub-slice) by choosing 'allow any 5.5.x' when asked directly -- this project's actual CI configuration (espressif/idf:release-v5.5, a branch-tracking tag) has never resolved to exactly 5.5.2 in this sandbox, so an exact-5.5.2 check would fail this project's own real CI image on every run.",
+      "consequence": "A production build using a genuinely different, non-5.5.x ESP-IDF major/minor (e.g. an accidental 5.6.0 or 6.0.0 toolchain) is caught; a build using 5.5.2 vs. 5.5.5 vs. any other 5.5.x patch is not distinguished, matching what the user decided is actually meaningful for this project.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 2.3/2.3.1"
+    },
+    {
+      "deviation": "dependencies.lock's own independent `idf: version: 5.5.2` pin (a git-tracked Component Manager lock entry, separate from the plan's prose and from verify_production_security_profile.py's now-implemented check) was found to disagree with the real toolchain in use, but was not updated in this pass.",
+      "why": "Updating a git-tracked lock file is a distinct, independently-reviewable change (it affects what the ESP-IDF Component Manager considers a version drift on every future build, not just this verifier's diagnostic), and this sub-slice's explicit scope (per the user's selected AskUserQuestion option) was the verifier's version check, not a general audit of every place an ESP-IDF version might be pinned in this repository.",
+      "consequence": "A real `idf.py reconfigure`/`build` run against this repository's real dependencies.lock will continue to want to rewrite it to 5.5.5 until someone deliberately updates the file (or repins the Component Manager dependency differently); this sandbox's real-build passes must keep reverting it via `git checkout` afterward.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 3.1"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3, 4 (fully -- Kconfig-symbol half + version-check half), 5 (fully, real-espefuse.py-verified); 8 (partial: signing-key/insecure-escape-hatch handling from slice 1, plus template-format redaction from slice 2 -- burn-time enforcement still not implemented)",
+    "plan_s5_items_remaining": "6, 7, 8 (burn-time enforcement remainder), 9-18",
+    "python_unit_tests_total_this_repo": 49,
+    "python_unit_tests_this_sub_slice_new": 15,
+    "python_unit_tests_verify_production_security_profile_py": 31
+  },
+  "tests_and_checks": {
+    "python_unit_tests": { "result": "PASSED", "detail": "31/31 (100%) in scripts/test_verify_production_security_profile.py (16 pre-existing + 15 new), run via `python3 -m unittest scripts/test_verify_production_security_profile.py -v`. Combined with the 18/18 in scripts/test_efuse_provisioning_template.py, the security-profile-verifier-tests CI job (unchanged in this pass -- its two existing steps already invoke both test modules by module path, no new step needed) now runs 49 Python tests total." },
+    "real_esp_idf_reconfigure": { "result": "PASSED", "detail": "idf.py -B build-ver-test set-target esp32c6 && idf.py -B build-ver-test reconfigure completed successfully inside espressif/idf:release-v5.5 against this repository's real sources; project_description.json generated with real git_revision 'v5.5.5-316-g1a1a5aa6513'. (A `git config --global --add safe.directory /workspace` step was needed first -- the container's git otherwise refuses to run `git describe` inside a bind-mounted repo it doesn't own, a new, minor operational gotcha for this session, worth folding into [[esp-idf-available-via-docker]].)" },
+    "real_fixture_round_trip": { "result": "PASSED", "detail": "read_idf_version_from_project_description() against the real captured scripts/testdata/project_description_esp32c6_real.json correctly extracts (5, 5, 5) and the raw string 'v5.5.5-316-g1a1a5aa6513'; verify_idf_version() on that result returns zero violations." },
+    "host_tests": { "result": "N/A", "detail": "No C/C++ changed in this pass." },
+    "architecture_gate": { "result": "N/A", "detail": "Unaffected -- no C/C++ source-tree changes." },
+    "cppcheck": { "result": "N/A", "detail": "No C/C++ files added or changed." }
+  },
+  "environment_note": "Verified via python3 directly (stdlib unittest) for the verifier's own logic, and via the real espressif/idf:release-v5.5 Docker image (ESP-IDF 5.5.5, the same image already pulled for S5 slices 1-2) for capturing the real project_description.json fixture this check is grounded against. No real ESP32-C6 hardware or manufacturing/eFuse environment was used or required. Docker-container-created build artifacts (build-ver-test/) were cleaned up via `docker run ... rm -rf` (root-owned, cannot be removed by the host user directly); the container's `idf.py reconfigure` step also modified the git-tracked dependencies.lock as a side effect (Component Manager resolving the real 5.5.5 toolchain against its own 5.5.2 pin) -- reverted via `git checkout -- dependencies.lock`, confirmed clean via git status.",
+  "unresolved_deviations": [
+    "dependencies.lock's own independent idf: version: 5.5.2 pin was found to disagree with the real toolchain but was not updated -- see this file's deviations above and docs/security/PRODUCTION_HARDENING.md Section 3.1.",
+    "Plan S5 items #6-8 (burn-time enforcement remainder) and #9-18 (encrypted storage foundation) remain entirely unimplemented -- unchanged from the prior two sub-slices, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks plan #6 (dry-run/burn workflow), #7 (quarantine) and #8's burn-time enforcement, and every Secure Boot/Flash Encryption/NVS Encryption target/HIL test in S5's test list. This sub-slice's work (the version-check tooling) is not blocked by this -- it is pure software, fully implemented and tested."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

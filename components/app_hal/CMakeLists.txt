@@ -17,6 +17,7 @@ idf_component_register(
         "hal_rcp_uart_backend.c"
         "hal_led.c"
         "hal_identity.c"
+        "hal_security_state.c"
     EMBED_TXTFILES
         "ota_server_root_ca.pem"
     INCLUDE_DIRS "include"

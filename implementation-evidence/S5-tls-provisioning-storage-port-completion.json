@@ -1,0 +1,76 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-tls-provisioning-storage-port",
+  "stage_name": "S5 slice 8/N: TLS/provisioning key storage interfaces (plan required change #13 ONLY -- #14/#16-18 remain unimplemented, not hardware-blocked)",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of the still-uncommitted S5 slices 1-7.",
+  "sequencing_note": "User's instruction was 'йдемо далі по черзі' (let's continue in order) -- interpreted as working through the remaining S5 'Encrypted storage foundation' items in their plan-text numeric order. #15 was already done (sub-slice 4); the next unimplemented item in order is #13 (TLS/provisioning storage interfaces).",
+  "changed_files": [
+    "components/service/nvs_namespace_registry.cpp (extended: kTlsIdentity and kManufacturingProvisioning entries now have real key patterns -- tls_key_cur/tls_key_nxt/tls_cert_cur/tls_cert_nxt/tls_ca and mfg_pop/mfg_efuse_rec respectively -- and implemented_today flipped to true for both, matching the registry's own stated bar ('real hal_nvs_* call sites exist today'))",
+    "components/service/include/tls_provisioning_storage_port.hpp (new: TlsCertificateSlot enum, typed get/set declarations for TLS private key/certificate per slot, product CA, manufacturing PoP and eFuse-record)",
+    "components/service/tls_provisioning_storage_port.cpp (new: implementations, each a thin call into Section 2.8/2.9's secure_storage_get_blob/set_blob)",
+    "test/host/test_tls_provisioning_storage_port.cpp (new: 5 tests, all using synthetic placeholder byte patterns)",
+    "components/service/CMakeLists.txt (extended: tls_provisioning_storage_port.cpp added to SRCS)",
+    "test/host/CMakeLists.txt (extended: tls_provisioning_storage_port.cpp added to SERVICE_SOURCES; new test_tls_provisioning_storage_port executable/ctest registration)",
+    "docs/security/PRODUCTION_HARDENING.md (Section 2 heading widened to 'sub-slices 1-8... plan #1-#5 + #9-#13 + #15'; new Section 2.11 documenting this work; Section 3.3/4 updated to reflect #13 done, #14/#16-18 remaining)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #13: 'Add production TLS/provisioning key storage interfaces consumed by S6; this stage does not generate untracked production certificates or shared secrets.' -- implemented as typed storage primitives only (get/set per TLS current/next slot, product CA, manufacturing PoP/eFuse record); no rotation, activation, validation or real key/cert material was added, matching both halves of the plan text precisely.",
+    "S6's own 'Target artifacts expected absent' list names 'authenticated current/next certificate rotation adapter with atomic active-slot selection' as S6's job, not S5's -- this sub-slice deliberately does not implement slot activation/rollback policy, confirming the stage boundary the plan itself draws.",
+    "FD-21's Preserve classification for TLS identity and manufacturing provisioning (Section 2.7, unchanged) was respected by deliberately NOT adding any erase function to this module -- avoiding the exact mistake plan #16/#17's erase enforcement must guard against."
+  ],
+  "work_summary": {
+    "registry_extended": {
+      "status": "COMPLETE",
+      "detail": "kTlsIdentity gained 5 key patterns (tls_key_cur, tls_key_nxt, tls_cert_cur, tls_cert_nxt, tls_ca) and kManufacturingProvisioning gained 2 (mfg_pop, mfg_efuse_rec); both flipped implemented_today from false to true, consistent with the registry's own documented bar for that flag ('real hal_nvs_* call sites exist today', not 'S6 wires this up end-to-end') -- the same interpretation already applied to kWifiCredentials in the original sub-slice 4 registry. validate_nvs_namespace_registry() (Section 2.7) confirmed no key-pattern collisions were introduced against any existing namespace's patterns."
+    },
+    "storage_interface_implemented": {
+      "status": "COMPLETE",
+      "detail": "tls_identity_get/set_private_key(slot,...), tls_identity_get/set_certificate(slot,...), tls_identity_get/set_product_ca(...), manufacturing_provisioning_get/set_proof_of_possession(...), manufacturing_provisioning_get/set_efuse_record(...) -- each a thin, typed wrapper directly over secure_storage_get_blob/set_blob (Section 2.8/2.9), so namespace-ownership gating and the plan #12 encryption-verified write gate apply automatically with zero new logic of this module's own. No erase function exists in this module (deliberate -- see frozen_decisions_applied)."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "5 tests in test/host/test_tls_provisioning_storage_port.cpp, all passing, all using synthetic placeholder byte patterns (0xA1/0xB2/0xC3-style filler, never real-looking key/certificate material) -- directly satisfying plan #13's own 'does not generate untracked production certificates or shared secrets' text. Verifies: not-provisioned before any write; current/next private-key slots are genuinely independent (compared directly against each other, not just individually correct); a certificate write is rejected and confirmed absent from storage while encryption is unverified; product CA round-trips once verified; manufacturing PoP and eFuse-record slots are independent of each other. Full repository ctest suite: 88/88 passing (87 pre-existing + this sub-slice's new test executable). cppcheck: zero findings against nvs_namespace_registry.cpp and tls_provisioning_storage_port.cpp. check_arch_invariants.sh: high=0/medium=0/low=0, unchanged. Additionally verified against a full real idf.py -B build-tls-test set-target esp32c6 build inside espressif/idf:release-v5.5: 1183/1183 steps (one more than the prior sub-slice's 1182, from the added source file) -- this module calls no new ESP-IDF API of its own, so this build mainly confirms the new translation unit compiles cleanly under the real target toolchain."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only plan #13 is implemented in this sub-slice; #14 (redaction), #16/#17 (erase/preserve enforcement) and #18 (reset-journal storage port) are not, and nothing in this repository calls any function this sub-slice adds -- S6 (which does not exist yet) is the intended consumer, matching the plan's own text.",
+      "why": "The user's instruction was to continue through the remaining Encrypted storage foundation items in plan order; #13 was the next unimplemented item after #9-#12/#15.",
+      "consequence": "The TLS identity and manufacturing provisioning namespaces remain entirely empty in any real build -- this sub-slice adds a fully tested storage interface that nothing currently populates or reads. Real values only ever arrive once S6's rotation adapter and the still-BLOCKED_SECURITY_PROVISIONING manufacturing workflow (plan #6-#8) exist.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 2.11's closing text and Section 3.3"
+    },
+    {
+      "deviation": "The concrete key names (tls_key_cur/tls_key_nxt/tls_cert_cur/tls_cert_nxt/tls_ca/mfg_pop/mfg_efuse_rec) are this sub-slice's own invention -- the plan does not specify literal key names, only the conceptual data (current/next certificate slots, product CA, manufacturing PoP, eFuse provisioning record).",
+      "why": "A concrete storage interface needs concrete key names; these were chosen to match this repository's existing short-key naming convention (mtep_a/dstate_a/etc.) and to map directly onto FD-21's own named categories.",
+      "consequence": "If S6's real design later needs different key names or a different data shape (e.g. a single combined key+cert blob instead of two separate ones), these key names would need to change -- a compatibility non-issue since nothing has ever been written under them (no live data to migrate).",
+      "tracked_in": "components/service/include/tls_provisioning_storage_port.hpp"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3, 4 (fully), 5 (fully), 9, 10, 11, 12, 13, 15 (all fully); 8 (partial: signing-key/insecure-escape-hatch handling from slice 1, template-format redaction from slice 2 -- burn-time enforcement still not implemented)",
+    "plan_s5_items_remaining": "6, 7, 8 (burn-time enforcement remainder), 14, 16, 17, 18",
+    "cpp_host_tests_total_this_repo": 88,
+    "cpp_new_test_executables_this_sub_slice": 1,
+    "cpp_host_test_assertions_this_sub_slice_new": 5,
+    "nvs_namespace_registry_key_patterns_added": 7
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "88/88 (100%) via ctest inside zgw-host-tools:s0, including the new test_tls_provisioning_storage_port (5 tests). Full rebuild from a clean host-build directory." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/service/nvs_namespace_registry.cpp and components/service/tls_provisioning_storage_port.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "real_esp_idf_build": { "result": "PASSED", "detail": "idf.py -B build-tls-test set-target esp32c6 build inside espressif/idf:release-v5.5 (ordinary, non-ZGW_PRODUCTION_BUILD build): 1183/1183 steps completed. Build artifacts cleaned up via docker run ... rm -rf (root-owned); dependencies.lock restored via git checkout -- confirmed via git status the working tree returned to only the intended source-file changes." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (build + full 88-test ctest suite) and zgw-host-tools:cppcheck (static analysis) for the host-testable logic, AND via a full real idf.py build inside espressif/idf:release-v5.5 to confirm the new component source file compiles under the real target toolchain. No real ESP32-C6 hardware or manufacturing/eFuse environment was needed -- this sub-slice writes no real key/certificate material anywhere.",
+  "unresolved_deviations": [
+    "Plan S5 items #14, #16-18 remain entirely unimplemented, and nothing calls this sub-slice's new interface yet -- see docs/security/PRODUCTION_HARDENING.md Section 3.3 and this file's deviations above.",
+    "The concrete key names this sub-slice invented for kTlsIdentity/kManufacturingProvisioning are not derived from any S6 design document (none exists yet) and may need to change once S6's real rotation adapter design is decided -- see this file's deviations above.",
+    "Plan S5 items #6-8 (burn-time enforcement remainder, BLOCKED_SECURITY_PROVISIONING), the ESP-IDF-version-check-vs-dependencies.lock discrepancy, and prior sub-slices' own unresolved items (real per-category namespace routing, same-key migration rejection) remain unchanged, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks plan #6-#8 and every Secure Boot/Flash Encryption/NVS Encryption target/HIL test in S5's test list. This sub-slice's work (the TLS/provisioning storage interface) is not blocked by this at all -- it is pure software with zero hardware dependency and no real secret material, fully implemented and tested."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

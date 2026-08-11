@@ -1,0 +1,80 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-efuse-provisioning-template",
+  "stage_name": "S5 slice 2/N: machine-readable eFuse provisioning template/schema (plan required change #5 ONLY -- #6-8 remain BLOCKED_SECURITY_PROVISIONING)",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of the still-uncommitted S5 slice 1 (production security profile) changes.",
+  "sequencing_note": "User asked 'куди можемо йти далі?' (where can we go next?). Presented via AskUserQuestion as one of 4 options; user selected 'S5 #5: eFuse provisioning template/schema (частково)' (partial) -- explicitly the template/schema only, not #6 (dry-run/burn workflow), #7 (quarantine) or #8's burn-time enforcement, which need a real manufacturing/eFuse environment this sandbox does not have.",
+  "changed_files": [
+    "scripts/testdata/espefuse_esp32c6_virtual_summary.json (new: real captured output of `espefuse.py --chip esp32c6 --virt summary --format json`, ESP-IDF 5.5.5's own eFuse emulation, no hardware needed -- 64 real eFuse fields, used as ground truth for schema design and test fixtures)",
+    "scripts/efuse_provisioning_template.py (new: pure data-transformation module -- projects a real espefuse.py summary into a schema-versioned provisioning record grouped into chip_identity/secure_boot/flash_encryption/anti_rollback/jtag_download_policy sections plus a separately-redacted key_material_digests section; build/validate CLI)",
+    "scripts/test_efuse_provisioning_template.py (new: 18 stdlib unittest tests across 6 classes, all passing)",
+    ".github/workflows/ci.yml (extended: security-profile-verifier-tests job now also runs `python3 -m unittest scripts/test_efuse_provisioning_template.py -v`)",
+    "docs/security/PRODUCTION_HARDENING.md (new Section 2.6 documenting this work; Section 2 heading, Section 3.2, Section 3.3 and Section 4 updated to reflect #5 done / #6-8 still deferred)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #5: 'Define a machine-readable eFuse provisioning template containing chip identity, secure-boot digest slots, flash-encryption state, anti-rollback/security-version fields, JTAG/download policy and protection status.' -- implemented exactly, with every field name grounded against real espefuse.py output rather than guessed.",
+    "Plan S5 #8 (the portion applicable to a template format, not a burn workflow): 'Store only redacted public digest/evidence... never place production private keys in the repository' -- key material (BLOCK_KEY0-5) is represented ONLY as a SHA-256 digest, never as raw value/raw_value; validate_provisioning_record() defensively rejects a record if raw key material leaks in.",
+    "Plan S5's own precondition text ('if irreversible provisioning cannot be dry-run and read back, return BLOCKED_SECURITY_PROVISIONING') is respected by explicitly NOT implementing #6/#7/#8's burn-time enforcement in this module -- those need a real manufacturing/eFuse environment this sandbox does not have."
+  ],
+  "work_summary": {
+    "real_fixture_capture": {
+      "status": "COMPLETE",
+      "detail": "Ran `espefuse.py --chip esp32c6 --virt summary --format json` inside the same espressif/idf:release-v5.5 container used for S5 slice 1 -- the `--virt` flag runs ESP-IDF's own full eFuse emulation with no real hardware required. Captured the real 64-field JSON output as scripts/testdata/espefuse_esp32c6_virtual_summary.json after fixing a capture bug (export.sh's 'Activating ESP-IDF 5.5...' banner text was initially written to stdout ahead of the JSON, causing json.loads() to fail; fixed by extracting only the JSON portion, from the first line starting with '{' onward)."
+    },
+    "template_schema_implemented": {
+      "status": "COMPLETE",
+      "detail": "scripts/efuse_provisioning_template.py: SCHEMA_VERSION=1 record with gateway_id (canonical 12-lowercase-hex FD-17 GatewayId) + captured_at + 5 category sections (chip_identity: 7 fields, secure_boot: 12 fields, flash_encryption: 2 fields, anti_rollback: 1 field, jtag_download_policy: 8 fields) + key_material_digests (6 BLOCK_KEY* fields, each redacted to a SHA-256 digest only). Every field name cross-checked against the real captured fixture, not invented. build_provisioning_record()/validate_provisioning_record() plus a build/validate argparse CLI."
+    },
+    "tests_and_ci": {
+      "status": "COMPLETE",
+      "detail": "scripts/test_efuse_provisioning_template.py: 18 stdlib unittest tests (RealFixtureTest, RedactKeyMaterialTest, BuildProvisioningRecordTest, ValidateProvisioningRecordTest, MainCliTest), all passing (Ran 18 tests in 0.015s / OK). Key guard test: test_all_referenced_fields_exist_in_real_summary, an explicit regression check against inventing field names (the same class of bug found and fixed in verify_production_security_profile.py's own history, see S5-production-security-profile-completion.json). Wired into the existing security-profile-verifier-tests CI job (blocking, push/PR); YAML syntax validated via `python3 -c \"import yaml; yaml.safe_load(...)\"`."
+    },
+    "documentation": {
+      "status": "COMPLETE",
+      "detail": "docs/security/PRODUCTION_HARDENING.md Section 2.6 added (grounding methodology, schema table, redaction mechanism, CLI, test coverage); Section 2 heading widened to 'sub-slices 1-2... plan #1-#5'; Section 3.2 narrowed to #6-8 only (with a note that #5 is done); Section 3.3's eFuse bullet narrowed to '#6-8 remainder' (with a note that #5/template-schema is done); Section 4 environment note extended to mention espefuse.py --virt grounding."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only plan #5 (the template/schema) is implemented in this sub-slice; #6 (two-phase dry-run/burn workflow), #7 (device quarantine for unexpected eFuse state) and #8's burn-time enforcement (as opposed to #8's redaction requirement on the template format, which IS implemented) are not.",
+      "why": "User explicitly selected 'S5 #5: eFuse provisioning template/schema (частково)' -- partial, template/schema only -- when offered #5 alongside #6-8 as a combined option. #6-8 also genuinely need a real manufacturing/eFuse environment to dry-run and read back against (this sandbox has none), matching the plan's own BLOCKED_SECURITY_PROVISIONING precondition text.",
+      "consequence": "The template/schema exists and is fully tested, but nothing yet produces a provisioning record from a real device, enforces it at burn time, or quarantines a device with unexpected eFuse state -- those remain BLOCKED_SECURITY_PROVISIONING until real hardware/manufacturing access is available.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 3.2"
+    },
+    {
+      "deviation": "The template's field-to-category mapping was derived by reading espefuse.py's real per-field `category` metadata (e.g. `security`, `jtag`, `identity`) and plan #5's own English category names, then hand-assigning each field to the single best-fit plan category (e.g. SPI_BOOT_CRYPT_CNT -> flash_encryption even though espefuse.py itself tags it category=security) -- this hand-mapping is not verified by any automated cross-check against espefuse.py's own category field.",
+      "why": "Plan #5's category names (chip identity / secure-boot digest slots / flash-encryption state / anti-rollback / JTAG-download policy) do not correspond 1:1 to espefuse.py's own internal category taxonomy, so a mechanical field->category translation was not possible; a human-reasoned mapping was necessary.",
+      "consequence": "A future espefuse.py field reclassification, or disagreement about which plan-category a given field best belongs to, would require this file's _CATEGORY_SECTIONS mapping to be manually revisited -- there is no automated alarm if the mapping drifts from someone else's intent.",
+      "tracked_in": "scripts/efuse_provisioning_template.py module docstring and inline comments"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3, 5 (fully, real-espefuse.py-verified); 4 (Kconfig-symbol half only); 8 (partial: signing-key/insecure-escape-hatch handling from slice 1, plus template-format redaction from this slice -- burn-time enforcement still not implemented)",
+    "plan_s5_items_remaining": "4 (version-pin check), 6, 7, 8 (burn-time enforcement remainder), 9-18",
+    "python_unit_tests_total_this_repo": 34,
+    "python_unit_tests_this_sub_slice": 18,
+    "real_espefuse_fields_captured": 64,
+    "real_espefuse_fields_referenced_by_template": 30
+  },
+  "tests_and_checks": {
+    "python_unit_tests": { "result": "PASSED", "detail": "18/18 (100%) in scripts/test_efuse_provisioning_template.py, run via `python3 -m unittest scripts/test_efuse_provisioning_template.py -v`. Combined with the pre-existing 16/16 in scripts/test_verify_production_security_profile.py, the security-profile-verifier-tests CI job now runs 34 Python tests total." },
+    "manual_cli_round_trip": { "result": "PASSED", "detail": "`efuse_provisioning_template.py build scripts/testdata/espefuse_esp32c6_virtual_summary.json --gateway-id <hex> --captured-at <iso8601> --output <path>` followed by `efuse_provisioning_template.py validate <path>` against the real captured fixture: record built with all 5 sections populated correctly and key material redacted, validated with 0 violations." },
+    "ci_yaml_syntax": { "result": "PASSED", "detail": "`python3 -c \"import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))\"` -- no syntax errors after adding the new test step." },
+    "real_esp_idf_full_build": { "result": "N/A", "detail": "Not re-run in this sub-slice -- no Kconfig/partition-table/CMake changes; unaffected by this pass. Last verified in S5-production-security-profile-completion.json." },
+    "host_tests": { "result": "N/A", "detail": "No C/C++ changed in this pass." },
+    "architecture_gate": { "result": "N/A", "detail": "Unaffected -- no C/C++ source-tree changes." },
+    "cppcheck": { "result": "N/A", "detail": "No C/C++ files added or changed." }
+  },
+  "environment_note": "Verified via python3 directly (stdlib unittest) for the template module's own logic, and via the real espressif/idf:release-v5.5 Docker image (ESP-IDF 5.5.5, the same image already pulled for S5 slice 1) for capturing the real espefuse.py --virt eFuse-emulation fixture this module's schema and tests are grounded against. No real ESP32-C6 hardware or manufacturing/eFuse environment was used or required for this sub-slice -- espefuse.py's --virt flag is pure software emulation.",
+  "unresolved_deviations": [
+    "Plan S5 items #6-8 (burn-time enforcement remainder) remain entirely unimplemented -- see docs/security/PRODUCTION_HARDENING.md Section 3.2.",
+    "The plan-category <-> espefuse.py-field mapping in scripts/efuse_provisioning_template.py is a hand-reasoned assignment, not automatically cross-checked against espefuse.py's own category taxonomy -- see this file's deviations above.",
+    "verify_production_security_profile.py still does not check the resolved ESP-IDF version, and plan S5 items #9-18 remain entirely unimplemented -- unchanged from S5-production-security-profile-completion.json, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks plan #6 (dry-run/burn workflow), #7 (quarantine) and #8's burn-time enforcement, and every Secure Boot/Flash Encryption/NVS Encryption target/HIL test in S5's test list. The template/schema itself (#5) is not blocked by this -- it is a pure software data-transformation format, fully implemented and tested in this sub-slice."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

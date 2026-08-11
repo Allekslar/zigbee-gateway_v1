@@ -1,0 +1,84 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-production-security-profile",
+  "stage_name": "S5 slice 1/N: immutable production security profile (plan required changes #1-#4), real-ESP-IDF-verified end-to-end",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47).",
+  "sequencing_note": "User said 'йдемо далі по плану' (continue along the plan). First pass (documentation-only) was recorded as 'target-unverified'. User then corrected the underlying assumption: 'ESP-IDF має бути в докер контейнері' (ESP-IDF has to be available in a Docker container). Second pass pulled espressif/idf:release-v5.5 (the exact tag this project's CI already uses) and found/fixed 3 real defects plus a new blocker. This third pass, prompted by the user opening tools/extract_repository_inventory.py and saying 'йдемо дальше' (let's continue further), regenerated the (previously very stale, pre-S3) repository inventory and then fixed the newly-discovered partition-table-offset/nvs_keys blocker, re-verifying a FULL production build succeeds end-to-end -- not just Kconfig-level set-target, but a complete idf.py build producing a working (unsigned, awaiting external signing) firmware image.",
+  "changed_files": [
+    "CMakeLists.txt (unchanged from the prior pass: ZGW_PRODUCTION_BUILD env-var gate)",
+    "sdkconfig.production.esp32c6 (extended: added CONFIG_PARTITION_TABLE_OFFSET=0x10000 and CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.production.csv\", fixing the bootloader-too-large blocker found in the prior pass)",
+    "partitions.production.csv (new: production-only partition table, selected only when ZGW_PRODUCTION_BUILD is set; moves the partition table to 0x10000 and adds a 4K nvs_keys partition CONFIG_NVS_SEC_KEY_PROTECT_USING_FLASH_ENC requires; leaves the shared root partitions.csv and test/target/partitions.csv -- used by the real, currently-configured self-hosted HIL runner -- completely untouched)",
+    "docs/security/PRODUCTION_HARDENING.md (Section 2.4 rewritten from 'blocker found, not fixed' to 'blocker found, fixed, and re-verified end-to-end with a full build'; Section 3 renumbered with the partition-table item removed from deferred)",
+    "implementation-evidence/current-repository-inventory.json (regenerated -- was stale since commit 1c3436c, predating S3/S4/S5 entirely: 298 files vs the current 349, missing all v1 HTTP routes/MQTT topics/new CI jobs/new scripts)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #1: the approved production profile (Secure Boot v2, Flash Encryption release mode, NVS Encryption, rollback support, secure UART ROM download mode, now also a production-sized partition table with the required nvs_keys partition) has been proven, via a real, complete idf.py build, to actually produce a working firmware image end-to-end.",
+    "Plan S5 #2: development and production profiles stay fully separate -- the new partitions.production.csv follows the exact same ZGW_PRODUCTION_BUILD-gated pattern already established for sdkconfig.production.esp32c6, and the shared partitions.csv/test/target/partitions.csv (relied on by the real self-hosted HIL runner) are provably untouched.",
+    "Plan S5's own repository-freshness/snapshot-recompute requirement (Section 5.5 of the plan) was acted on directly: implementation-evidence/current-repository-inventory.json, found to be badly stale (pre-dating S3), was regenerated via tools/extract_repository_inventory.py to reflect the actual current repository state."
+  ],
+  "work_summary": {
+    "repository_inventory_refreshed": {
+      "status": "COMPLETE",
+      "detail": "implementation-evidence/current-repository-inventory.json was last generated at commit 1c3436c (before S3, S4 and S5 entirely) -- 298 source files, 18 http_routes, 4 mqtt_topics, missing every v1 HTTP/MQTT artifact and the new security-profile-verifier-tests CI job. Regenerated via tools/extract_repository_inventory.py: now 349 files, 31 http_routes, 9 mqtt_topics, all current CI jobs/scripts correctly enumerated. No evidence/reviewed-repository-inventory.json baseline exists anywhere in this repository's history to diff against (confirmed via git log --all) -- this is a pre-existing gap in the plan's own tooling chain (never established at S0), noted here rather than unilaterally fabricated, since deciding what counts as 'the reviewed baseline' is a project-owner decision."
+    },
+    "partition_table_blocker_fixed": {
+      "status": "COMPLETE, RE-VERIFIED WITH A FULL END-TO-END BUILD",
+      "detail": "partitions.production.csv adds the missing nvs_keys partition (confirmed required by grepping components/nvs_sec_provider/Kconfig's help text directly: 'Requires a separate nvs_keys partition... for storing the NVS encryption keys') and moves the partition table to 0x10000, giving the Secure-Boot-plus-Flash-Encryption bootloader (measured 0xc000 bytes) enough room. Offsets were derived by hand (not by leaving them blank for auto-placement, to preserve exact control over the existing zb_storage/zb_fct/coredump/storage layout) and independently confirmed correct by parsing the REAL BUILT partition-table binary back out with ESP-IDF's own gen_esp32part.py, not just re-reading the source CSV."
+    },
+    "full_production_build_succeeds": {
+      "status": "COMPLETE -- the concrete, hardware-toolchain-verifiable exit criterion for this sub-slice",
+      "detail": "ZGW_PRODUCTION_BUILD=1 idf.py build (a full build, not just set-target) now completes 1181/1181 steps inside espressif/idf:release-v5.5, producing zigbee_gateway.bin (0x1c0000 bytes, 30% headroom in the 0x280000 ota_0 slot) and ending in the correct, intended 'App built but not signed. Sign app before flashing' state (external signing workflow, plan #8's signing-key-out-of-repo intent). scripts/check_ota_slot_size.sh (unmodified) passes against the new partitions.production.csv (70% usage). scripts/verify_production_security_profile.py still reports OK against the real generated sdkconfig (the new partition-table symbols don't interact with the approved/forbidden Kconfig lists it checks)."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "No evidence/reviewed-repository-inventory.json baseline was created to enable a two-way diff via tools/extract_repository_inventory.py, even though the current snapshot was regenerated.",
+      "why": "Establishing THE reviewed baseline is inherently a project-owner/reviewer decision about what state is approved (the plan's own S0 origin story implies a human-reviewed checkpoint, not an AI-fabricated one), especially mid-stream with uncommitted work still in the working tree -- baselining now would compare future work against a not-yet-reviewed state, defeating the mechanism's purpose.",
+      "consequence": "tools/extract_repository_inventory.py can only report 'SNAPSHOT-DERIVED -- MUST RECOMPUTE' (no baseline supplied) rather than a real match/mismatch verdict, for this and any future stage, until the user (or a future session, at the user's direction) establishes one.",
+      "tracked_in": "this file's work_summary.repository_inventory_refreshed"
+    },
+    {
+      "deviation": "No CI job builds the production profile through the real ESP-IDF container on every push/PR, even though this pass proves a full production build succeeds.",
+      "why": "Adding a new CI job (container selection, secrets/timing implications, failure-mode design) deserves its own deliberate pass rather than being folded into a Kconfig/partition-layout verification pass.",
+      "consequence": "A future regression in the production profile or partition layout would not be caught automatically until someone re-runs this same manual verification.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 3.2"
+    },
+    {
+      "deviation": "verify_production_security_profile.py still does not check the resolved ESP-IDF version (unchanged from the prior pass), and plan S5 items #5-#18 remain entirely unimplemented (unchanged from the prior pass).",
+      "why": "Unchanged reasoning from the prior pass's evidence -- these are separate, distinct pieces of remaining work, not addressed by this pass's specific focus (the partition-table blocker).",
+      "consequence": "See docs/security/PRODUCTION_HARDENING.md Section 3.1/3.3 for the unchanged detail.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 3.1, 3.3"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3 (fully, real-build-verified end-to-end); 4 (Kconfig-symbol half only -- version-pin check not implemented); 8 (partial, signing-key/insecure-escape-hatch handling only)",
+    "plan_s5_items_remaining": "4 (version-pin check), 5, 6, 7, 8 (remaining), 9-18",
+    "repository_inventory_source_file_count_before": 298,
+    "repository_inventory_source_file_count_after": 349,
+    "real_defects_found_and_fixed_across_all_passes": 4,
+    "python_unit_tests_total": 16
+  },
+  "tests_and_checks": {
+    "python_unit_tests": { "result": "PASSED", "detail": "16/16 (100%), unchanged from the prior pass -- no test code changed in this pass." },
+    "real_esp_idf_full_build": { "result": "PASSED", "detail": "ZGW_PRODUCTION_BUILD=1 idf.py -B build-prod-test build inside espressif/idf:release-v5.5, after first running idf.py -B build-prod-test set-target esp32c6 (a build-dir target must be set before building; an earlier attempt in this same pass skipped that step for a fresh build directory and consequently built for the wrong chip (esp32, not esp32c6) -- caught immediately from the linker-script log output, corrected, and re-run correctly). 1181/1181 build steps completed; zigbee_gateway.bin produced; correct unsigned-awaiting-external-signature end state." },
+    "ota_slot_size_check": { "result": "PASSED", "detail": "scripts/check_ota_slot_size.sh build-prod-test partitions.production.csv (script itself unmodified -- it already accepted a partition-table-path argument): app 1835008 bytes / ota_0 2621440 bytes = 70% usage, PASSED." },
+    "sdkconfig_verifier_recheck": { "result": "PASSED", "detail": "scripts/verify_production_security_profile.py against the real sdkconfig generated by the full build (not just set-target): OK, 0 violations -- confirms the new partition-table Kconfig symbols don't interact with the approved/forbidden lists." },
+    "built_partition_table_cross_check": { "result": "PASSED", "detail": "Parsed the actual built partition-table.bin back to text with ESP-IDF's own gen_esp32part.py (not a re-read of the source CSV) and confirmed every offset/size matches partitions.production.csv exactly: nvs@0x11000/24K, nvs_keys@0x17000/4K, otadata@0x18000/8K, phy_init@0x1a000/4K, ota_0@0x20000/2560K, ota_1@0x2a0000/2560K, zb_storage/zb_fct/coredump/storage all at their original unchanged offsets." },
+    "host_tests": { "result": "N/A", "detail": "No C/C++ changed in this pass." },
+    "architecture_gate": { "result": "N/A", "detail": "Unaffected -- no C/C++ source-tree changes." },
+    "cppcheck": { "result": "N/A", "detail": "No C/C++ files added or changed." }
+  },
+  "environment_note": "Verified via the real espressif/idf:release-v5.5 Docker image (ESP-IDF 5.5.5) for the full build/partition-table verification, and python3 directly for the pre-existing verifier unit tests (unchanged in this pass). All build artifacts (build-prod-test/, generated sdkconfig, dependencies.lock changes, managed_components/) were cleaned up after verification via the same container (root-owned files from the ESP-IDF image cannot be removed by the host user directly) -- confirmed via git status that the working tree returned to only the intended source-file changes, and that a git-tracked dependencies.lock accidentally caught in an early cleanup pass was restored via git checkout.",
+  "unresolved_deviations": [
+    "No evidence/reviewed-repository-inventory.json baseline exists to enable automated repository-freshness diffing -- a pre-existing gap, not fabricated in this pass; see this file's deviations above.",
+    "No CI job builds the production profile through real ESP-IDF on every push/PR -- see docs/security/PRODUCTION_HARDENING.md Section 3.2.",
+    "verify_production_security_profile.py does not check the resolved ESP-IDF version; this project's actual CI (5.5.5) does not match the plan's exact-5.5.2 pin -- see docs/security/PRODUCTION_HARDENING.md Section 3.1.",
+    "Plan S5 items #5-#18 remain entirely unimplemented -- see docs/security/PRODUCTION_HARDENING.md Section 3.2/3.3."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks all of items #5-#8 and every Secure Boot/Flash Encryption/NVS Encryption target/HIL test in S5's test list. The software build itself is no longer blocked -- this is now purely a real-silicon/eFuse-access gap."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

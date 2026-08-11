@@ -1,0 +1,72 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-reset-journal-storage-port",
+  "stage_name": "S5 slice 11/N: protected reset-journal storage port (plan required change #18) -- completes ALL of S5's ten \"Encrypted storage foundation\" required changes",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of the still-uncommitted S5 slices 1-10 (including slice 10, S5-erase-preserve-enforcement-completion.json, built in the same pass).",
+  "sequencing_note": "User's instruction (decoded from a keyboard-layout-garbled message, confirmed via AskUserQuestion): 'закриваємо S5' (let's close out S5) -> implement remaining #16/#17/#18 then a final S5 stage summary. This is slice 2 of 2 implementing that remaining work, built and verified together with slice 10 in one real-target-build pass.",
+  "changed_files": [
+    "components/service/nvs_namespace_registry.cpp (extended: kResetJournal entry gained a real key pattern ('reset_journal') and implemented_today flipped to true)",
+    "components/service/include/reset_journal_storage_port.hpp (new: get_reset_journal_state/set_reset_journal_state declarations, ResetJournalWriteResult enum)",
+    "components/service/reset_journal_storage_port.cpp (new: implementation over Section 2.8/2.9's secure_storage_get_u32/set_u32)",
+    "test/host/test_reset_journal_storage_port.cpp (new: 5 tests)",
+    "components/service/CMakeLists.txt (extended: reset_journal_storage_port.cpp added to SRCS)",
+    "test/host/CMakeLists.txt (extended: reset_journal_storage_port.cpp added to SERVICE_SOURCES; new test_reset_journal_storage_port executable/ctest registration)",
+    "docs/security/PRODUCTION_HARDENING.md (new Section 2.14 documenting this work; new Section 5 stage-level closing summary; Section 2 heading, Section 3.3/3.4/4 updated to reflect all of #9-#18 complete)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #18: 'Add a dedicated protected reset-journal storage port that survives erasing user/application namespaces and can atomically represent the four FD-21 states.' -- both halves implemented directly: 'survives erasing' via kResetJournal's RESET_JOURNAL_ONLY classification (Section 2.7) plus Section 2.13's erase_namespace() structural refusal (proven by a dedicated cross-module test, not just asserted); 'atomically represent' via a single u32 key written in one hal_nvs_set_u32 call, inheriting atomicity from ESP-IDF's own NVS commit semantics rather than reimplementing it.",
+    "FD-21's exact four states (requested -> erasing -> reinitialized -> commissioning_ready), already defined as ResetJournalState in Section 2.7's registry header (added proactively in that earlier sub-slice specifically so this one could reference the real names now), are used directly -- no redefinition or renaming.",
+    "Plan FD-22 ('Prefer ESP-IDF-provided ... platform lifecycle mechanisms ... over duplicating a platform state machine') was applied directly: this port does not implement its own atomicity/commit logic, it relies entirely on NVS's own single-key-write guarantee."
+  ],
+  "work_summary": {
+    "registry_extended": {
+      "status": "COMPLETE",
+      "detail": "kResetJournal gained one key pattern ('reset_journal', exact) and implemented_today flipped from false to true, consistent with the registry's own stated bar for that flag (real hal_nvs_* call sites exist)."
+    },
+    "storage_port_implemented": {
+      "status": "COMPLETE",
+      "detail": "get_reset_journal_state(ResetJournalState*) reuses SecureStorageStatus directly (kNotProvisioned/kAvailable/kCorrupt/kUnavailable) rather than inventing a parallel vocabulary; a raw stored value outside the four valid enum values is explicitly classified kCorrupt (verified with a direct test that writes an out-of-range raw u32 via hal_nvs_set_u32 and confirms the port catches it). set_reset_journal_state(ResetJournalState) validates the input is one of the four defined states before writing anything (kRejectedInvalidState otherwise) and has no encryption-gate dependency since kResetJournal has encryption_required==false (a small state enum, not secret material)."
+    },
+    "survives_erasing_proven": {
+      "status": "COMPLETE -- proven by a real cross-module test, not asserted",
+      "detail": "test_reset_journal_survives_an_erase_namespace_attempt writes a real state via set_reset_journal_state(), calls Section 2.13's erase_namespace(kResetJournal), confirms it returns kRefusedNotErasable, and confirms get_reset_journal_state() still reports the exact same state afterward -- an end-to-end demonstration that Sections 2.13 and 2.14 work together correctly, not just that each compiles independently."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "5 tests in test/host/test_reset_journal_storage_port.cpp, all passing: not-provisioned before any write; all four FD-21 states round-trip independently; an out-of-range enum value is rejected before writing; a raw out-of-range value (simulating external corruption) reads back as kCorrupt; the survives-erasing cross-module proof. Full repository ctest suite: 91/91 passing (built and verified together with slice 10's factory_reset_namespace_erase in the same pass -- 89 pre-existing + 2 new executables). cppcheck: zero findings. check_arch_invariants.sh: high=0/medium=0/low=0, unchanged. Real idf.py build inside espressif/idf:release-v5.5: 1186/1186 steps (after slice 10's format-specifier fix was applied in the same pass -- see S5-erase-preserve-enforcement-completion.json for that finding's detail)."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Nothing in this repository calls set_reset_journal_state() -- the real reset flow that would drive this port through its actual FD-21 states does not exist yet.",
+      "why": "The real factory-reset flow is S8's job, built on top of this stage's foundation, not S5's -- matching this stage's own 'foundation only' discipline applied consistently across all eleven sub-slices.",
+      "consequence": "No production behavior changes as a result of this sub-slice; the port exists, is fully tested (including its interaction with the erase-enforcement mechanism), and is ready for S8 to consume.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 2.14's closing paragraph"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3, 4, 5, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 (ALL fully implemented and tested); 8 (partial, unchanged -- the only item with any remaining scope, and only its hardware-dependent half)",
+    "plan_s5_items_remaining": "6, 7, 8 (burn-time enforcement remainder) -- all three BLOCKED_SECURITY_PROVISIONING, no software-only S5 item remains",
+    "cpp_host_tests_total_this_repo": 91,
+    "cpp_host_test_assertions_this_sub_slice_new": 5,
+    "s5_encrypted_storage_foundation_items_complete": "10 of 10 (#9-#18)"
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "91/91 (100%) via ctest inside zgw-host-tools:s0, including the new test_reset_journal_storage_port (5 tests)." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against reset_journal_storage_port.cpp (and the shared nvs_namespace_registry.cpp/factory_reset_namespace_erase.cpp already reported clean in the sibling evidence file) via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "real_esp_idf_build": { "result": "PASSED", "detail": "idf.py -B build-erase-test build inside espressif/idf:release-v5.5: 1186/1186 steps completed (built together with slice 10 in the same pass, after that slice's real format-specifier bug was found and fixed). Build artifacts cleaned up via docker run ... rm -rf; dependencies.lock restored via git checkout." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (build + full 91-test ctest suite) and zgw-host-tools:cppcheck (static analysis), AND via a full real idf.py build inside espressif/idf:release-v5.5, built and verified together with S5-erase-preserve-enforcement-completion.json's slice in the same pass. No real ESP32-C6 hardware or manufacturing/eFuse environment was needed.",
+  "unresolved_deviations": [
+    "Nothing calls set_reset_journal_state() yet; the real S8 factory-reset flow is future work -- see this file's deviations above.",
+    "Plan S5 items #6-8 (burn-time enforcement remainder, BLOCKED_SECURITY_PROVISIONING) and every previously-named unresolved item across sub-slices 1-10 (real per-category namespace routing, dependencies.lock pin, TLS/provisioning key naming, coredump-to-flash enable decision, no CI production-build job yet) remain unchanged, not addressed by this pass -- see docs/security/PRODUCTION_HARDENING.md Section 5 for the consolidated list."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks plan #6-#8, the only S5 required changes with any remaining scope. This sub-slice's work (the reset-journal storage port) is not blocked by this at all -- it is pure software, verified against the real ESP-IDF toolchain, fully implemented and tested."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

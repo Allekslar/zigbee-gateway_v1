@@ -1,0 +1,10 @@
+{
+  "build_dir": "/workspace/build-ver-test",
+  "config_file": "/workspace/sdkconfig",
+  "git_revision": "v5.5.5-316-g1a1a5aa6513",
+  "idf_path": "/opt/esp/idf",
+  "project_name": "zigbee_gateway",
+  "project_version": "228f227-dirty",
+  "target": "esp32c6",
+  "version": "1.2"
+}

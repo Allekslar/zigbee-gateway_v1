@@ -1,0 +1,80 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-nvs-namespace-registry",
+  "stage_name": "S5 slice 4/N: NVS namespace ownership registry and FD-21 preserve/erase/reset-journal classification (plan required changes #9 and #15 ONLY -- #10-14/16-18 remain unimplemented, not hardware-blocked)",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of the still-uncommitted S5 slices 1-3.",
+  "sequencing_note": "User asked 'куди можемо йти далі?' (where can we go next?) a third time; presented options via AskUserQuestion (including 'S5 #9-18: Шифроване сховище'), user selected it. Given plan #9-#18's size (ten required changes spanning namespace design, typed storage results, migration, runtime gating, TLS storage, redaction, and reset-journal/erase enforcement), this pass scoped itself to the foundational pair (#9: explicit namespace ownership, #15: FD-21 classification) that every other item in the cluster depends on existing first -- matching this document's established per-cluster sub-slicing discipline (S5 #1-4 and #5 were each their own sub-slice too).",
+  "changed_files": [
+    "components/service/include/nvs_namespace_registry.hpp (new: NvsNamespaceId enum (12 entries), NvsResetClassification enum, ResetJournalState enum (FD-21's 4 states), NvsNamespaceEntry/NvsKeyPattern structs, NvsRegistryViolationKind/NvsRegistryValidationResult, function declarations)",
+    "components/service/nvs_namespace_registry.cpp (new: the 12-entry registry table grounded in a real hal_nvs_* call-site inventory, find_nvs_namespace_entry/find_owning_namespace_for_key/nvs_namespace_entries_conflict/validate_nvs_namespace_registry implementations)",
+    "test/host/test_nvs_namespace_registry.cpp (new: 14 bare-assert() host tests)",
+    "components/service/CMakeLists.txt (extended: nvs_namespace_registry.cpp added to SRCS)",
+    "test/host/CMakeLists.txt (extended: nvs_namespace_registry.cpp added to SERVICE_SOURCES; new test_nvs_namespace_registry executable/ctest registration)",
+    "docs/security/PRODUCTION_HARDENING.md (Section 2 heading widened to 'sub-slices 1-4... plan #1-#5 + #9 + #15'; new Section 2.7 documenting this work; Section 3.2/3.3/3.4/4 updated to reflect #9/#15 done, #10-14/16-18 remaining)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #9: 'Create explicit encrypted NVS namespaces/ownership for Wi-Fi credentials, MQTT credentials/trust references, admin verifier, TLS private key/certificate reference, session seed and manufacturing provisioning records.' -- all six named as NvsNamespaceId entries, in the plan's own listed order, each with encryption_required=true.",
+    "Plan S5 #15: 'Classify every eFuse/partition/NVS namespace/key as PRESERVE_ON_FACTORY_RESET, ERASE_ON_FACTORY_RESET or RESET_JOURNAL_ONLY; an unclassified namespace blocks S8 reset implementation.' -- every registry entry carries exactly one NvsResetClassification value, sourced directly from FD-21's own preserve/erase text (quoted verbatim in the header), with the three FD-21 Preserve items that are not NVS namespaces (eFuse/security state, flash/NVS encryption key material, factory GatewayId) explicitly documented as not applicable rather than given a fabricated entry.",
+    "This project's established real-tool-grounding discipline (S5's Kconfig work and eFuse-template work both caught real mistakes only once checked against something real) was applied here too: every namespace/key entry is derived from a grepped inventory of this repository's actual hal_nvs_* call sites, including reading config_manager.cpp's build_profile_nvs_key/build_legacy_v2_profile_nvs_key functions directly to get the exact 'rptp_%c%02u'/'cfg_rpt_%c%02u' key-prefix formats rather than guessing from surrounding migration logic."
+  ],
+  "work_summary": {
+    "recon": {
+      "status": "COMPLETE",
+      "detail": "Grepped every hal_nvs_set_*/hal_nvs_get_* call site across config_manager.cpp, connectivity_manager.cpp, network_manager.cpp, matter_endpoint_registry.cpp, persisted_state_store.cpp, state_persistence_coordinator.cpp, ota_manager.cpp and effect_executor.cpp. Found: wifi_ssid/wifi_password (plaintext Wi-Fi credentials); 8 config_manager scalar/count keys plus 2 dynamic per-profile key-prefix formats spanning 3 schema-version generations (cfg_schema_ver, cfg_cmd_tmo_ms, cfg_cmd_retry, cfg_rpt_cnt2, cfg_rpt_cnt, cfg_rpt_count, cmd_tmo_ms, cmd_retries, rptp_*, cfg_rpt_*); mtep_a/mtep_b (Matter endpoint dual-slot store); dstate_a/dstate_b/core_state_v1 (core device-state dual-slot store plus a legacy single-slot key); ota_dbg_req/ota_dbg_step (OTA debug diagnostics); core_rev (effect-executor test hook). Confirmed hal_identity_get_factory_base_mac() never writes to NVS (eFuse-derived, read every call) and that mqtt_bridge.cpp's legacy_discovery_tombstoned_ flag is RAM-only, never NVS-persisted."
+    },
+    "registry_implemented": {
+      "status": "COMPLETE",
+      "detail": "12 NvsNamespaceId entries: kWifiCredentials, kMqttCredentials, kAdminVerifier, kTlsIdentity, kSessionSeed, kManufacturingProvisioning (plan #9's six, in the plan's own order); kZigbeeNetworkDeviceReporting, kMatterEndpointState, kCoreDeviceState, kOperationJournalDiagnostics, kLegacyMigrationTombstone (pre-existing data, classified per FD-21); kResetJournal (plan #18's future storage port, classified kResetJournalOnly now so it has a home once #18 lands). Every entry: target nvs_namespace string, owner_description, NvsResetClassification, encryption_required, implemented_today, and a bounded (max 10) array of exact/prefix NvsKeyPattern entries."
+    },
+    "validation_logic_implemented": {
+      "status": "COMPLETE",
+      "detail": "validate_nvs_namespace_registry() detects kDuplicateKeyClaim (two entries' key patterns could match the same real key: exact-exact, exact-inside-prefix, or overlapping prefixes) and kImplementedFlagKeyCountMismatch (implemented_today disagrees with whether any key patterns are listed) -- directly implementing the plan's own Tests-section line 'NVS namespace ownership and duplicate-key inventory'. The pairwise conflict primitive (nvs_namespace_entries_conflict) is exposed publicly so tests exercise the detection logic against synthetic conflicting entries, not just assert the shipped table happens to be clean."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "14 bare-assert() host tests in test/host/test_nvs_namespace_registry.cpp, all passing. Built and run via zgw-host-tools:s0 (the established C++ host-toolchain Docker image, unused since before this segment's S5 Python-only sub-slices): a fresh cmake+ctest run of this repository's FULL host suite reports 84/84 passing (83 pre-existing + 1 new), proving this addition is purely additive and changes no existing behavior. cppcheck --enable=warning,performance,portability via zgw-host-tools:cppcheck reports zero findings against the new .cpp. check_arch_invariants.sh reports high=0/medium=0/low=0 (unchanged -- this addition introduces no new HAL contract or route registration for that script to check)."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only plan #9 (namespace ownership) and #15 (FD-21 classification) are implemented in this sub-slice; #10 (typed storage-port results), #11 (migration scaffolding), #12 (runtime encryption-verified write gate), #13 (TLS/provisioning storage interfaces), #14 (redaction), #16/#17 (actual erase/preserve enforcement) and #18 (reset-journal storage port) are not.",
+      "why": "The user selected 'S5 #9-18: Шифроване сховище' as a single recommended option covering the whole ten-item 'Encrypted storage foundation' cluster, but that cluster is large enough that every later item genuinely depends on the namespace registry existing first (e.g. #10's typed storage-port results need to know which namespace a call targets to decide encryption_required; #16/#17's erase enforcement needs the FD-21 classification to know what NOT to touch). Implementing the foundation first and thoroughly, rather than attempting all ten items in one shallow pass, matches this document's own established sub-slicing discipline from S5 #1-4 and #5.",
+      "consequence": "No hal_nvs.c call site has actually changed yet -- every existing NVS read/write still goes through the single hardcoded 'zigbee_gateway' namespace exactly as before this pass. The registry is a planning/classification artifact consumed by future sub-slices, not yet by any production code path. This is intentional and low-risk (pure addition, 84/84 existing tests unaffected) rather than an oversight.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 3.3"
+    },
+    {
+      "deviation": "The registry's nvs_namespace field for every pre-existing entry still says the shared legacy 'zigbee_gateway' string, not a distinct real namespace per category, even though plan #9 asks for 'explicit encrypted NVS namespaces'.",
+      "why": "Actually separating hal_nvs.c's single hardcoded namespace into multiple real ESP-IDF NVS namespaces is a live-data migration with restart-safety and power-loss implications -- explicitly plan #11's job ('Add restart-safe migration scaffolding for legacy plaintext values... No automatic migration executes until S6 authorization/physical-presence policy exists'), not something this registry sub-slice should do as a side effect.",
+      "consequence": "Until #11 lands, the registry's nvs_namespace field for pre-existing entries is aspirational/documentary (what the namespace SHOULD be once migrated) rather than descriptive of the real current ESP-IDF NVS namespace layout, which is still exactly one namespace for everything. New (implemented_today=false) entries name their intended future namespace directly since there is no existing data to migrate for them.",
+      "tracked_in": "components/service/include/nvs_namespace_registry.hpp module docstring, docs/security/PRODUCTION_HARDENING.md Section 2.7"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3, 4 (fully), 5 (fully), 9 (fully), 15 (fully); 8 (partial: signing-key/insecure-escape-hatch handling from slice 1, template-format redaction from slice 2 -- burn-time enforcement still not implemented)",
+    "plan_s5_items_remaining": "6, 7, 8 (burn-time enforcement remainder), 10, 11, 12, 13, 14, 16, 17, 18",
+    "cpp_host_tests_total_this_repo": 84,
+    "cpp_host_tests_this_sub_slice_new": 1,
+    "cpp_host_test_assertions_this_sub_slice_new": 14,
+    "nvs_namespace_registry_entries": 12,
+    "nvs_namespace_registry_key_patterns_cataloged": 22
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "84/84 (100%) via ctest inside zgw-host-tools:s0, including the new test_nvs_namespace_registry (14 assertions, all passing). Full rebuild from a clean host-build directory, not an incremental build, to catch any real link/compile regression." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/service/nvs_namespace_registry.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged from before this pass; this addition triggers no existing invariant and none was added (no HAL contract or route registration touched)." },
+    "real_esp_idf_build": { "result": "N/A", "detail": "Not applicable -- this sub-slice is pure host C++ with no Kconfig/partition-table/hardware dependency; nothing here requires ESP-IDF to verify." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified entirely via the established zgw-host-tools:s0 (build + full 84-test ctest suite) and zgw-host-tools:cppcheck (static analysis) Docker images -- the same C/C++ toolchain used for every stage since S0, unused during this segment's three preceding Python-only S5 sub-slices. No real ESP32-C6 hardware, manufacturing/eFuse environment, or ESP-IDF container was needed or used for this sub-slice; the registry is pure application data with no hardware dependency.",
+  "unresolved_deviations": [
+    "Plan S5 items #10-14, #16-18 (the rest of the 'Encrypted storage foundation' cluster) remain entirely unimplemented -- see docs/security/PRODUCTION_HARDENING.md Section 3.3.",
+    "No hal_nvs.c call site has been migrated to a real distinct per-category NVS namespace yet -- the registry's nvs_namespace field for pre-existing entries is aspirational until plan #11's restart-safe migration lands -- see this file's deviations above.",
+    "Plan S5 items #6-8 (burn-time enforcement remainder, BLOCKED_SECURITY_PROVISIONING) and the ESP-IDF-version-check-vs-dependencies.lock discrepancy remain unchanged from the prior two sub-slices, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks plan #6-#8 and every Secure Boot/Flash Encryption/NVS Encryption target/HIL test in S5's test list. This sub-slice's work (the namespace registry) is not blocked by this at all -- it is pure software data with zero hardware dependency, fully implemented and tested."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

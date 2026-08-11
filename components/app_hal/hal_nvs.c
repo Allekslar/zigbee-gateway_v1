@@ -427,3 +427,61 @@ hal_nvs_status_t hal_nvs_get_blob(
     return HAL_NVS_STATUS_OK;
 #endif
 }
+
+hal_nvs_status_t hal_nvs_erase_key(const char* key) {
+    if (key == 0 || key[0] == '\0') {
+        return HAL_NVS_STATUS_INVALID_ARG;
+    }
+
+#ifdef ESP_PLATFORM
+    nvs_handle_t handle = 0;
+    if (nvs_open("zigbee_gateway", NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGE(kTag, "erase_key open failed, key='%s'", key);
+        return HAL_NVS_STATUS_ERR;
+    }
+
+    esp_err_t err = nvs_erase_key(handle, key);
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(kTag, "erase_key ok, key='%s'", key);
+        return HAL_NVS_STATUS_OK;
+    }
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGI(kTag, "erase_key: key not found, key='%s'", key);
+        return HAL_NVS_STATUS_NOT_FOUND;
+    }
+    ESP_LOGE(kTag, "erase_key failed, key='%s' err=%s", key, esp_err_to_name(err));
+    return HAL_NVS_STATUS_ERR;
+#else
+    /* Type-agnostic: a real NVS key isn't tagged with the type it was
+     * written as, so this host mock (which keeps a separate fixed table
+     * per type) checks all three and clears whichever one actually holds
+     * the key. At most one table should ever match in practice, since a
+     * real caller writes a given key as exactly one type. */
+    bool found = false;
+
+    host_u32_entry_t* u32_entry = host_find_u32_entry(key, false);
+    if (u32_entry != NULL && u32_entry->used) {
+        *u32_entry = (host_u32_entry_t){0};
+        found = true;
+    }
+
+    host_str_entry_t* str_entry = host_find_str_entry(key, false);
+    if (str_entry != NULL && str_entry->used) {
+        *str_entry = (host_str_entry_t){0};
+        found = true;
+    }
+
+    host_blob_entry_t* blob_entry = host_find_blob_entry(key, false);
+    if (blob_entry != NULL && blob_entry->used) {
+        *blob_entry = (host_blob_entry_t){0};
+        found = true;
+    }
+
+    return found ? HAL_NVS_STATUS_OK : HAL_NVS_STATUS_NOT_FOUND;
+#endif
+}
