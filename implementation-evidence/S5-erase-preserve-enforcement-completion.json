@@ -1,0 +1,77 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-erase-preserve-enforcement",
+  "stage_name": "S5 slice 10/N: typed namespace erase enforcement (plan required changes #16 and #17)",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of the still-uncommitted S5 slices 1-9.",
+  "sequencing_note": "User's instruction (decoded from a keyboard-layout-garbled message, confirmed via AskUserQuestion): 'закриваємо S5' (let's close out S5) -> selected option to implement remaining plan #16/#17/#18 then produce a final S5 stage summary. This is slice 1 of 2 implementing that remaining work.",
+  "changed_files": [
+    "components/service/include/factory_reset_namespace_erase.hpp (new: NamespaceEraseResult enum, erase_namespace/erase_namespace_key_range declarations)",
+    "components/service/factory_reset_namespace_erase.cpp (new: implementations built on secure_storage_erase)",
+    "test/host/test_factory_reset_namespace_erase.cpp (new: 7 tests)",
+    "components/service/CMakeLists.txt (extended: factory_reset_namespace_erase.cpp added to SRCS)",
+    "test/host/CMakeLists.txt (extended: factory_reset_namespace_erase.cpp added to SERVICE_SOURCES; new test_factory_reset_namespace_erase executable/ctest registration)",
+    "docs/security/PRODUCTION_HARDENING.md (new Section 2.13 documenting this work; Section 3.3/3.4/5 updated)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #16: 'Preserve eFuse/security state, flash/NVS encryption key material, factory GatewayId source, manufacturing PoP, product CA/trust anchors and encrypted device TLS current/next slots.' -- the classification itself was already complete (Section 2.7, plan #15); this sub-slice adds the enforcement that makes it structural: erase_namespace()/erase_namespace_key_range() refuse outright, before touching any key, any namespace not classified kEraseOnFactoryReset.",
+    "Plan S5 #17: 'Mark admin/session, Wi-Fi, MQTT, Zigbee network/device/reporting, Matter, operation journal and legacy migration/tombstone data for erase. Provide typed namespace erase operations; do not use broad whole-partition erase that can touch preserved material.' -- implemented as two typed functions built directly on Section 2.10's secure_storage_erase, both sharing the same structural refusal guarantee.",
+    "This project's established real-tool-grounding discipline caught a real, previously-unnoticed target-specific bug: erase_namespace_key_range()'s dynamic key formatting used a bare %02u against a uint32_t argument, which compiles correctly on the x86-64 host toolchain (uint32_t == unsigned int there) but mismatches on the real ESP32-C6 riscv32 target (uint32_t == unsigned long there) -- caught only by the real idf.py build, fixed with an explicit static_cast<unsigned>(), matching hal_nvs.c's own established cast convention for exactly this class of issue."
+  ],
+  "work_summary": {
+    "erase_namespace_implemented": {
+      "status": "COMPLETE",
+      "detail": "erase_namespace(namespace_id) refuses (kRefusedNotErasable) any namespace whose Section 2.7 registry classification is not kEraseOnFactoryReset, before calling secure_storage_erase for anything. For an erasable namespace, iterates every EXACT (non-prefix) key pattern and erases each via secure_storage_erase, folding results into kErased/kPartialFailure. Deliberately does NOT expand prefix key patterns -- documented directly as a named limitation, not hidden."
+    },
+    "erase_namespace_key_range_implemented": {
+      "status": "COMPLETE",
+      "detail": "erase_namespace_key_range(namespace_id, prefix, suffix_chars, suffix_char_count, index_count) handles the one real prefix-pattern case in this codebase (kZigbeeNetworkDeviceReporting's dynamically-built per-reporting-profile keys), building '<prefix><suffix_char><2-digit index>' for every combination and erasing each -- matching config_manager.cpp's real build_profile_nvs_key/build_legacy_v2_profile_nvs_key key format exactly, not a guessed shape. Same structural refusal guarantee as erase_namespace(). Rejects null prefix/suffix_chars defensively."
+    },
+    "real_bug_found_and_fixed": {
+      "status": "COMPLETE -- found by the real ESP-IDF target build, not the host build",
+      "detail": "erase_namespace_key_range()'s std::snprintf call originally used '%02u' against the loop's uint32_t index variable. On the x86-64 host toolchain (zgw-host-tools:s0), uint32_t resolves to unsigned int, exactly matching %u, so the host build and all host tests passed cleanly with no warning. Compiling for the real ESP32-C6 riscv32 target inside espressif/idf:release-v5.5 failed with -Werror on a format-specifier mismatch, because that toolchain's uint32_t resolves to unsigned long instead. Fixed with an explicit static_cast<unsigned>(index), matching hal_nvs.c's own pre-existing (unsigned) casts in its own %u log format strings (the same reasoning already established there). Verified by a second, clean full real-target build after the fix (1186/1186 steps, vs. the failing attempt's partial 1148/1186 before the fix)."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "7 tests in test/host/test_factory_reset_namespace_erase.cpp, all passing: a PRESERVE-classified namespace (kTlsIdentity) is refused and its data proven untouched; kResetJournal (RESET_JOURNAL_ONLY) is refused the same way, the first concrete proof of plan #18's 'survives erasing' property; an ERASE-classified namespace's exact keys are actually erased; a namespace with both exact and prefix keys has only its exact keys cleared by erase_namespace() (proving the documented limitation, not just asserting it); erase_namespace_key_range() clears the real rptp_/reporting-profile shape (suffix_chars='dcirk', index_count=16, matching ConfigManager::kMaxReportingProfiles); the range function refuses a PRESERVE-classified namespace; null prefix/suffix_chars are rejected. Full repository ctest suite: 91/91 passing (89 pre-existing + this sub-slice's 2 new test executables, shared with the reset-journal sub-slice built in the same pass). cppcheck: zero findings against nvs_namespace_registry.cpp, factory_reset_namespace_erase.cpp, reset_journal_storage_port.cpp. check_arch_invariants.sh: high=0/medium=0/low=0, unchanged."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "erase_namespace() erases only exact key patterns; prefix-pattern namespaces need the separate erase_namespace_key_range() call, and the registry itself provides no automatic way to discover the correct range parameters for a given prefix (a caller must know them, as this sub-slice's own tests do for the one real case).",
+      "why": "The Section 2.7 registry only stores prefix strings, not the real bounded keyspace a specific owning module (e.g. config_manager.cpp, which alone knows ConfigManager::kMaxReportingProfiles and the exact suffix-character set) builds from them -- a generic mechanism would require either a HAL-level NVS key-enumeration primitive that does not exist, or duplicating that owning-module knowledge into the registry itself, both larger changes than this sub-slice's scope.",
+      "consequence": "A future real reset flow (S8) erasing kZigbeeNetworkDeviceReporting completely needs to call both erase_namespace() (for the exact keys) AND erase_namespace_key_range() (for each real prefix, with the correct parameters) explicitly -- there is no single call that does both automatically for a namespace with mixed exact/prefix keys.",
+      "tracked_in": "components/service/include/factory_reset_namespace_erase.hpp"
+    },
+    {
+      "deviation": "Nothing in this repository calls either erase_namespace() or erase_namespace_key_range() -- this is pure scaffolding, matching every S5 sub-slice's discipline.",
+      "why": "The real factory-reset flow that would drive these functions is S8's job, built on top of this stage's foundation, not S5's.",
+      "consequence": "No production behavior changes as a result of this sub-slice; the functions exist, are tested, and are ready for S8 to consume.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 2.13's closing paragraph"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3, 4, 5, 9, 10, 11, 12, 13, 14, 15, 16, 17 (all fully); 8 (partial, unchanged from prior sub-slices)",
+    "plan_s5_items_remaining": "6, 7, 8 (burn-time enforcement remainder), 18",
+    "cpp_host_tests_total_this_repo": 91,
+    "cpp_host_test_assertions_this_sub_slice_new": 7
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "91/91 (100%) via ctest inside zgw-host-tools:s0, including the new test_factory_reset_namespace_erase (7 tests). Full rebuild from a clean host-build directory." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against nvs_namespace_registry.cpp, factory_reset_namespace_erase.cpp and reset_journal_storage_port.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "real_esp_idf_build": { "result": "PASSED (after one real fix)", "detail": "First idf.py -B build-erase-test build inside espressif/idf:release-v5.5 FAILED at 1148/1186 steps with a real -Werror format-specifier mismatch (%02u vs. uint32_t==unsigned long on riscv32). Fixed with static_cast<unsigned>(). Second build succeeded cleanly: 1186/1186 steps. Build artifacts cleaned up via docker run ... rm -rf; dependencies.lock restored via git checkout." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (build + full 91-test ctest suite) and zgw-host-tools:cppcheck (static analysis), AND via a full real idf.py build inside espressif/idf:release-v5.5 which caught and confirmed the fix for a real target-specific format-specifier bug the host build could not have found. No real ESP32-C6 hardware or manufacturing/eFuse environment was needed.",
+  "unresolved_deviations": [
+    "erase_namespace() does not automatically discover or apply prefix-key erase ranges -- a caller must supply them explicitly per namespace, as this sub-slice's own tests do -- see this file's deviations above.",
+    "Nothing calls either erase function yet; the real S8 factory-reset flow is future work -- see this file's deviations above.",
+    "Plan S5 items #6-8 (burn-time enforcement remainder, BLOCKED_SECURITY_PROVISIONING) and prior sub-slices' own unresolved items (real per-category namespace routing, dependencies.lock pin, TLS/provisioning key naming) remain unchanged, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks plan #6-#8. This sub-slice's work (typed namespace erase enforcement) is not blocked by this at all -- it is pure software, verified against the real ESP-IDF toolchain (including finding and fixing a real target-specific bug), fully implemented and tested."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

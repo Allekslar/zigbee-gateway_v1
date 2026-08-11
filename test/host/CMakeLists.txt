@@ -59,6 +59,13 @@ set(SERVICE_SOURCES
     ../../components/service/device_descriptor_store.cpp
     ../../components/service/device_locator_registry.cpp
     ../../components/service/matter_endpoint_registry.cpp
+    ../../components/service/nvs_namespace_registry.cpp
+    ../../components/service/secure_storage_port.cpp
+    ../../components/service/secure_storage_migration.cpp
+    ../../components/service/tls_provisioning_storage_port.cpp
+    ../../components/service/secure_log_redaction.cpp
+    ../../components/service/factory_reset_namespace_erase.cpp
+    ../../components/service/reset_journal_storage_port.cpp
     ../../components/service/tuya_fingerprint.cpp
     ../../components/service/tuya_dp_parser.cpp
     ../../components/service/tuya_contact_sensor_plugin.cpp
@@ -71,6 +78,7 @@ set(SERVICE_SOURCES
 
 set(APP_HAL_SOURCES
     ../../components/app_hal/hal_identity.c
+    ../../components/app_hal/hal_security_state.c
     ../../components/app_hal/hal_led.c
     ../../components/app_hal/hal_matter.c
     ../../components/app_hal/hal_nvs.c
@@ -153,6 +161,46 @@ add_executable(test_persisted_state_store test_persisted_state_store.cpp)
 target_link_libraries(test_persisted_state_store PRIVATE service_host)
 zg_apply_component_compile_policy(test_persisted_state_store)
 add_test(NAME test_persisted_state_store COMMAND test_persisted_state_store)
+
+add_executable(test_nvs_namespace_registry test_nvs_namespace_registry.cpp)
+target_link_libraries(test_nvs_namespace_registry PRIVATE service_host)
+zg_apply_component_compile_policy(test_nvs_namespace_registry)
+add_test(NAME test_nvs_namespace_registry COMMAND test_nvs_namespace_registry)
+
+add_executable(test_secure_storage_port test_secure_storage_port.cpp)
+target_link_libraries(test_secure_storage_port PRIVATE service_host)
+zg_apply_component_compile_policy(test_secure_storage_port)
+add_test(NAME test_secure_storage_port COMMAND test_secure_storage_port)
+
+add_executable(test_hal_security_state test_hal_security_state.cpp)
+target_link_libraries(test_hal_security_state PRIVATE service_host)
+zg_apply_component_compile_policy(test_hal_security_state)
+add_test(NAME test_hal_security_state COMMAND test_hal_security_state)
+
+add_executable(test_secure_storage_migration test_secure_storage_migration.cpp)
+target_link_libraries(test_secure_storage_migration PRIVATE service_host)
+zg_apply_component_compile_policy(test_secure_storage_migration)
+add_test(NAME test_secure_storage_migration COMMAND test_secure_storage_migration)
+
+add_executable(test_tls_provisioning_storage_port test_tls_provisioning_storage_port.cpp)
+target_link_libraries(test_tls_provisioning_storage_port PRIVATE service_host)
+zg_apply_component_compile_policy(test_tls_provisioning_storage_port)
+add_test(NAME test_tls_provisioning_storage_port COMMAND test_tls_provisioning_storage_port)
+
+add_executable(test_secure_log_redaction test_secure_log_redaction.cpp)
+target_link_libraries(test_secure_log_redaction PRIVATE service_host)
+zg_apply_component_compile_policy(test_secure_log_redaction)
+add_test(NAME test_secure_log_redaction COMMAND test_secure_log_redaction)
+
+add_executable(test_factory_reset_namespace_erase test_factory_reset_namespace_erase.cpp)
+target_link_libraries(test_factory_reset_namespace_erase PRIVATE service_host)
+zg_apply_component_compile_policy(test_factory_reset_namespace_erase)
+add_test(NAME test_factory_reset_namespace_erase COMMAND test_factory_reset_namespace_erase)
+
+add_executable(test_reset_journal_storage_port test_reset_journal_storage_port.cpp)
+target_link_libraries(test_reset_journal_storage_port PRIVATE service_host)
+zg_apply_component_compile_policy(test_reset_journal_storage_port)
+add_test(NAME test_reset_journal_storage_port COMMAND test_reset_journal_storage_port)
 
 add_executable(test_common_crc32c test_common_crc32c.cpp ../../components/common/crc32c.cpp)
 target_include_directories(test_common_crc32c PRIVATE ../../components/common/include)

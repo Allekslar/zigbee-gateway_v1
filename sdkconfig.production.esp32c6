@@ -1,0 +1,97 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Alex.K.
+#
+# Production security profile additions (plan S5 required changes #1-#4).
+# This is a *layered* sdkconfig.defaults fragment, not a replacement for
+# sdkconfig.defaults / sdkconfig.defaults.esp32c6 -- a production build
+# combines all three by setting ZGW_PRODUCTION_BUILD in the environment
+# before invoking idf.py, e.g.:
+#
+#   ZGW_PRODUCTION_BUILD=1 idf.py set-target esp32c6 build
+#
+# (top-level CMakeLists.txt appends this file to SDKCONFIG_DEFAULTS only
+# when that variable is set -- passing `-D SDKCONFIG_DEFAULTS=...` on the
+# idf.py command line does NOT work for this, since CMakeLists.txt's own
+# unconditional `set(SDKCONFIG_DEFAULTS ...)` shadows a command-line
+# override in that directory scope; confirmed against a real ESP-IDF 5.5
+# build, where a command-line override was silently ignored before this
+# env-var gate existed).
+#
+# scripts/verify_production_security_profile.py checks the *generated*
+# sdkconfig (after idf.py has resolved all layered defaults, Kconfig
+# dependencies and chip-specific constraints) against the same approved
+# symbol list this file is meant to produce -- that script, not this file,
+# is the actual gate; this file only expresses developer intent.
+#
+# The development/HIL sdkconfig.defaults* files are never combined with
+# this one (plan #2: development and production profiles stay separate
+# and visibly labeled; insecure development flags are forbidden in a
+# production build). CONFIG_SECURE_BOOT_ALLOW_JTAG and
+# CONFIG_SECURE_BOOT_INSECURE in particular must never appear here, since
+# either would defeat Secure Boot/Flash Encryption for debugging
+# convenience.
+#
+# Exact Kconfig symbol names verified two ways: against the official
+# ESP-IDF 5.5.1 documentation for ESP32-C6, and directly against the real
+# Kconfig source and a real generated sdkconfig inside the
+# espressif/idf:release-v5.5 Docker image (which resolves to ESP-IDF
+# 5.5.5, not exactly the plan's pinned 5.5.2 -- see
+# docs/security/PRODUCTION_HARDENING.md Section 2.3 for that
+# discrepancy). The real-build pass caught two mistakes the docs-only pass
+# had missed: CONFIG_ESP32C6_DISABLE_JTAG (an earlier, web-search-sourced
+# guess) does not exist in ESP-IDF 5.5 at all -- the real symbol is
+# CONFIG_SECURE_BOOT_ALLOW_JTAG; and CONFIG_SECURE_BOOT_INSECURE (the
+# master gate for the Kconfig menu SECURE_BOOT_ALLOW_JTAG lives inside)
+# was missing from the forbidden list entirely. See
+# docs/security/PRODUCTION_HARDENING.md Section 2 for the full
+# verification trail, including the exact idf.py invocation used.
+
+# --- Secure Boot v2 ---
+CONFIG_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_V2_ENABLED=y
+# External signing workflow: the production private signing key never
+# enters this repository or CI -- CI produces an unsigned image that a
+# separate, offline signing step (outside this repo) signs before release.
+# CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES is not set
+# CONFIG_SECURE_BOOT_INSECURE is not set
+
+# --- Flash Encryption (release mode) ---
+CONFIG_SECURE_FLASH_ENC_ENABLED=y
+CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y
+
+# --- NVS Encryption ---
+# Reuses the Flash Encryption key rather than provisioning a separate HMAC
+# eFuse key block, since Flash Encryption is already mandatory above and
+# ESP32-C6's eFuse key blocks are a limited, non-renewable resource.
+CONFIG_NVS_ENCRYPTION=y
+CONFIG_NVS_SEC_KEY_PROTECT_USING_FLASH_ENC=y
+
+# --- Anti-rollback ---
+# CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE already ships in
+# sdkconfig.defaults.esp32c6; anti-rollback additionally ties the
+# eFuse-recorded secure version to what the bootloader will accept, so a
+# production device can never be downgraded to a firmware version with a
+# lower recorded secure version.
+CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK=y
+
+# --- UART ROM download mode ---
+# Permanently switches (via eFuse) from full download mode to Secure
+# Download mode, which only allows a narrow, safe command subset. This is
+# already ESP-IDF's own default once Secure Boot/Flash Encryption release
+# mode are on, but is set explicitly here so the approved profile does not
+# silently depend on an implicit Kconfig choice default that could change
+# in a future ESP-IDF version.
+CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE=y
+
+# --- Partition table (real-build-verified requirement, not optional) ---
+# A production bootloader (Secure Boot v2 + Flash Encryption compiled in)
+# measured 0xc000 bytes -- too large for the default 0x8000 gap between
+# the bootloader and the default CONFIG_PARTITION_TABLE_OFFSET (0x8000).
+# partitions.production.csv also adds the `nvs_keys` partition
+# CONFIG_NVS_SEC_KEY_PROTECT_USING_FLASH_ENC above requires (ESP-IDF's own
+# nvs_sec_provider Kconfig text: "Requires a separate 'nvs_keys'
+# partition"). See docs/security/PRODUCTION_HARDENING.md Section 2.4/2.6
+# for the exact offset arithmetic and the real-build verification that
+# fixed this.
+CONFIG_PARTITION_TABLE_OFFSET=0x10000
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.production.csv"

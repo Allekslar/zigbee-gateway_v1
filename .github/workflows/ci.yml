@@ -190,6 +190,21 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1
         run: ctest --test-dir build-host-asan --output-on-failure
 
+  security-profile-verifier-tests:
+    name: Production Security Profile Verifier Tests (Blocking)
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run verify_production_security_profile.py unit tests
+        run: python3 -m unittest scripts/test_verify_production_security_profile.py -v
+
+      - name: Run efuse_provisioning_template.py unit tests
+        run: python3 -m unittest scripts/test_efuse_provisioning_template.py -v
+
   reporting-regression:
     name: Reporting Regression Suite (Blocking)
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}

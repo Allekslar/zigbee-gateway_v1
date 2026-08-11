@@ -1,0 +1,78 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-secure-storage-port",
+  "stage_name": "S5 slice 5/N: typed, fail-closed secure-storage read port (plan required change #10 ONLY -- #11-14/16-18 remain unimplemented, not hardware-blocked)",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of the still-uncommitted S5 slices 1-4 (production security profile, eFuse provisioning template, ESP-IDF version check, NVS namespace registry).",
+  "sequencing_note": "User's message was the literal instruction 'крок — #10' (step -- #10), directly selecting plan S5 required change #10 as the next unit of work, following this document's own closing recommendation (S5-nvs-namespace-registry-completion.json's summary named #10 as the natural next piece since most of #11-18 build on it too).",
+  "changed_files": [
+    "components/service/include/secure_storage_port.hpp (new: SecureStorageStatus enum, secure_storage_fail_closed_pass/secure_storage_classify_raw_status/secure_storage_downgrade_to_corrupt_if_invalid/secure_storage_get_u32/get_str/get_blob declarations)",
+    "components/service/secure_storage_port.cpp (new: implementations, including the namespace-ownership gate built on Section 2.7's find_owning_namespace_for_key)",
+    "test/host/test_secure_storage_port.cpp (new: 12 bare-assert() host tests)",
+    "components/service/CMakeLists.txt (extended: secure_storage_port.cpp added to SRCS)",
+    "test/host/CMakeLists.txt (extended: secure_storage_port.cpp added to SERVICE_SOURCES; new test_secure_storage_port executable/ctest registration)",
+    "docs/security/PRODUCTION_HARDENING.md (Section 2 heading widened to 'sub-slices 1-5... plan #1-#5 + #9 + #10 + #15'; new Section 2.8 documenting this work; Section 3.3/3.4/4 updated to reflect #10 done, #11-14/16-18 remaining)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #10: 'Add storage ports that return typed available, not_provisioned, corrupt and unavailable results; production callers must fail closed on any non-available state.' -- implemented as SecureStorageStatus (4 states) plus secure_storage_get_u32/get_str/get_blob typed read wrappers and a single reusable secure_storage_fail_closed_pass() predicate every production call site should gate on.",
+    "S5's 'Contracts and invariants' text: 'Secure-storage failure returns secure_storage_unavailable and maps to HTTP 503 when exposed later.' -- SecureStorageStatus::kUnavailable is the direct implementation of this named failure mode; the HTTP 503 mapping itself is out of scope for this sub-slice (no HTTP route consumes this port yet -- that is S6/later work) but the typed value it will map from now exists.",
+    "This sub-slice builds directly on Section 2.7's namespace ownership registry (plan #9/#15, prior sub-slice) rather than duplicating key-ownership knowledge: every read is gated by find_owning_namespace_for_key() before touching hal_nvs at all, both catching a real defect class (wrong-namespace call sites) and satisfying plan #10's own fail-closed mandate for that case too."
+  ],
+  "work_summary": {
+    "typed_status_and_classification": {
+      "status": "COMPLETE",
+      "detail": "SecureStorageStatus{kAvailable, kNotProvisioned, kCorrupt, kUnavailable}. secure_storage_classify_raw_status() maps the 4 hal_nvs_status_t values that matter: HAL_NVS_STATUS_OK -> kAvailable; HAL_NVS_STATUS_NOT_FOUND -> kNotProvisioned; HAL_NVS_STATUS_NO_SPACE -> kCorrupt (stored value does not fit the caller's declared buffer -- a size/schema mismatch signal); HAL_NVS_STATUS_ERR/HAL_NVS_STATUS_INVALID_ARG -> kUnavailable (storage-subsystem-level problem). secure_storage_downgrade_to_corrupt_if_invalid() lets a caller with its own fixed-layout schema (magic number/version/checksum) downgrade a tentative kAvailable to kCorrupt after inspecting the actual bytes, without this generic port needing to know any consumer's specific schema."
+    },
+    "fail_closed_predicate": {
+      "status": "COMPLETE",
+      "detail": "secure_storage_fail_closed_pass(status) is true only for kAvailable -- implements plan #10's 'production callers must fail closed on any non-available state' as one small, reusable, directly-testable function rather than leaving every future call site to hand-roll the same comparison (and risk drifting from the contract, e.g. accidentally treating kNotProvisioned as acceptable for a secret read)."
+    },
+    "namespace_gated_typed_reads": {
+      "status": "COMPLETE",
+      "detail": "secure_storage_get_u32/get_str/get_blob(namespace_id, key, ...) each call Section 2.7's find_owning_namespace_for_key(key) first and return kUnavailable immediately -- without ever calling hal_nvs -- if the key does not belong to the claimed namespace (covering null/empty/entirely-unknown keys too). Verified this short-circuit actually prevents the underlying hal_nvs call and leaves the caller's output buffer/value untouched by pre-filling with a sentinel and asserting it survives unchanged."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "12 bare-assert() host tests in test/host/test_secure_storage_port.cpp, all passing. Built and run via zgw-host-tools:s0: a fresh full-repository ctest run reports 85/85 passing (84 pre-existing + this new test), proving the addition is purely additive. cppcheck --enable=warning,performance,portability via zgw-host-tools:cppcheck reports zero findings against the new .cpp. check_arch_invariants.sh reports high=0/medium=0/low=0 (unchanged -- no new HAL contract or route registration introduced)."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only plan #10 (typed storage-port results) is implemented in this sub-slice; #11 (migration scaffolding), #12 (runtime encryption-verified write gate), #13 (TLS/provisioning storage interfaces), #14 (redaction), #16/#17 (erase/preserve enforcement) and #18 (reset-journal storage port) are not, and no hal_nvs.c call site has been changed to actually use this new port yet.",
+      "why": "Matches this document's established per-item sub-slicing discipline (each of S5's ten 'Encrypted storage foundation' items builds on the ones before it; #10 itself was scoped this way explicitly per the user's own prior selection of '#9-18' being split into foundation-first sub-slices). The user's literal instruction for this pass was 'крок — #10' (step -- #10), naming exactly this one item.",
+      "consequence": "No existing production code path (config_manager, connectivity_manager, matter_endpoint_registry, etc.) calls secure_storage_get_* yet -- they still call hal_nvs_get_* directly. This port exists and is fully tested but is not yet load-bearing for any real read. Wiring real call sites to it, or building #11's migration/#12's write gate on top, is future work.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 3.3"
+    },
+    {
+      "deviation": "The four-state classification only distinguishes storage-subsystem-level problems (kUnavailable) from a size/shape mismatch (kCorrupt) using the existing hal_nvs_status_t vocabulary (HAL_NVS_STATUS_ERR/INVALID_ARG vs. HAL_NVS_STATUS_NO_SPACE); it cannot distinguish e.g. 'flash hardware read error' from 'NVS Encryption key unavailable' from 'generic ESP-IDF NVS internal error' -- hal_nvs.c itself does not currently surface that distinction at the per-call level.",
+      "why": "Redesigning hal_nvs.c's own status vocabulary to carry finer-grained subsystem-failure detail is a larger, separate change than this sub-slice's scope (typed results layered on top of the existing HAL contract, not a HAL redesign) and was not requested.",
+      "consequence": "Every storage-subsystem-level failure this port can currently observe collapses to a single kUnavailable value regardless of root cause; a future consumer wanting to distinguish 'NVS Encryption not yet verified active' (plan #12's concern) from 'raw flash error' will need hal_nvs.c itself to expose that distinction first.",
+      "tracked_in": "components/service/include/secure_storage_port.hpp doc comment on secure_storage_classify_raw_status"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3, 4 (fully), 5 (fully), 9 (fully), 10 (fully), 15 (fully); 8 (partial: signing-key/insecure-escape-hatch handling from slice 1, template-format redaction from slice 2 -- burn-time enforcement still not implemented)",
+    "plan_s5_items_remaining": "6, 7, 8 (burn-time enforcement remainder), 11, 12, 13, 14, 16, 17, 18",
+    "cpp_host_tests_total_this_repo": 85,
+    "cpp_host_tests_this_sub_slice_new": 1,
+    "cpp_host_test_assertions_this_sub_slice_new": 12
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "85/85 (100%) via ctest inside zgw-host-tools:s0, including the new test_secure_storage_port (12 assertions, all passing). Full rebuild from a clean host-build directory." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/service/secure_storage_port.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged from before this pass." },
+    "real_esp_idf_build": { "result": "N/A", "detail": "Not applicable -- this sub-slice is pure host C++ with no Kconfig/partition-table/hardware dependency." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified entirely via the established zgw-host-tools:s0 (build + full 85-test ctest suite) and zgw-host-tools:cppcheck (static analysis) Docker images. No real ESP32-C6 hardware, manufacturing/eFuse environment, or ESP-IDF container was needed or used for this sub-slice.",
+  "unresolved_deviations": [
+    "Plan S5 items #11-14, #16-18 remain entirely unimplemented, and no production call site consumes secure_storage_get_* yet -- see docs/security/PRODUCTION_HARDENING.md Section 3.3 and this file's deviations above.",
+    "The kUnavailable classification cannot currently distinguish different storage-subsystem-level root causes -- see this file's deviations above.",
+    "Plan S5 items #6-8 (burn-time enforcement remainder, BLOCKED_SECURITY_PROVISIONING), the ESP-IDF-version-check-vs-dependencies.lock discrepancy, and the NVS-namespace-registry sub-slice's own unresolved items remain unchanged from prior sub-slices, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks plan #6-#8 and every Secure Boot/Flash Encryption/NVS Encryption target/HIL test in S5's test list. This sub-slice's work (the typed storage-read port) is not blocked by this at all -- it is pure software with zero hardware dependency, fully implemented and tested."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

@@ -1,0 +1,110 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5",
+  "stage_name": "S5 -- Establish hardware security foundation and encrypted storage: STAGE-LEVEL CLOSING SUMMARY",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. All eleven S5 sub-slices are uncommitted on top of 228f227 (merge of PR #47). This file consolidates implementation-evidence/S5-production-security-profile-completion.json, S5-efuse-provisioning-template-completion.json, S5-idf-version-check-completion.json, S5-nvs-namespace-registry-completion.json, S5-secure-storage-port-completion.json, S5-write-gate-completion.json, S5-migration-scaffolding-completion.json, S5-tls-provisioning-storage-port-completion.json, S5-redaction-completion.json, S5-erase-preserve-enforcement-completion.json and S5-reset-journal-storage-port-completion.json into the single stage-level deliverable the plan itself names (docs/implementation/PRODUCTION_HARDENING_PLAN.md's S5 'Deliverables' section: 'implementation-evidence/S5-completion.json').",
+  "sequencing_note": "User's final instruction for this stage, decoded from a keyboard-layout-garbled message ('pfrhbdftvj S5') and confirmed via AskUserQuestion: 'закриваємо S5' (let's close out S5) -> implement remaining plan #16/#17/#18, then produce this final stage-level closing summary.",
+  "sub_slices": [
+    { "slice": 1, "scope": "Plan #1-#4: immutable production security profile", "evidence_file": "implementation-evidence/S5-production-security-profile-completion.json", "status": "COMPLETE, real-ESP-IDF-build-verified" },
+    { "slice": 2, "scope": "Plan #5: machine-readable eFuse provisioning template", "evidence_file": "implementation-evidence/S5-efuse-provisioning-template-completion.json", "status": "COMPLETE" },
+    { "slice": 3, "scope": "Plan #4 (second half): ESP-IDF version check in the verifier", "evidence_file": "implementation-evidence/S5-idf-version-check-completion.json", "status": "COMPLETE" },
+    { "slice": 4, "scope": "Plan #9 + #15: NVS namespace ownership registry and FD-21 classification", "evidence_file": "implementation-evidence/S5-nvs-namespace-registry-completion.json", "status": "COMPLETE" },
+    { "slice": 5, "scope": "Plan #10: typed fail-closed secure-storage read port", "evidence_file": "implementation-evidence/S5-secure-storage-port-completion.json", "status": "COMPLETE" },
+    { "slice": 6, "scope": "Plan #12: runtime encryption-verified write gate", "evidence_file": "implementation-evidence/S5-write-gate-completion.json", "status": "COMPLETE" },
+    { "slice": 7, "scope": "Plan #11: restart-safe migration scaffolding", "evidence_file": "implementation-evidence/S5-migration-scaffolding-completion.json", "status": "COMPLETE" },
+    { "slice": 8, "scope": "Plan #13: TLS/provisioning key storage interfaces", "evidence_file": "implementation-evidence/S5-tls-provisioning-storage-port-completion.json", "status": "COMPLETE" },
+    { "slice": 9, "scope": "Plan #14: redact logs, crash reports and completion evidence", "evidence_file": "implementation-evidence/S5-redaction-completion.json", "status": "COMPLETE" },
+    { "slice": 10, "scope": "Plan #16 + #17: typed namespace erase enforcement", "evidence_file": "implementation-evidence/S5-erase-preserve-enforcement-completion.json", "status": "COMPLETE" },
+    { "slice": 11, "scope": "Plan #18: protected reset-journal storage port", "evidence_file": "implementation-evidence/S5-reset-journal-storage-port-completion.json", "status": "COMPLETE" }
+  ],
+  "plan_required_changes_status": {
+    "1_production_sdkconfig_profile": "COMPLETE -- Secure Boot v2, Flash Encryption release mode, NVS Encryption, rollback, secure UART ROM download mode",
+    "2_dev_production_profile_separation": "COMPLETE -- ZGW_PRODUCTION_BUILD env-var gate on both sdkconfig.production.esp32c6 and partitions.production.csv; shared dev/HIL files provably untouched",
+    "3_verify_production_security_profile_py": "COMPLETE -- 8 required + 5 forbidden Kconfig symbols, plus ESP-IDF-version check (slice 3) and CONFIG_ESP_COREDUMP_CAPTURE_DRAM forbidden (slice 9)",
+    "4_production_build_fails_on_mismatch": "COMPLETE -- both halves: Kconfig-symbol mismatch (slice 1) and ESP-IDF-version mismatch (slice 3, 5.5.x accepted per user's explicit policy decision, not exactly 5.5.2)",
+    "5_efuse_provisioning_template": "COMPLETE -- grounded in real espefuse.py --virt output, key material SHA-256-redacted",
+    "6_two_phase_dry_run_burn_workflow": "BLOCKED_SECURITY_PROVISIONING -- no manufacturing/eFuse environment in this sandbox",
+    "7_device_quarantine_unexpected_efuse": "BLOCKED_SECURITY_PROVISIONING -- no manufacturing/eFuse environment in this sandbox",
+    "8_redacted_evidence_no_private_keys_in_repo": "PARTIAL -- signing-key/insecure-escape-hatch handling (slice 1) and eFuse-template-format redaction (slice 2) are done; burn-time enforcement is BLOCKED_SECURITY_PROVISIONING (needs #6/#7 first)",
+    "9_explicit_encrypted_nvs_namespace_ownership": "COMPLETE -- 12-entry registry, real hal_nvs_* call-site inventory grounded",
+    "10_typed_fail_closed_storage_read_results": "COMPLETE -- SecureStorageStatus{available,not_provisioned,corrupt,unavailable}",
+    "11_restart_safe_migration_scaffolding": "COMPLETE -- 6-step read/validate/write/verify/erase sequence; a same-source-and-destination design flaw was found and fixed while writing this slice's own tests",
+    "12_runtime_encryption_verified_write_gate": "COMPLETE -- wraps real esp_flash_encryption_enabled()",
+    "13_tls_provisioning_storage_interfaces": "COMPLETE -- current/next TLS key/cert slots, product CA, manufacturing PoP/eFuse-record; storage interface only, no real secret material generated",
+    "14_redact_logs_crash_reports_completion_evidence": "COMPLETE -- all three clauses addressed separately and concretely",
+    "15_fd21_classification": "COMPLETE -- every namespace has exactly one of PRESERVE/ERASE/RESET_JOURNAL_ONLY",
+    "16_preserve_named_material": "COMPLETE -- classification (slice 4) plus structural enforcement (slice 10)",
+    "17_typed_namespace_erase_no_broad_erase": "COMPLETE -- erase_namespace()/erase_namespace_key_range(), both refuse non-erasable namespaces before touching any key",
+    "18_protected_reset_journal_storage_port": "COMPLETE -- single atomic u32, proven to survive erase_namespace() by a real cross-module test"
+  },
+  "completion_evidence_per_plan_text": {
+    "generated_sdkconfig_hash": {
+      "algorithm": "sha256",
+      "value": "7f45c1d652d5b7605b9d7b2602976d326d2ce4ce68a2bc224b541fcb769be24b",
+      "detail": "Captured from the real generated root `sdkconfig` produced by `ZGW_PRODUCTION_BUILD=1 idf.py build` (full build, all 11 sub-slices' code present) inside espressif/idf:release-v5.5, immediately before this file was written. scripts/verify_production_security_profile.py against this exact file reported OK."
+    },
+    "exact_toolchain_container_digest": {
+      "image_tag": "espressif/idf:release-v5.5",
+      "resolved_digest": "espressif/idf@sha256:0c439ea923cd42700f9bbbe82542749d980712edb0ead0ea6db7eef35619b812",
+      "resolved_idf_version": "5.5.5 (IDF_VERSION_MAJOR=5, MINOR=5, PATCH=5, from tools/cmake/version.cmake inside the image)",
+      "detail": "Same image tag this project's own CI firmware-build/target-hal-tests-build jobs already use. Not exactly the plan's originally-written pinned 5.5.2 -- a real, named discrepancy the user explicitly resolved (slice 3): the production verifier now accepts any 5.5.x, matching this tag's actual branch-tracking behavior, rather than an exact patch pin."
+    },
+    "efuse_readback_with_secrets_redacted": {
+      "status": "PARTIAL -- template/schema only, real readback BLOCKED_SECURITY_PROVISIONING",
+      "detail": "scripts/efuse_provisioning_template.py (slice 2) defines a real, espefuse.py-grounded provisioning-record schema with key material (BLOCK_KEY0-5) redacted to a SHA-256 digest only, never raw bytes -- verified against a real espefuse.py --chip esp32c6 --virt summary --format json capture (ESP-IDF's own eFuse emulation, no hardware). Actual eFuse readback from real, physical, provisioned silicon is BLOCKED_SECURITY_PROVISIONING -- this sandbox has no manufacturing/eFuse environment, exactly the condition the plan's own preconditions name."
+    },
+    "encrypted_storage_tests_hil": {
+      "host_tests": "141 total this stage: 91 C++ (via ctest, zgw-host-tools:s0) + 50 Python (via unittest, direct python3) -- all passing at time of this file",
+      "hil_tests": "BLOCKED_SECURITY_PROVISIONING -- every target/HIL test in S5's own Tests-and-verification list (Secure Boot v2 readback, Flash Encryption release-mode readback, NVS Encryption round-trip and raw-flash non-disclosure check, reboot/power-loss during encrypted migration, missing/corrupt encrypted storage fails closed, JTAG/UART/download policy verification, unexpected eFuse state causes quarantine, reset namespace matrix test, power loss during simulated erase) needs real ESP32-C6 hardware this sandbox does not have."
+    },
+    "complete_reset_preserve_erase_namespace_diff": {
+      "detail": "All 12 registry entries (components/service/include/nvs_namespace_registry.hpp), each with exactly one classification, matching FD-21's own preserve/erase text verbatim:",
+      "preserve_on_factory_reset": ["kTlsIdentity", "kManufacturingProvisioning"],
+      "erase_on_factory_reset": [
+        "kWifiCredentials", "kMqttCredentials", "kAdminVerifier", "kSessionSeed",
+        "kZigbeeNetworkDeviceReporting", "kMatterEndpointState", "kCoreDeviceState",
+        "kOperationJournalDiagnostics", "kLegacyMigrationTombstone"
+      ],
+      "reset_journal_only": ["kResetJournal"],
+      "fd21_items_with_no_registry_entry": {
+        "detail": "Three FD-21 Preserve items are not NVS namespaces at all and so deliberately have no registry entry: eFuse/security state and Secure Boot/Flash/NVS encryption key material live in eFuse and the hardware-managed nvs_keys partition, not an app-owned NVS namespace; the factory GatewayId is derived at runtime from the eFuse-backed factory base MAC (hal_identity_get_factory_base_mac) and is never written to NVS at all. All three are preserved trivially, by construction."
+      },
+      "enforcement": "erase_namespace()/erase_namespace_key_range() (slice 10) refuse outright, before touching any key, for any namespace not classified kEraseOnFactoryReset -- this diff is not just documentation, it is structurally enforced."
+    },
+    "certificate_slot_reset_journal_storage_tests": {
+      "certificate_slot_tests": "5 tests, test/host/test_tls_provisioning_storage_port.cpp (slice 8): current/next private-key slots independent; certificate write rejected while encryption unverified; product CA round-trips; manufacturing PoP/eFuse-record slots independent; not-provisioned before any write.",
+      "reset_journal_tests": "5 tests, test/host/test_reset_journal_storage_port.cpp (slice 11): not-provisioned before any write; all 4 FD-21 states round-trip; invalid state rejected; corrupt raw value detected; survives an erase_namespace() attempt (cross-module proof with slice 10)."
+    },
+    "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e (no new commit made this stage; user commits explicitly on request)"
+  },
+  "real_defects_found_and_fixed_across_the_whole_stage": [
+    { "defect": "CMakeLists.txt SDKCONFIG_DEFAULTS silently shadowed a command-line override -- sdkconfig.production.esp32c6 was never actually loading", "found_in": "slice 1", "found_by": "a real idf.py build's log output not showing the third defaults file load" },
+    { "defect": "CONFIG_ESP32C6_DISABLE_JTAG does not exist anywhere in ESP-IDF 5.5 (web-search-sourced guess); real symbol is CONFIG_SECURE_BOOT_ALLOW_JTAG; CONFIG_SECURE_BOOT_INSECURE was also missing from the forbidden list entirely", "found_in": "slice 1", "found_by": "grepping the real Kconfig source inside espressif/idf:release-v5.5" },
+    { "defect": "Bootloader binary (0xc000 bytes with Secure Boot v2 + Flash Encryption) too large for the default 0x8000 partition-table offset; CONFIG_NVS_SEC_KEY_PROTECT_USING_FLASH_ENC also requires a separate nvs_keys partition that did not exist", "found_in": "slice 1", "found_by": "a real full idf.py build failing at the bootloader link step, plus reading real Kconfig help text" },
+    { "defect": "First espefuse.py --virt fixture capture was contaminated with export.sh's activation banner text ahead of the JSON, breaking json.loads()", "found_in": "slice 2", "found_by": "actually running the capture command and inspecting the output" },
+    { "defect": "A same-namespace-and-key migration call would silently, permanently bypass the plan #12 encryption-verified write gate for any pre-existing value, because the restart-safety check cannot distinguish 'already migrated' from 'legacy value never migrated' when source and destination are the same slot", "found_in": "slice 7", "found_by": "writing this slice's own tests, before shipping, not a separate review pass" },
+    { "defect": "erase_namespace_key_range()'s dynamic-key formatting used a bare %02u against a uint32_t argument -- compiles and passes cleanly on the x86-64 host toolchain (uint32_t==unsigned int there) but mismatches -Werror on the real ESP32-C6 riscv32 target (uint32_t==unsigned long there)", "found_in": "slice 10", "found_by": "a real idf.py build failing with a format-specifier error; the host build and all host tests had passed cleanly" }
+  ],
+  "what_this_stage_deliberately_did_not_do": {
+    "no_production_call_site_migrated": "network_manager.cpp, connectivity_manager.cpp, config_manager.cpp, matter_endpoint_registry.cpp and every other existing NVS consumer still call hal_nvs_* directly, completely unchanged from before S5 began. Nothing in this repository calls secure_storage_migrate_str(), erase_namespace(), erase_namespace_key_range(), or set_reset_journal_state(). This is intentional -- S5's job was to prove the foundation is real, correct and tested, not to wire it into production flows that themselves belong to S6 (authorization/physical-presence policy) and S8 (the actual factory-reset flow).",
+    "no_real_secret_material_generated": "Every test across all eleven sub-slices uses only synthetic placeholder bytes (0xA1/0xB2-style filler, 'hunter2'/'MyNetwork' as test strings) -- directly satisfying plan #13's 'this stage does not generate untracked production certificates or shared secrets' and plan #8's 'never place production private keys in the repository'. Confirmed via a direct grep audit (slice 9) of this repository's own implementation-evidence/*.json and docs/security/*.md files: zero matches for PEM markers, password-shaped patterns, or the specific synthetic test values used."
+  },
+  "unresolved_deviations_carried_forward": [
+    "Real per-category ESP-IDF NVS namespace routing does not exist -- hal_nvs.c still hardcodes a single 'zigbee_gateway' namespace for every key. Slice 7's same-key-migration-rejection finding confirms this matters concretely for any real migration, not just in the abstract.",
+    "dependencies.lock's own git-tracked 'idf: version: 5.5.2' pin disagrees with the real toolchain (5.5.5) this project's CI actually uses -- found in slice 3, deliberately not edited (a separate, reviewable change).",
+    "No CI job builds the production profile through the real ESP-IDF container on every push/PR yet -- now much lower-risk to add, since this stage repeatedly proved a full production build succeeds end-to-end (11 separate real-target build verifications across the eleven sub-slices, two of which caught and fixed real bugs).",
+    "Whether/when to enable coredump-to-flash is an open, unrelated product decision (slice 9) -- the reserved partition predates S5, nothing currently turns the feature on, and CONFIG_ESP_COREDUMP_CAPTURE_DRAM is now forbidden regardless of that decision's outcome.",
+    "The concrete key names this stage invented for kTlsIdentity/kManufacturingProvisioning (slice 8) are not derived from any real S6 design (none exists yet) and may need to change once one does.",
+    "erase_namespace() does not automatically discover or apply prefix-key erase ranges for kZigbeeNetworkDeviceReporting -- a caller must supply erase_namespace_key_range()'s parameters explicitly, as this stage's own tests do for the one real case (slice 10)."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available anywhere in this sandbox -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text ('if irreversible provisioning cannot be dry-run and read back, return BLOCKED_SECURITY_PROVISIONING'). This blocks exactly plan #6, #7 and #8's burn-time-enforcement half, plus every target/HIL test in S5's own test list. Every other required change in this stage -- all of #1-#5, #9-#18, and #8's non-hardware half -- is complete, tested, and (wherever a new real ESP-IDF Kconfig symbol or API was introduced) verified against the real ESP-IDF toolchain, not just the host build."
+  ],
+  "s6_readiness": {
+    "s6_preconditions_from_plan_text": "'S5 complete' + 'Encrypted storage, production TLS/provisioning storage ports and hardware security evidence are available.'",
+    "assessment": "All software-only S5 preconditions are now satisfied: encrypted storage (Sections 2.7-2.10, 2.13), production TLS/provisioning storage ports (Section 2.11) and the production security profile (Section 2.1-2.5) are all implemented and tested. 'Hardware security evidence' in the sense of real Secure Boot/Flash Encryption/NVS Encryption readback on physical silicon remains BLOCKED_SECURITY_PROVISIONING -- whether S6 can proceed against this sandbox's software-only evidence, or must wait for real hardware access, is a project-owner decision this file does not make unilaterally."
+  },
+  "releaseability": "NON_RELEASABLE"
+}

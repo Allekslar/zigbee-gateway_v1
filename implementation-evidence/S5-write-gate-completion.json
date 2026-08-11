@@ -1,0 +1,79 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-write-gate",
+  "stage_name": "S5 slice 6/N: runtime encryption-verified write gate for secure storage (plan required change #12 ONLY -- #11/#13/#14/#16-18 remain unimplemented, not hardware-blocked)",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of the still-uncommitted S5 slices 1-5.",
+  "sequencing_note": "User was asked via AskUserQuestion which item of the 'Encrypted storage foundation' cluster to implement next (options: #12 recommended, #11, #16/#17, other); user selected #12 explicitly.",
+  "changed_files": [
+    "components/app_hal/include/hal_security_state.h (new: hal_security_state_flash_encryption_enabled() declaration)",
+    "components/app_hal/include/hal_security_state_test.h (new: host/test-only mock override hooks, mirroring hal_identity_test.h)",
+    "components/app_hal/hal_security_state.c (new: ESP_PLATFORM path wraps real esp_flash_encryption_enabled() from bootloader_support/esp_flash_encrypt.h; host path returns a mockable, fail-closed-default false)",
+    "components/service/include/secure_storage_port.hpp (extended: SecureStorageWriteResult enum, secure_storage_write_precondition_met/secure_storage_set_u32/set_str/set_blob declarations; module docstring widened to cover #12 alongside #10)",
+    "components/service/secure_storage_port.cpp (extended: write-gate implementations)",
+    "test/host/test_hal_security_state.cpp (new: 4 assertions)",
+    "test/host/test_secure_storage_port.cpp (extended: 6 new write-gate tests, 18 total in the file now)",
+    "components/app_hal/CMakeLists.txt (extended: hal_security_state.c added to SRCS; bootloader_support was already a REQUIRES dependency, no change needed there)",
+    "components/service/CMakeLists.txt (extended: secure_storage_port.cpp already present from the prior sub-slice, unchanged; confirmed no new component dependency needed)",
+    "test/host/CMakeLists.txt (extended: hal_security_state.c added to APP_HAL_SOURCES; new test_hal_security_state executable/ctest registration)",
+    "docs/security/PRODUCTION_HARDENING.md (Section 2 heading widened to 'sub-slices 1-6... plan #1-#5 + #9 + #10 + #12 + #15'; new Section 2.9 documenting this work; Section 3.3/4 updated to reflect #12 done, #11/#13/#14/#16-18 remaining)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #12: 'Ensure no new production secret is written before NVS Encryption and required key protection are verified at runtime.' -- implemented as a runtime (not build-time/Kconfig-time) check via hal_security_state_flash_encryption_enabled(), gating secure_storage_set_u32/set_str/set_blob for every namespace the Section 2.7 registry marks encryption_required, matching plan #9's exact six-namespace list.",
+    "Per Section 2.1's approved production profile (CONFIG_NVS_SEC_KEY_PROTECT_USING_FLASH_ENC=y: 'NVS encryption key sourced from the Flash Encryption key rather than a separate HMAC eFuse key block'), Flash Encryption's runtime state IS this project's NVS Encryption key-protection state -- checking esp_flash_encryption_enabled() is the correct, sufficient real signal for this specific configuration, not an approximation of a different, unchecked thing.",
+    "This project's established real-tool-grounding discipline was extended one step further than prior S5 sub-slices: this is the first sub-slice to call a genuinely new ESP-IDF *function* (not just reference a Kconfig symbol), so it was verified against a full real idf.py build inside espressif/idf:release-v5.5, not just grepped source -- confirming the real bootloader_support API actually links, not just that its declaration exists."
+  ],
+  "work_summary": {
+    "hal_security_state_implemented": {
+      "status": "COMPLETE",
+      "detail": "hal_security_state_flash_encryption_enabled() follows hal_identity.c's exact ESP_PLATFORM-vs-host dual-path convention. ESP_PLATFORM: wraps the real esp_flash_encryption_enabled() (bootloader_support/include/esp_flash_encrypt.h), confirmed to exist at that exact path/signature (`bool esp_flash_encryption_enabled(void);`) via a real grep inside espressif/idf:release-v5.5 before writing any code referencing it -- not assumed from memory or web search (the same discipline that caught the CONFIG_ESP32C6_DISABLE_JTAG mistake earlier in S5). Host: returns a mockable value, defaulting to false (the safe fail-closed state) via hal_security_state_test.h's SERVICE_RUNTIME_TEST_HOOKS-gated override, a no-op on ESP_PLATFORM matching hal_identity_test.h's own base-MAC override contract (security-relevant HAL state must never be test-spoofable on a real device)."
+    },
+    "write_gate_implemented": {
+      "status": "COMPLETE",
+      "detail": "SecureStorageWriteResult{kWritten, kRejectedWrongNamespace, kRejectedEncryptionNotVerified, kWriteFailed}. secure_storage_write_precondition_met(namespace_id) is unconditionally true for a namespace with encryption_required==false (Section 2.7 registry), otherwise delegates to hal_security_state_flash_encryption_enabled(). secure_storage_set_u32/set_str/set_blob apply the namespace-ownership gate (same as the Section 2.8 read path) and then this encryption-verified gate, in that order, before ever calling hal_nvs_set_*. Verified directly (not just via return value) that a rejected write never reaches hal_nvs: read the raw key back via hal_nvs_get_str/hal_nvs_get_blob after a rejected write and confirmed it remains NOT_FOUND or byte-for-byte unchanged."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "10 new host-test assertions across two files (4 in the new test_hal_security_state.cpp, 6 new tests appended to test_secure_storage_port.cpp). Full repository ctest suite: 86/86 passing (85 pre-existing + this sub-slice's 2 new test executables -- test_hal_security_state was newly added as its own executable; test_secure_storage_port's existing executable grew by 6 tests without a new executable). cppcheck: zero findings against both new files (hal_security_state.c, secure_storage_port.cpp's extension). check_arch_invariants.sh: high=0/medium=0/low=0, unchanged. ADDITIONALLY -- since this sub-slice calls a genuinely new real ESP-IDF function for the first time in S5 -- ran a full, real, non-production idf.py -B build-hal-test set-target esp32c6 build inside espressif/idf:release-v5.5: 1181/1181 steps completed, esp_flash_encryption_enabled() linked correctly against bootloader_support with no missing-symbol/missing-include errors, confirming this isn't just a plausible-looking header include but an actually-linkable real API call."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only plan #12 (the runtime encryption-verified write gate) is implemented in this sub-slice; #11 (migration scaffolding), #13 (TLS/provisioning storage interfaces), #14 (redaction), #16/#17 (erase/preserve enforcement) and #18 (reset-journal storage port) are not, and no existing production call site has been migrated to use secure_storage_set_*/get_* -- they still call hal_nvs_set_*/get_* directly, unchanged from before this sub-slice.",
+      "why": "The user explicitly selected '#12: Runtime-гейт перевірки шифрування перед записом' from a set of concrete next-step options, matching this document's established per-item sub-slicing discipline.",
+      "consequence": "Today's live write behavior for wifi_ssid/wifi_password and every other existing NVS key is completely unchanged -- this sub-slice adds a fully tested, real-ESP-IDF-verified gate that nothing currently calls. Wiring real call sites to it is future work, most naturally alongside #11's migration scaffolding (a migrated secret needs both this write gate and the restart-safe read-legacy/validate/write-encrypted/read-back/erase-plaintext sequence together, not the gate alone).",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 2.9's closing paragraph and Section 3.3"
+    },
+    {
+      "deviation": "The write gate checks Flash Encryption's runtime state as a proxy for 'NVS Encryption and required key protection are verified' rather than querying NVS Encryption/the NVS Security Provider directly.",
+      "why": "This project's approved production Kconfig profile (Section 2.1) pins CONFIG_NVS_SEC_KEY_PROTECT_USING_FLASH_ENC=y specifically -- NVS Encryption's key material IS sourced from the Flash Encryption key in this exact configuration, so the two are the same real signal here, not an approximation. A project that later changed this Kconfig choice (e.g. to a separate HMAC eFuse key block) would need this gate updated to match.",
+      "consequence": "If this project's approved profile ever changes away from CONFIG_NVS_SEC_KEY_PROTECT_USING_FLASH_ENC, this write gate's single hal_security_state_flash_encryption_enabled() check would need a corresponding update -- not automatically kept in sync by anything in this sub-slice.",
+      "tracked_in": "components/app_hal/include/hal_security_state.h doc comment, docs/security/PRODUCTION_HARDENING.md Section 2.9"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3, 4 (fully), 5 (fully), 9 (fully), 10 (fully), 12 (fully), 15 (fully); 8 (partial: signing-key/insecure-escape-hatch handling from slice 1, template-format redaction from slice 2 -- burn-time enforcement still not implemented)",
+    "plan_s5_items_remaining": "6, 7, 8 (burn-time enforcement remainder), 11, 13, 14, 16, 17, 18",
+    "cpp_host_tests_total_this_repo": 86,
+    "cpp_c_new_test_executables_this_sub_slice": 1,
+    "cpp_host_test_assertions_this_sub_slice_new": 10
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "86/86 (100%) via ctest inside zgw-host-tools:s0, including the new test_hal_security_state (4 assertions) and test_secure_storage_port's 6 new write-gate tests. Full rebuild from a clean host-build directory." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/service/secure_storage_port.cpp and components/app_hal/hal_security_state.c via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "real_esp_idf_build": { "result": "PASSED", "detail": "idf.py -B build-hal-test set-target esp32c6 build inside espressif/idf:release-v5.5 (ordinary, non-ZGW_PRODUCTION_BUILD build -- this change has no Kconfig dependency): 1181/1181 steps, real esp_flash_encryption_enabled() from bootloader_support linked correctly. Build artifacts cleaned up via docker run ... rm -rf (root-owned); dependencies.lock, touched by idf.py's Component Manager step as a side effect, restored via git checkout -- confirmed via git status the working tree returned to only the intended source-file changes." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (build + full 86-test ctest suite) and zgw-host-tools:cppcheck (static analysis) for the host-testable logic, AND via a full real idf.py build inside espressif/idf:release-v5.5 for the new real ESP-IDF function call itself (esp_flash_encryption_enabled()) -- the first S5 sub-slice in this segment to need the real ESP-IDF container again since the eFuse-template/version-check/namespace-registry/read-port sub-slices were either grounded in captured fixtures or pure host C++ with no new ESP-IDF API surface. No real ESP32-C6 hardware or manufacturing/eFuse environment was needed -- esp_flash_encryption_enabled() itself is a real ESP-IDF function that compiles and links against the real toolchain without requiring the function to actually execute on real silicon to prove this sub-slice's code is correct.",
+  "unresolved_deviations": [
+    "Plan S5 items #11, #13, #14, #16-18 remain entirely unimplemented, and no production call site consumes secure_storage_set_*/get_* yet -- see docs/security/PRODUCTION_HARDENING.md Section 3.3 and this file's deviations above.",
+    "The write gate's single Flash-Encryption-state check is specific to this project's current CONFIG_NVS_SEC_KEY_PROTECT_USING_FLASH_ENC=y choice and would need updating if that Kconfig choice ever changes -- see this file's deviations above.",
+    "Plan S5 items #6-8 (burn-time enforcement remainder, BLOCKED_SECURITY_PROVISIONING), the ESP-IDF-version-check-vs-dependencies.lock discrepancy, and prior sub-slices' own unresolved items remain unchanged, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks plan #6-#8 and every Secure Boot/Flash Encryption/NVS Encryption target/HIL test in S5's test list. This sub-slice's work (the write gate and its HAL dependency) is not blocked by this -- the real ESP-IDF function call was verified to compile and link against the real toolchain; only actually observing esp_flash_encryption_enabled() return true on booted real silicon remains hardware-only, and that is exactly the target/HIL test list's own remaining scope, not a gap in this sub-slice."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

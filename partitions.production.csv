@@ -1,0 +1,34 @@
+# Name,      Type, SubType,  Offset,   Size,   Flags
+# ESP32-C6 production layout (8MB flash) -- selected only when
+# ZGW_PRODUCTION_BUILD is set (plan S5 #1/#2), via
+# CONFIG_PARTITION_TABLE_CUSTOM_FILENAME/CONFIG_PARTITION_TABLE_OFFSET in
+# sdkconfig.production.esp32c6. Development/HIL builds keep using the
+# unmodified root partitions.csv.
+#
+# Differs from partitions.csv in exactly two ways, both required by the
+# production security profile and confirmed against a real ESP-IDF 5.5
+# build (see docs/security/PRODUCTION_HARDENING.md Section 2.4/2.6):
+#   1. The partition table itself moves from the default 0x8000 to
+#      0x10000, since Secure Boot v2 + Flash Encryption compile enough
+#      extra bootloader code (observed: 0xc000 bytes) to overflow the
+#      default 0x8000 budget between the bootloader and the partition
+#      table.
+#   2. A new `nvs_keys` partition is added: CONFIG_NVS_SEC_KEY_PROTECT_USING_FLASH_ENC
+#      (sdkconfig.production.esp32c6) requires one, per ESP-IDF's own
+#      nvs_sec_provider Kconfig help text ("Requires a separate 'nvs_keys'
+#      partition... for storing the NVS encryption keys").
+#
+# ota_0/ota_1/zb_storage/zb_fct/coredump/storage keep their exact original
+# offsets and sizes unchanged -- the original 0x12000-0x20000 gap before
+# ota_0 had enough slack (0xE000) to absorb both changes above (net growth
+# 0x9000) without needing to move or resize anything after phy_init.
+nvs,         data, nvs,     0x11000,  0x6000,
+nvs_keys,    data, nvs_keys,0x17000,  0x1000,
+otadata,     data, ota,     0x18000,  0x2000,
+phy_init,    data, phy,     0x1a000,  0x1000,
+ota_0,       app,  ota_0,   0x20000,  0x280000,
+ota_1,       app,  ota_1,   0x2a0000, 0x280000,
+zb_storage,  data, fat,     0x520000, 0x10000,
+zb_fct,      data, fat,     0x530000, 0x4000,
+coredump,    data, coredump,0x534000, 0x10000,
+storage,     data, spiffs,  0x544000, 0x2bc000,

@@ -1,0 +1,85 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S5-redaction",
+  "stage_name": "S5 slice 9/N: redact key/credential material from logs, crash reports and completion evidence (plan required change #14 ONLY -- #16-18 remain unimplemented, not hardware-blocked)",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of the still-uncommitted S5 slices 1-8.",
+  "sequencing_note": "User explicitly named 'Далі за порядком: #14 (редагування ключового/облікового матеріалу з логів, crash-звітів та evidence)' -- continuing the Encrypted storage foundation cluster in plan-numeric order after #13 (sub-slice 8).",
+  "changed_files": [
+    "components/service/include/secure_log_redaction.hpp (new: RedactedValueSummary struct, redact_value_for_log/format_redacted_value_summary declarations)",
+    "components/service/secure_log_redaction.cpp (new: length-only redaction implementation)",
+    "components/service/secure_storage_port.cpp (extended: ESP_PLATFORM-only redacted logging added to every get/set/erase function via new SS_LOGI/SS_LOGW guarded macros)",
+    "components/service/include/secure_storage_port.hpp (extended: module docstring now covers plan #14's logs clause alongside #10/#12)",
+    "components/common/include/log_tags.h (extended: new LOG_TAG_SECURE_STORAGE tag)",
+    "scripts/verify_production_security_profile.py (extended: CONFIG_ESP_COREDUMP_CAPTURE_DRAM added to FORBIDDEN_SYMBOLS -- the crash-reports clause)",
+    "scripts/test_verify_production_security_profile.py (extended: APPROVED_FIXTURE gained the new symbol's not-set line; 1 new test, test_coredump_dram_capture_forbidden)",
+    "test/host/test_secure_log_redaction.cpp (new: 7 tests)",
+    "components/service/CMakeLists.txt (extended: secure_log_redaction.cpp added to SRCS)",
+    "test/host/CMakeLists.txt (extended: secure_log_redaction.cpp added to SERVICE_SOURCES; new test_secure_log_redaction executable/ctest registration)",
+    "docs/security/PRODUCTION_HARDENING.md (Section 2 heading widened to 'sub-slices 1-9... plan #1-#5 + #9-#15'; new Section 2.12 documenting all three redaction clauses; Section 3.3/4 updated to reflect #14 done, #16-18 remaining)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan S5 #14: 'Redact all key/credential material from logs, crash reports and completion evidence.' -- addressed as three distinct, concretely grounded pieces of work rather than one generic mechanism, matching the plan's own three-way split: (1) a length-only, content-blind logging redaction utility wired into secure_storage_port.cpp's newly-added diagnostic logging; (2) a new forbidden Kconfig symbol (CONFIG_ESP_COREDUMP_CAPTURE_DRAM) in the plan #3 verifier, grounded in real ESP-IDF espcoredump Kconfig source; (3) a direct grep audit of this repository's own implementation-evidence/*.json and docs/security/*.md files for leaked secret material.",
+    "This project's established real-tool-grounding discipline was applied to the crash-report clause exactly as to every other new Kconfig/API reference in S5: CONFIG_ESP_COREDUMP_CAPTURE_DRAM's existence, help text and default value were confirmed by grepping components/espcoredump/Kconfig inside espressif/idf:release-v5.5 before adding it anywhere.",
+    "The redaction utility deliberately keeps only a byte length, not a content-derived digest -- a stronger, simpler form than scripts/efuse_provisioning_template.py's SHA-256-based redact_key_material() (plan #5/#8), which needs a digest for a real, narrow cross-record-correlation purpose a log line does not have."
+  ],
+  "work_summary": {
+    "logs_clause": {
+      "status": "COMPLETE",
+      "detail": "secure_log_redaction.hpp/.cpp: redact_value_for_log() reads only value_len, never dereferences value's content (a null value pointer is treated as zero-length regardless of the len argument passed alongside it, so a stale/wrong length can never produce a misleading nonzero summary). format_redacted_value_summary() renders a fixed '[REDACTED N bytes]' string. Wired into secure_storage_port.cpp (previously zero logging across Sections 2.8-2.10): every get/set/erase now logs key name + outcome, and every successful write additionally logs a redacted value summary, all ESP_PLATFORM-only via new SS_LOGI/SS_LOGW macros (no-op on host, matching connectivity_manager.cpp's established CM_LOGI pattern) tagged with a new LOG_TAG_SECURE_STORAGE. Audited every pre-existing ESP_LOG* call in every S5-touched file (hal_nvs.c's 18 statements, predating this sub-slice) and confirmed none prints a raw value -- only key names, lengths and esp_err_to_name() strings; a real, executed check, not an assumption."
+    },
+    "crash_reports_clause": {
+      "status": "COMPLETE",
+      "detail": "Grepped ESP-IDF's real components/espcoredump/Kconfig inside espressif/idf:release-v5.5: CONFIG_ESP_COREDUMP_CAPTURE_DRAM's help text reads 'Include whole .bss and .data sections and heap data into core dump file' -- exactly where secret-namespace values live at runtime. Added to verify_production_security_profile.py's FORBIDDEN_SYMBOLS. Confirmed via the same Kconfig grep that ESP-IDF's own default is fully disabled (ESP_COREDUMP_TO_FLASH_OR_UART defaults to ESP_COREDUMP_ENABLE_TO_NONE), and confirmed via grep across sdkconfig.defaults/sdkconfig.defaults.esp32c6/sdkconfig.production.esp32c6 that none of them touch any coredump symbol -- so no crash report is generated by any build this repository currently produces; this check guards against a future accidental opt-in, not a currently-active leak. Named directly, not hidden: a 'coredump' partition already exists in partitions.csv/partitions.production.csv (0x534000, 64KB, predating S5), suggesting coredump-to-flash was intended for later use -- whether/when to enable it is a separate, unrelated product decision this sub-slice does not make."
+    },
+    "completion_evidence_clause": {
+      "status": "COMPLETE",
+      "detail": "Directly grep-audited this repository's own implementation-evidence/*.json and docs/security/*.md files: searched for PEM markers (BEGIN CERTIFICATE/PRIVATE KEY/RSA/EC PRIVATE), password-shaped key=value patterns, and the specific synthetic test values used throughout this stage's own test files (hunter2, MyNetwork). All three searches returned zero matches -- a real, executed check with a genuinely clean result, consistent with every S5 test file (Sections 2.7-2.11) having used only synthetic placeholder byte patterns from the start."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "7 new host tests in test/host/test_secure_log_redaction.cpp. Full repository ctest suite: 89/89 passing (88 pre-existing + this sub-slice's new test executable). cppcheck: zero findings against secure_storage_port.cpp and secure_log_redaction.cpp. check_arch_invariants.sh: high=0/medium=0/low=0, unchanged. Python: 50/50 total (32 in test_verify_production_security_profile.py, +1 new test_coredump_dram_capture_forbidden; 18 unchanged in test_efuse_provisioning_template.py). Re-ran a full real ZGW_PRODUCTION_BUILD=1 idf.py build inside espressif/idf:release-v5.5 (1187/1187 steps) and ran verify_production_security_profile.py directly against the real generated root sdkconfig: reported OK, and grep confirmed CONFIG_ESP_COREDUMP_CAPTURE_DRAM is entirely absent from that real file (the whole coredump submenu is elided since the feature is disabled), proving the new forbidden-symbol check does not false-positive against this project's actual approved profile."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only plan #14 is implemented in this sub-slice; #16 (preserve enforcement), #17 (erase enforcement) and #18 (reset-journal storage port) are not.",
+      "why": "The user's instruction explicitly named #14 as the next item to continue with, in plan-numeric order.",
+      "consequence": "No change to actual erase/preserve behavior -- that remains #16/#17's job, which can now reuse secure_storage_erase's idempotent primitive.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 3.3"
+    },
+    {
+      "deviation": "The crash-reports clause is addressed by forbidding a specific Kconfig symbol (CONFIG_ESP_COREDUMP_CAPTURE_DRAM) rather than by any code change, since coredump generation itself is not currently enabled anywhere in this repository's sdkconfig.",
+      "why": "There is nothing to redact in a crash report that is never generated; the concrete, grounded action available now is preventing a future misconfiguration from defeating this stage's own redaction intent once/if coredump is ever enabled.",
+      "consequence": "If a future sub-slice enables coredump-to-flash (the reserved partition suggests this was anticipated), CONFIG_ESP_COREDUMP_CAPTURE_DRAM staying unset (the default) is the only thing currently preventing DRAM/heap contents -- including secret values -- from being captured; this sub-slice does not otherwise verify what a real coredump would or would not contain, since none is ever produced by the current profile.",
+      "tracked_in": "docs/security/PRODUCTION_HARDENING.md Section 2.12.2"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s5_items_implemented": "1, 2, 3, 4, 5, 9, 10, 11, 12, 13, 14, 15 (all fully); 8 (partial: signing-key/insecure-escape-hatch handling from slice 1, template-format redaction from slice 2 -- burn-time enforcement still not implemented)",
+    "plan_s5_items_remaining": "6, 7, 8 (burn-time enforcement remainder), 16, 17, 18",
+    "cpp_host_tests_total_this_repo": 89,
+    "cpp_new_test_executables_this_sub_slice": 1,
+    "cpp_host_test_assertions_this_sub_slice_new": 7,
+    "python_tests_total_this_repo": 50,
+    "python_tests_this_sub_slice_new": 1
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "89/89 (100%) via ctest inside zgw-host-tools:s0, including the new test_secure_log_redaction (7 tests). Full rebuild from a clean host-build directory." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/service/secure_storage_port.cpp and components/service/secure_log_redaction.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "python_unit_tests": { "result": "PASSED", "detail": "50/50 (100%): 32/32 in scripts/test_verify_production_security_profile.py (31 pre-existing + 1 new) and 18/18 in scripts/test_efuse_provisioning_template.py (unchanged)." },
+    "real_esp_idf_build": { "result": "PASSED", "detail": "ZGW_PRODUCTION_BUILD=1 idf.py -B build-redact-test set-target esp32c6 build inside espressif/idf:release-v5.5: 1187/1187 steps completed. verify_production_security_profile.py run directly against the real generated root sdkconfig reported OK; grep confirmed CONFIG_ESP_COREDUMP_CAPTURE_DRAM is entirely absent from that file. Build artifacts (build dir + the generated root sdkconfig/sdkconfig.old, both root-owned) cleaned up via docker run ... rm -rf; dependencies.lock restored via git checkout -- confirmed via git status the working tree returned to only the intended source-file changes." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (build + full 89-test ctest suite) and zgw-host-tools:cppcheck (static analysis) for the logs-clause host-testable logic; via python3 directly (stdlib unittest) for the crash-reports-clause verifier logic; via a full real idf.py production build inside espressif/idf:release-v5.5 to confirm the new forbidden symbol behaves correctly against a real generated sdkconfig; and via direct grep commands against this repository's own tracked files for the completion-evidence-clause audit. No real ESP32-C6 hardware or manufacturing/eFuse environment was needed for any of the three clauses.",
+  "unresolved_deviations": [
+    "Plan S5 items #16-18 remain entirely unimplemented -- see docs/security/PRODUCTION_HARDENING.md Section 3.3.",
+    "Whether/when to actually enable coredump-to-flash (the partition already exists, reserved) remains an open, unrelated product decision this sub-slice deliberately did not make -- see this file's deviations above.",
+    "Plan S5 items #6-8 (burn-time enforcement remainder, BLOCKED_SECURITY_PROVISIONING), the ESP-IDF-version-check-vs-dependencies.lock discrepancy, and prior sub-slices' own unresolved items (real per-category namespace routing, same-key migration rejection, TLS/provisioning key naming) remain unchanged, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- BLOCKED_SECURITY_PROVISIONING, per plan S5's own precondition text; blocks plan #6-#8 and every Secure Boot/Flash Encryption/NVS Encryption target/HIL test in S5's test list. This sub-slice's work (redaction across all three clauses) is not blocked by this at all -- it is pure software plus a documentation/audit check, fully implemented and tested, and does not depend on any hardware-only capability."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}
