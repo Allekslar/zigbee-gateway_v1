@@ -1,0 +1,73 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S6-mdns-host",
+  "stage_name": "S6 slice 6/N: production mDNS host derivation (plan \"HTTPS and sessions\" required change #9)",
+  "input_commit_sha": "80872dc96808d2c175f37b3a62a2964648d9d394",
+  "output_commit_sha": "80872dc96808d2c175f37b3a62a2964648d9d394",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 80872dc (merge of PR #49), layered on top of all uncommitted S5 work and S6 slices 1-5 (S6-security-bounds-completion.json, S6-provisioning-ap-secrets-completion.json, S6-provisioning-credentials-completion.json, S6-session-store-completion.json, S6-https-listener-completion.json).",
+  "sequencing_note": "User's instruction: 'Далі в кластері: #9' -- continuing the 'HTTPS and sessions' cluster after S6-https-listener-completion.json, picking the item that sub-slice's own evidence file named as the lower-risk of the two remaining natural next steps (the other being #10-#11 certificate validation, still blocked on the host-toolchain mbedtls X.509 gap).",
+  "changed_files": [
+    "components/service/include/provisioning_secrets.hpp (changed: new kGatewayHostNamePrefix constant, new build_gateway_mdns_host() declaration, top-of-file plan-summary comment widened to include #9)",
+    "components/service/provisioning_secrets.cpp (changed: build_provisioning_ap_ssid()'s body extracted into a shared private build_prefixed_gateway_suffix_name() helper; new build_gateway_mdns_host() built on that same helper, branching on CONFIG_ZGW_PRODUCTION_PROFILE)",
+    "main/app_main.cpp (changed: local kGatewayHostName constant removed, replaced by the shared service::kGatewayHostNamePrefix; mDNS host is now built via build_gateway_mdns_host() instead of the plain hardcoded string; the logged mDNS URL scheme now matches what the build variant actually serves -- https:// under CONFIG_ZGW_PRODUCTION_PROFILE, http:// otherwise -- instead of always claiming http://)",
+    "test/host/test_provisioning_secrets.cpp (extended: 4 new tests for build_gateway_mdns_host(), appended to the existing test executable)",
+    "docs/security/CONTROL_PLANE_SECURITY.md (Section 2 heading widened; new Section 2.8; Section 3/4 updated)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan #9, verbatim: 'Derive production mDNS host exactly as zigbee-gateway-<last6>.local and advertise only https://.' -- implemented exactly for the production branch: build_gateway_mdns_host() returns \"<kGatewayHostNamePrefix>-<last6-hex>\" (kGatewayHostNamePrefix = \"zigbee-gateway\"), reusing the identical suffix convention plan #4's AP SSID already established, and main/app_main.cpp's logged URL now says https:// only when CONFIG_ZGW_PRODUCTION_PROFILE is actually set (i.e. only when the listener Section 2.7 built is actually serving HTTPS).",
+    "Development builds (CONFIG_ZGW_PRODUCTION_PROFILE unset) keep the plain, unsuffixed 'zigbee-gateway' hostname rather than always suffixing -- a deliberate, documented interpretation of the plan's own 'production mDNS host' wording (not 'mDNS host' unconditionally), matching the same dev/prod split #7 already established for the listener itself; per-device hostname collision is a bench-testing convenience concern in development, not a trust concern the way it is in production.",
+    "The branching decision (production-suffixed vs. plain) lives inside build_gateway_mdns_host() itself (service-layer function, internal CONFIG_ZGW_PRODUCTION_PROFILE branch), not at the main/app_main.cpp call site -- matches provisioning_secret_provider.cpp's own established precedent (a single function name, internal dev/prod branching) since hostname naming is a naming decision, not a listener-composition decision the way #7's httpd_ssl_start()-vs-httpd_start() choice is.",
+    "The shared '<prefix>-<last6-hex>' logic was extracted into a private build_prefixed_gateway_suffix_name() helper rather than duplicated -- build_provisioning_ap_ssid()'s own public behavior and signature are completely unchanged, only its internal implementation now delegates to the shared helper."
+  ],
+  "work_summary": {
+    "build_gateway_mdns_host_implemented": {
+      "status": "COMPLETE",
+      "detail": "New function in provisioning_secrets.hpp/.cpp. Production branch (CONFIG_ZGW_PRODUCTION_PROFILE=y): delegates to the same build_prefixed_gateway_suffix_name() helper build_provisioning_ap_ssid() already used, with prefix=kGatewayHostNamePrefix (\"zigbee-gateway\") -- requires a valid GatewayId, exactly matching plan #9's literal hostname format. Development branch: returns the plain kGatewayHostNamePrefix unsuffixed, ignoring gateway_id entirely (never fails due to an invalid GatewayId in this branch, unlike the production branch)."
+    },
+    "app_main_updated": {
+      "status": "COMPLETE",
+      "detail": "The local kGatewayHostName duplicate string constant is gone, replaced by the shared service::kGatewayHostNamePrefix (used both at the AP SSID call site and as build_gateway_mdns_host()'s internal production prefix -- single source of truth, cannot drift independently). mDNS host generation now fails closed (halts, matching every other critical-service-start failure in this file) if build_gateway_mdns_host() itself fails. The logged 'mDNS started: <scheme>://<host>.local' line now branches its own URL scheme on CONFIG_ZGW_PRODUCTION_PROFILE, matching what web_server.cpp (Section 2.7) actually serves for that exact build -- the prior code unconditionally logged http://, which would have been actively wrong/misleading advice for a production build now serving real HTTPS."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "4 new tests appended to test/host/test_provisioning_secrets.cpp (host builds always exercise the development branch, matching provisioning_secret_provider.cpp's own established host-testing convention for CONFIG_ZGW_PRODUCTION_PROFILE-gated logic): plain-prefix-on-host-build; an invalid GatewayId is tolerated in the development branch (never read); undersized-buffer rejection; null-out rejection. Full repository host suite: 101/101 passing (no new test executable -- appended to the existing one). cppcheck --enable=warning,style,performance,portability: zero findings against provisioning_secrets.cpp. check_arch_invariants.sh: high=0/medium=0/low=0, unchanged. Two full real idf.py builds inside espressif/idf:release-v5.5 succeeded on the first attempt: an ordinary build (1196/1196 steps) and a ZGW_PRODUCTION_BUILD=1 build (1199/1199 steps, confirming the production '<prefix>-<last6>' branch -- only reachable under a real target build with CONFIG_ZGW_PRODUCTION_PROFILE=y -- actually compiles)."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Development builds keep the plain, unsuffixed 'zigbee-gateway' mDNS hostname rather than always applying the '<last6>' suffix plan #9 names.",
+      "why": "Plan #9's own text says 'production mDNS host' specifically, and this project's #7 sub-slice already established the same dev/prod split for the listener itself (development serves plain HTTP, production serves HTTPS) -- treating hostname suffixing the same way keeps a single consistent dev/prod philosophy across this cluster, and a fixed hostname is simply more convenient for bench-testing one device.",
+      "consequence": "Two development-profile zgw devices on the same LAN would still collide on the plain 'zigbee-gateway.local' hostname -- an accepted, low-stakes limitation for a bench/development scenario, not a production concern (production always gets the unique per-device suffix).",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 2.8"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s6_https_sessions_items_implemented": "7, 9, 13, 14, 15, 16",
+    "plan_s6_https_sessions_items_remaining": "8 (uniqueness verification half only), 10, 11, 12, 17",
+    "plan_s6_items_implemented_overall": "the 'Security invariants, bounded tunables and typed accessors' prerequisite cluster (S6 slice 1) + all of 'Provisioning and credentials' (#1-6, S6 slices 2-3) + 'HTTPS and sessions' #7, #9, #13-16 (S6 slices 4-6)",
+    "cpp_host_tests_total_this_repo": 101,
+    "cpp_host_test_assertions_this_sub_slice_new": 4,
+    "real_defects_found_and_fixed_this_sub_slice": 0,
+    "real_defects_found_and_fixed_across_s5_and_s6_so_far": 8
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "101/101 (100%) via ctest inside zgw-host-tools:s0 -- same total test-executable count as the prior sub-slice, since these 4 new tests were appended to the existing test_provisioning_secrets binary rather than a new executable." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/service/provisioning_secrets.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "real_esp_idf_build": { "result": "PASSED", "detail": "Two full idf.py -B <dir> set-target esp32c6 builds inside espressif/idf:release-v5.5: an ordinary (non-production) build, 1196/1196 steps, and a ZGW_PRODUCTION_BUILD=1 build, 1199/1199 steps. Both succeeded on the first attempt. Build artifacts (build-s6-mdns, build-s6-mdns-prod, sdkconfig, managed_components) cleaned up via docker run ... rm -rf; dependencies.lock unaffected (confirmed via git status)." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (full 101-test ctest suite, exercising the development branch of build_gateway_mdns_host()) and zgw-host-tools:cppcheck (static analysis) for all host-testable logic; AND via two real idf.py builds inside espressif/idf:release-v5.5, the ZGW_PRODUCTION_BUILD=1 one being the only way to actually compile-verify the production '<prefix>-<last6>' branch (it is unreachable on a host build, where CONFIG_ZGW_PRODUCTION_PROFILE is never defined at all). No real ESP32-C6 hardware or manufacturing/eFuse environment was needed.",
+  "unresolved_deviations": [
+    "Development builds do not suffix the mDNS hostname -- a deliberate interpretation of 'production mDNS host', not a plan-text-mandated behavior -- see this file's deviations above.",
+    "GatewayId manufacturing-uniqueness verification (plan #8's remaining half), certificate chain/SAN/CA validation (#10-#11), certificate rotation (#12) and the seven authentication routes (#17) remain unimplemented -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3.",
+    "The HTTPS listener (Section 2.7) and this sub-slice's mDNS host derivation both remain without any real end-to-end effect until #10-#12 populate real certificate material -- Section 2.7's own already-documented consequence, unchanged by this pass.",
+    "None of S6's other required-change clusters (authorization/physical presence, strict JSON parsing, rate limiting/audit, MQTT security) have started -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3.",
+    "The three independent copies of the S6 tunable-range table (Kconfig/C++/Python, from S6 slice 1) are still not automatically kept in sync -- unchanged from prior evidence files, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- carried forward from S5, BLOCKED_SECURITY_PROVISIONING. This sub-slice's own work (mDNS hostname derivation) is not blocked by this at all -- it is pure software, verified against the real ESP-IDF toolchain in both build configurations.",
+    "Certificate chain/SAN/CA validation (plan #10-11, the natural next HTTPS/sessions sub-slice) needs real mbedtls X.509 parsing, unavailable on the host toolchain (zgw-host-tools:s0 has zero crypto library dev headers, confirmed by recon in S6-provisioning-credentials-completion.json) -- unchanged blocker, carried forward from the prior sub-slice's own evidence file."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

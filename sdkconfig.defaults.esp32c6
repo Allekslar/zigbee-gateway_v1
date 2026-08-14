@@ -12,6 +12,14 @@ CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=2048
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 CONFIG_MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH=y
 # CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE is not set
+# S6 "HTTPS and sessions" #7: production management listener. Recon
+# against the real espressif/idf:release-v5.5 esp_https_server component
+# found this Kconfig bool is not actually referenced anywhere in
+# esp_https_server's own source/CMakeLists (httpd_ssl_start/_stop compile
+# unconditionally once the component is a REQUIRES dependency) -- set
+# here anyway for menuconfig-visible documentation of intent and in case
+# a future ESP-IDF version does gate on it.
+CONFIG_ESP_HTTPS_SERVER_ENABLE=y
 CONFIG_ZGW_MQTT_NETWORK_TIMEOUT_MS=30000
 CONFIG_ZGW_MQTT_RECONNECT_TIMEOUT_MS=45000
 CONFIG_ZGW_MQTT_RESUME_AFTER_OTA_DELAY_MS=2000

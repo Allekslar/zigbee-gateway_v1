@@ -203,4 +203,78 @@ config ZGW_MQTT_RESUME_AFTER_OTA_DELAY_MS
     range 0 30000
     default 2000
 
+menu "Security"
+
+comment "S6 required change: 'Before implementing the control-plane changes, create the Kconfig definitions and one typed security-bounds accessor.' Two related settings are deliberately NOT configurable here: the provisioning passphrase length (fixed 16 Base32 characters) and login backoff (fixed 2s start / 60s max) -- see components/service/include/security_bounds.hpp."
+
+config ZGW_PRODUCTION_PROFILE
+    bool "Production security profile active"
+    default n
+    help
+        Set to y only via sdkconfig.production.esp32c6 (layered in when
+        ZGW_PRODUCTION_BUILD is set at build time -- see
+        docs/security/PRODUCTION_HARDENING.md Section 2.2). Distinguishes
+        the production ProvisioningSecretProvider adapter (reads real
+        manufacturing proof-of-possession material, fails closed if
+        absent) from the development adapter (may generate and print a
+        one-time secret) -- plan S6 "Provisioning and credentials" #2.
+        Never set this directly in sdkconfig.defaults*; it must stay
+        development-profile default everywhere except the production
+        layering path.
+
+config ZGW_COMMISSIONING_WINDOW_SECONDS
+    int "Commissioning window duration (seconds)"
+    range 60 600
+    default 600
+    help
+        How long first-boot/physical-presence-triggered commissioning mode
+        stays open before it must be re-triggered. FD-13 hard range.
+
+config ZGW_JSON_MAX_BODY_BYTES
+    int "Strict JSON reader: maximum request body size (bytes)"
+    range 512 2048
+    default 2048
+
+config ZGW_JSON_MAX_DEPTH
+    int "Strict JSON reader: maximum nesting depth"
+    range 2 4
+    default 4
+
+config ZGW_JSON_MAX_STRING_BYTES
+    int "Strict JSON reader: maximum string value length (bytes)"
+    range 64 512
+    default 512
+
+config ZGW_JSON_MAX_KEYS
+    int "Strict JSON reader: maximum object keys"
+    range 8 32
+    default 32
+
+config ZGW_LOGIN_ATTEMPTS_PER_MINUTE
+    int "Login rate limit (attempts per minute per source)"
+    range 1 5
+    default 5
+
+config ZGW_COMMANDS_PER_MINUTE
+    int "Ordinary command rate limit (per minute per session)"
+    range 10 60
+    default 60
+
+config ZGW_MUTATIONS_PER_MINUTE
+    int "Join/remove/network-mutation rate limit (per minute per session)"
+    range 1 5
+    default 5
+
+config ZGW_FIRMWARE_OPS_PER_HOUR
+    int "OTA/RCP operation rate limit (per hour per session)"
+    range 1 2
+    default 2
+
+config ZGW_AUDIT_RING_RECORDS
+    int "Security audit ring capacity (records)"
+    range 32 128
+    default 128
+
+endmenu
+
 endmenu

@@ -88,13 +88,16 @@ const std::array<NvsNamespaceEntry, kNvsNamespaceCount> kRegistry = {{
     {
         NvsNamespaceId::kAdminVerifier,
         "zgw_admin_verifier",
-        "Administrative credential verifier (password/PIN hash). S6's AuthenticationService does not exist "
-        "yet -- FD-21 'admin verifier and sessions'.",
+        "Administrative credential verifier: PBKDF2-HMAC-SHA256 salt+hash+iteration-count record "
+        "(admin_verifier.hpp, plan #5) -- storage only, S6's full AuthenticationService/session login "
+        "flow does not exist yet -- FD-21 'admin verifier and sessions'.",
         NvsResetClassification::kEraseOnFactoryReset,
         /*encryption_required=*/true,
-        /*implemented_today=*/false,
-        {},
-        0,
+        /*implemented_today=*/true,
+        make_key_patterns<1>({
+            {"admin_verifier", false},
+        }),
+        1,
     },
     {
         NvsNamespaceId::kTlsIdentity,
@@ -132,18 +135,21 @@ const std::array<NvsNamespaceEntry, kNvsNamespaceCount> kRegistry = {{
         NvsNamespaceId::kManufacturingProvisioning,
         "zgw_mfg_provisioning",
         "Manufacturing provisioning records: eFuse provisioning-template evidence (scripts/"
-        "efuse_provisioning_template.py, plan #5) and manufacturing proof-of-possession (PoP) -- storage "
-        "interface only (plan #13, tls_provisioning_storage_port.hpp). The two-phase dry-run/burn workflow "
-        "that would actually populate this (plan #6-#8) remains BLOCKED_SECURITY_PROVISIONING -- FD-21 "
-        "'manufacturing proof-of-possession' (Preserve).",
+        "efuse_provisioning_template.py, plan #5), manufacturing proof-of-possession (PoP) -- storage "
+        "interface only (plan #13, tls_provisioning_storage_port.hpp) -- and the raw 6-byte manufacturing-"
+        "recorded GatewayId (plan #8/FD-17 'reject duplicate or cloned GatewayId enrollment', "
+        "gateway_identity_verification.hpp). The two-phase dry-run/burn workflow that would actually "
+        "populate any of this (plan #6-#8) remains BLOCKED_SECURITY_PROVISIONING -- FD-21 'manufacturing "
+        "proof-of-possession' (Preserve).",
         NvsResetClassification::kPreserveOnFactoryReset,
         /*encryption_required=*/true,
         /*implemented_today=*/true,
-        make_key_patterns<2>({
+        make_key_patterns<3>({
             {"mfg_pop", false},
             {"mfg_efuse_rec", false},
+            {"mfg_gateway_id", false},
         }),
-        2,
+        3,
     },
     {
         NvsNamespaceId::kZigbeeNetworkDeviceReporting,

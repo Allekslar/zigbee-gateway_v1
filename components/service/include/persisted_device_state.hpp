@@ -90,9 +90,30 @@ struct PersistedStateRecord {
 // the new schema -- see docs/architecture/DEVICE_IDENTITY.md).
 PersistedStatePayload to_payload(const core::CoreState& state) noexcept;
 
+// Out-parameter form of to_payload() above -- writes directly into
+// `*out` instead of returning by value. `PersistedStatePayload` is
+// ~2.2KB; a real "Guru Meditation Error: Stack protection fault" was
+// observed on real ESP32-C6 hardware in state_persistence_coordinator.cpp
+// caused by exactly this kind of large-struct return value not being
+// elided at this project's `-Og` build setting (elision is only
+// guaranteed by the standard for direct-initialization of a *new*
+// object, never for assignment into an existing one, and was observed
+// empirically NOT to happen here even for some direct-initialization
+// call sites with multiple return paths). Callers on a tight stack
+// budget (this project's single service_runtime FreeRTOS task, 9216
+// bytes) should prefer this form over the by-value one above whenever
+// `*out` already exists (e.g. is `static`) rather than relying on
+// return-value optimization.
+void to_payload(const core::CoreState& state, PersistedStatePayload* out) noexcept;
+
 // Rebuilds a sanitized core::CoreState from a validated payload: every
 // restored device is forced offline, pending command/session state is never
 // resurrected (plan Section 9 S3 "sanitize restored runtime fields").
 core::CoreState apply_payload(const PersistedStatePayload& payload) noexcept;
+
+// Out-parameter form of apply_payload() above -- see to_payload()'s own
+// out-parameter overload immediately above for why this exists.
+// `core::CoreState` is ~2.6KB.
+void apply_payload(const PersistedStatePayload& payload, core::CoreState* out) noexcept;
 
 }  // namespace service

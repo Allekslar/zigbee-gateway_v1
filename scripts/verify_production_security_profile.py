@@ -50,6 +50,18 @@ deliberately allows any PATCH, matching how this project's CI actually
 consumes ESP-IDF. Skipping `--project-description` skips the version
 check entirely (e.g. when only a bare sdkconfig is available, with no
 accompanying build directory).
+
+Also checks plan S6's ten FD-13 bounded tunables (`main/Kconfig.projbuild`'s
+"Security" submenu, `components/service/include/security_bounds.hpp`'s own
+range table -- the same (minimum, maximum, approved_default) triples are
+declared in exactly one place in this script, `TUNABLE_RANGES` below, and
+independently in the C++ accessor; keeping both in sync is a named,
+tracked responsibility, not automated). Per the plan's own text ("An
+in-range change from the approved default requires a reviewed
+release-manifest delta... rather than an automatic rejection solely for
+differing from the default"), this only rejects a value OUTSIDE
+[minimum, maximum] -- not a value that merely differs from the approved
+default.
 """
 
 from __future__ import annotations
@@ -85,6 +97,12 @@ REQUIRED_SYMBOLS: List[tuple] = [
     ("CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE", "y", "OTA app rollback (#1)"),
     ("CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK", "y", "Secure-version anti-rollback (#1)"),
     ("CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE", "y", "UART ROM download mode permanently switched to Secure mode (#1)"),
+    (
+        "CONFIG_ZGW_PRODUCTION_PROFILE",
+        "y",
+        "S6 ProvisioningSecretProvider adapter selection (#2) -- if unset, a 'production' build would "
+        "silently fall back to the development PoP adapter instead of failing closed",
+    ),
 ]
 
 # Symbols that MUST NOT be "y" in a production sdkconfig -- each one is a
@@ -124,6 +142,25 @@ FORBIDDEN_SYMBOLS: List[tuple] = [
         "once populated) live at runtime. ESP-IDF's own default is already 'n' (unset), so this "
         "entry catches a future accidental opt-in, not a currently-enabled default",
     ),
+]
+
+# Plan S6, "Security invariants, bounded tunables and typed accessors":
+# (symbol, minimum, maximum, approved_default, plan_ref). Kept in sync by
+# hand with components/service/include/security_bounds.hpp's own
+# kRanges table and main/Kconfig.projbuild's "Security" submenu -- all
+# three declare the same ten (minimum, maximum, approved_default) triples,
+# a named, tracked responsibility (see this script's module docstring).
+TUNABLE_RANGES: List[tuple] = [
+    ("CONFIG_ZGW_COMMISSIONING_WINDOW_SECONDS", 60, 600, 600, "S6 commissioning window"),
+    ("CONFIG_ZGW_JSON_MAX_BODY_BYTES", 512, 2048, 2048, "S6 strict JSON reader body limit"),
+    ("CONFIG_ZGW_JSON_MAX_DEPTH", 2, 4, 4, "S6 strict JSON reader depth limit"),
+    ("CONFIG_ZGW_JSON_MAX_STRING_BYTES", 64, 512, 512, "S6 strict JSON reader string limit"),
+    ("CONFIG_ZGW_JSON_MAX_KEYS", 8, 32, 32, "S6 strict JSON reader key-count limit"),
+    ("CONFIG_ZGW_LOGIN_ATTEMPTS_PER_MINUTE", 1, 5, 5, "S6 login rate limit"),
+    ("CONFIG_ZGW_COMMANDS_PER_MINUTE", 10, 60, 60, "S6 ordinary-command rate limit"),
+    ("CONFIG_ZGW_MUTATIONS_PER_MINUTE", 1, 5, 5, "S6 mutation rate limit"),
+    ("CONFIG_ZGW_FIRMWARE_OPS_PER_HOUR", 1, 2, 2, "S6 OTA/RCP rate limit"),
+    ("CONFIG_ZGW_AUDIT_RING_RECORDS", 32, 128, 128, "S6 audit ring capacity"),
 ]
 
 
@@ -180,6 +217,33 @@ def verify_profile(config: Dict[str, Optional[str]]) -> List[str]:
         if actual == "y":
             violations.append(f"{symbol} must not be set in production -- {reason}")
 
+    violations.extend(verify_tunable_ranges(config))
+
+    return violations
+
+
+def verify_tunable_ranges(config: Dict[str, Optional[str]]) -> List[str]:
+    """Plan S6: "Kconfig rejects out-of-range values. The production
+    verifier ... verifies tunable range membership." Rejects a tunable
+    that is absent, unparseable, or outside [minimum, maximum] -- but NOT
+    one that is merely non-default, per the plan's own explicit
+    "an in-range change from the approved default" carve-out.
+    """
+    violations: List[str] = []
+    for symbol, minimum, maximum, _default, plan_ref in TUNABLE_RANGES:
+        raw_value = config.get(symbol, "<absent from generated sdkconfig>")
+        if raw_value is None:
+            violations.append(f"{symbol} must be set to an integer in [{minimum}, {maximum}] ({plan_ref}), "
+                               f"found 'not set'")
+            continue
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            violations.append(f"{symbol} must be an integer in [{minimum}, {maximum}] ({plan_ref}), "
+                               f"found '{raw_value}' (not parseable as an integer)")
+            continue
+        if value < minimum or value > maximum:
+            violations.append(f"{symbol} must be in [{minimum}, {maximum}] ({plan_ref}), found {value}")
     return violations
 
 

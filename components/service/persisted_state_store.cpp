@@ -57,29 +57,46 @@ PersistedStateStore::LoadResult PersistedStateStore::load(PersistedStatePayload*
         return LoadResult::kCorrupt;
     }
 
-    WireRecord record_a{};
-    WireRecord record_b{};
-    uint32_t len_a = 0U;
-    uint32_t len_b = 0U;
-    const hal_nvs_status_t status_a = hal_nvs_get_blob(kPersistedStateKeySlotA, &record_a, sizeof(record_a), &len_a);
-    const hal_nvs_status_t status_b = hal_nvs_get_blob(kPersistedStateKeySlotB, &record_b, sizeof(record_b), &len_b);
+    // A single WireRecord-sized scratch buffer, reused sequentially for
+    // both slots -- NOT two simultaneous ~2.2KB locals as this function
+    // originally had. That doubled footprint (~4.4KB) alone consumed
+    // roughly half of the service_runtime task's entire 9216-byte stack
+    // budget and caused a real "Guru Meditation Error: Stack protection
+    // fault" observed on real ESP32-C6 hardware during this device's
+    // first-ever real boot -- restore_persisted_core_state() runs on
+    // every single boot, so this was not a rare edge case but a
+    // guaranteed crash. Only slot A's small header (20 bytes) needs to
+    // outlive slot B's read; its payload is staged directly into the
+    // caller-owned `*out` instead of being kept in a second local copy.
+    WireRecord record{};
+    uint32_t len = 0U;
 
+    const hal_nvs_status_t status_a = hal_nvs_get_blob(kPersistedStateKeySlotA, &record, sizeof(record), &len);
     const bool present_a = status_a != HAL_NVS_STATUS_NOT_FOUND;
+    const bool valid_a = status_a == HAL_NVS_STATUS_OK && validate(record, len);
+    PersistedStateHeader header_a{};
+    if (valid_a) {
+        header_a = record.header;
+        *out = record.payload;
+    }
+
+    const hal_nvs_status_t status_b = hal_nvs_get_blob(kPersistedStateKeySlotB, &record, sizeof(record), &len);
     const bool present_b = status_b != HAL_NVS_STATUS_NOT_FOUND;
+    const bool valid_b = status_b == HAL_NVS_STATUS_OK && validate(record, len);
+
     if (!present_a && !present_b) {
         return LoadResult::kNotFound;
     }
-
-    const bool valid_a = status_a == HAL_NVS_STATUS_OK && validate(record_a, len_a);
-    const bool valid_b = status_b == HAL_NVS_STATUS_OK && validate(record_b, len_b);
-
     if (!valid_a && !valid_b) {
         return LoadResult::kCorrupt;
     }
 
-    const WireRecord& chosen =
-        (valid_a && (!valid_b || record_a.header.generation >= record_b.header.generation)) ? record_a : record_b;
-    *out = chosen.payload;
+    // Equivalent (De Morgan) to the original single-expression tie break
+    // "choose A if valid_a && (!valid_b || gen_a >= gen_b), else choose
+    // B" -- ties (equal generation) still prefer A, unchanged.
+    if (!valid_a || (valid_b && header_a.generation < record.header.generation)) {
+        *out = record.payload;  // B wins -- overwrite the staged A payload
+    }
     return LoadResult::kLoaded;
 }
 
@@ -98,6 +115,13 @@ bool PersistedStateStore::save(const PersistedStatePayload& payload) noexcept {
     const uint32_t other_slot_generation = a_is_current_best ? (probe_b.valid ? probe_b.generation : 0U) : probe_a.generation;
     const uint32_t base_generation = current_generation > other_slot_generation ? current_generation : other_slot_generation;
 
+    // A single WireRecord-sized scratch buffer, reused for both the write
+    // and the readback verification below -- NOT two simultaneous
+    // ~2.2KB locals (`record` + `readback`) as this function originally
+    // had, the same real stack-overflow pattern found and fixed in
+    // load() above (see that function's own comment for the real crash
+    // this caused on real ESP32-C6 hardware). Only the small
+    // (4-byte) written generation number needs to survive the reuse.
     WireRecord record{};
     record.header.magic = kPersistedStateMagic;
     record.header.schema_version = kPersistedStateSchemaVersion;
@@ -109,13 +133,13 @@ bool PersistedStateStore::save(const PersistedStatePayload& payload) noexcept {
     if (hal_nvs_set_blob(target_key, &record, sizeof(record)) != HAL_NVS_STATUS_OK) {
         return false;
     }
+    const uint32_t written_generation = record.header.generation;
 
-    WireRecord readback{};
     uint32_t readback_len = 0U;
-    if (hal_nvs_get_blob(target_key, &readback, sizeof(readback), &readback_len) != HAL_NVS_STATUS_OK) {
+    if (hal_nvs_get_blob(target_key, &record, sizeof(record), &readback_len) != HAL_NVS_STATUS_OK) {
         return false;
     }
-    if (!validate(readback, readback_len) || readback.header.generation != record.header.generation) {
+    if (!validate(record, readback_len) || record.header.generation != written_generation) {
         return false;
     }
 

@@ -27,6 +27,10 @@ private:
     std::atomic<uint32_t> next_correlation_id_{1};
     WebRouteContext route_context_{};
     bool started_{false};
+    // Plan S6 "HTTPS and sessions" #7: which start function created
+    // server_handle_ determines which stop function correctly tears it
+    // down (httpd_ssl_stop() vs httpd_stop()) -- see web_server.cpp.
+    bool using_https_{false};
 };
 
 }  // namespace web_ui
