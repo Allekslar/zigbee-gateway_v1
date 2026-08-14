@@ -7,21 +7,22 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "gateway_id.hpp"
 #include "hal_matter.h"
 #include "hal_mdns.h"
 #include "log_tags.h"
 #include "matter_bridge.hpp"
 #include "mqtt_bridge.hpp"
 #include "ota_bootstrap.hpp"
+#include "provisioning_secrets.hpp"
 #include "sdkconfig.h"
+#include "security_bounds.hpp"
 #include "service_runtime.hpp"
 #include "web_server.hpp"
 
 namespace {
 
 constexpr const char* kTag = LOG_TAG_APP_MAIN;
-constexpr const char* kGatewayHostName = "zigbee-gateway";
-constexpr const char* kProvisioningApPassword = "12345678";
 constexpr TickType_t kDeferredZigbeeStartDelayTicks = pdMS_TO_TICKS(15000);
 constexpr const char* kDeferredZigbeeTaskName = "zigbee_start";
 constexpr uint32_t kDeferredZigbeeTaskStackSize = 4096U;
@@ -84,24 +85,76 @@ extern "C" void app_main(void) {
         autoconnect_result == service::ServiceRuntime::BootAutoconnectResult::kCredentialsMissing ||
         autoconnect_result == service::ServiceRuntime::BootAutoconnectResult::kConnectFailed;
     if (should_start_provisioning_ap) {
-        if (!g_runtime.start_provisioning_ap(kGatewayHostName, kProvisioningApPassword)) {
+        // Plan S6 "Provisioning and credentials" #1 + #4: no shared/
+        // default production secret -- SSID includes a non-secret
+        // gateway suffix, passphrase is 16 cryptographically random
+        // Base32 characters generated fresh every boot (never persisted,
+        // matching "every shared/default production secret" being
+        // removed rather than replaced with a different fixed one).
+        char provisioning_ssid[32]{};
+        char provisioning_passphrase[service::SecurityBounds::kProvisioningPassphraseBase32Chars + 1U]{};
+        const bool ssid_built = service::build_provisioning_ap_ssid(
+            g_runtime.gateway_id(), service::kGatewayHostNamePrefix, provisioning_ssid, sizeof(provisioning_ssid));
+        const bool passphrase_generated =
+            service::generate_provisioning_passphrase(provisioning_passphrase, sizeof(provisioning_passphrase));
+        if (!ssid_built || !passphrase_generated) {
+            ESP_LOGE(kTag, "Provisioning AP credential generation failed (ssid=%d, passphrase=%d)",
+                     (int)ssid_built, (int)passphrase_generated);
+            while (true) {
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+        }
+
+        if (!g_runtime.start_provisioning_ap(provisioning_ssid, provisioning_passphrase)) {
             ESP_LOGE(kTag, "Wi-Fi AP start failed");
             while (true) {
                 vTaskDelay(pdMS_TO_TICKS(1000));
             }
         }
-        ESP_LOGI(kTag, "Wi-Fi AP started (SSID/host=%s)", kGatewayHostName);
+        // Development-only delivery channel: this device has no display,
+        // only UART. Printing the freshly-generated passphrase to the
+        // serial console is the only way an installer can currently
+        // learn it -- the same interim posture plan #2 explicitly
+        // sanctions for its own analogous case ("development adapter may
+        // generate and print a one-time secret"). A real production
+        // channel (printed label, QR code, or similar manufacturing
+        // step) is not designed yet -- see docs/security/
+        // CONTROL_PLANE_SECURITY.md Section 3 for this named follow-up.
+        ESP_LOGI(kTag, "Wi-Fi AP started (SSID=%s, passphrase=%s) -- development-only console delivery, "
+                       "see docs/security/CONTROL_PLANE_SECURITY.md",
+                 provisioning_ssid, provisioning_passphrase);
     } else {
         ESP_LOGI(kTag, "Wi-Fi AP skipped: saved credentials available and autoconnect started");
     }
 
-    if (hal_mdns_start(kGatewayHostName) != 0) {
-        ESP_LOGE(kTag, "mDNS start failed for host '%s'", kGatewayHostName);
+    // Plan S6 "HTTPS and sessions" #9: "Derive production mDNS host
+    // exactly as zigbee-gateway-<last6>.local and advertise only
+    // https://." build_gateway_mdns_host() itself picks the
+    // production-suffixed vs. plain-development hostname
+    // (CONFIG_ZGW_PRODUCTION_PROFILE); the advertised URL scheme below
+    // mirrors web_server.cpp's own plan #7 choice of listener for this
+    // exact build (production speaks HTTPS only, development speaks
+    // plain HTTP) -- never claims https:// for a listener that is
+    // actually serving plain HTTP, which would actively mislead an
+    // installer into a URL that cannot work.
+    char mdns_host[32]{};
+    if (!service::build_gateway_mdns_host(g_runtime.gateway_id(), mdns_host, sizeof(mdns_host))) {
+        ESP_LOGE(kTag, "mDNS host name generation failed");
         while (true) {
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
-    ESP_LOGI(kTag, "mDNS started: http://%s.local", kGatewayHostName);
+    if (hal_mdns_start(mdns_host) != 0) {
+        ESP_LOGE(kTag, "mDNS start failed for host '%s'", mdns_host);
+        while (true) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+#if defined(CONFIG_ZGW_PRODUCTION_PROFILE) && CONFIG_ZGW_PRODUCTION_PROFILE
+    ESP_LOGI(kTag, "mDNS started: https://%s.local", mdns_host);
+#else
+    ESP_LOGI(kTag, "mDNS started: http://%s.local", mdns_host);
+#endif
 
     switch (autoconnect_result) {
         case service::ServiceRuntime::BootAutoconnectResult::kCredentialsMissing:

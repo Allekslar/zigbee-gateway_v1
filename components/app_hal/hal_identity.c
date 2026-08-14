@@ -30,7 +30,24 @@ int hal_identity_get_factory_base_mac(uint8_t* out) {
     }
 
 #ifdef ESP_PLATFORM
-    return (esp_efuse_mac_get_default(out) == ESP_OK) ? 0 : -1;
+    // esp_efuse_mac_get_default() is documented (esp_mac.h) to need an
+    // 8-byte buffer, not 6, on any SOC_IEEE802154_SUPPORTED target
+    // (ESP32-C6, ESP32-H2): it fills the 6-byte factory MAC and then
+    // *overwrites bytes [3..7]* with an EUI-64 expansion (inserting the
+    // fixed MAC_EXT eFuse bytes "ff:fe" at [3..4] and shifting the real
+    // NIC bytes to [5..7]) for IEEE 802.15.4 use. Passing our plain
+    // HAL_IDENTITY_BASE_MAC_LEN==6 buffer here overran it by 2 bytes and
+    // silently corrupted the "factory base MAC" this function promises --
+    // confirmed on real ESP32-C6 hardware (2026-08-14 HIL session): every
+    // boot computed GatewayId low bytes as ff:fe:9f (the EUI-64 padding
+    // plus one surviving real byte) instead of the true base MAC's real
+    // 9f:00:20, so every derived name (provisioning AP SSID, production
+    // mDNS host) used the wrong, low-entropy suffix. esp_read_mac() with
+    // ESP_MAC_EFUSE_FACTORY reads the exact same eFuse field but always
+    // into a plain 6-byte MAC-48, with no IEEE802154 expansion -- see
+    // esp_mac.h's enum comment ("MAC_FACTORY eFuse ... (6 bytes)", no
+    // conditional 8-byte note, unlike ESP_MAC_BASE/_DEFAULT/_CUSTOM).
+    return (esp_read_mac(out, ESP_MAC_EFUSE_FACTORY) == ESP_OK) ? 0 : -1;
 #else
     if (!s_mock_base_mac_initialized) {
         memcpy(s_mock_base_mac, kDefaultMockBaseMac, HAL_IDENTITY_BASE_MAC_LEN);

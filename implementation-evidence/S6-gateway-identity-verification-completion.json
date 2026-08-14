@@ -1,0 +1,82 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S6-gateway-identity-verification",
+  "stage_name": "S6 slice 7/N: gateway identity self-consistency verification (plan \"HTTPS and sessions\" required change #8's remaining half)",
+  "input_commit_sha": "80872dc96808d2c175f37b3a62a2964648d9d394",
+  "output_commit_sha": "80872dc96808d2c175f37b3a62a2964648d9d394",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 80872dc (merge of PR #49), layered on top of all uncommitted S5 work and S6 slices 1-6 (S6-security-bounds-completion.json, S6-provisioning-ap-secrets-completion.json, S6-provisioning-credentials-completion.json, S6-session-store-completion.json, S6-https-listener-completion.json, S6-mdns-host-completion.json).",
+  "sequencing_note": "User's instruction: '#8' -- continuing the 'HTTPS and sessions' cluster after S6-mdns-host-completion.json, picking the item that sub-slice's own evidence file named as the only remaining foundational piece of the cluster besides the higher-risk #10-#11 X.509 work. GatewayId derivation itself (plan #8's first sentence) already existed from S4 -- this sub-slice is scoped to #8's second sentence only ('Verify manufacturing/provisioning uniqueness; duplicate/cloned GatewayId evidence blocks production enrollment').",
+  "changed_files": [
+    "components/service/nvs_namespace_registry.cpp (changed: kManufacturingProvisioning's key_patterns extended from 2 to 3, adding 'mfg_gateway_id'; description text updated)",
+    "components/service/include/gateway_identity_verification.hpp (new: GatewayIdVerificationResult, get/set_stored_manufacturing_gateway_id, verify_gateway_id_against_manufacturing_record, gateway_id_verification_allows_production_enrollment declarations)",
+    "components/service/gateway_identity_verification.cpp (new: implementation over secure_storage_get_blob/set_blob)",
+    "components/service/CMakeLists.txt (extended: gateway_identity_verification.cpp added to SRCS)",
+    "test/host/CMakeLists.txt (extended: new source file added to SERVICE_SOURCES; 1 new test executable/ctest registration)",
+    "test/host/test_gateway_identity_verification.cpp (new: 8 tests)",
+    "docs/security/CONTROL_PLANE_SECURITY.md (Section 2 heading widened; new Section 2.9; Section 3/4 updated)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan #8's second sentence, verbatim: 'Verify manufacturing/provisioning uniqueness; duplicate/cloned GatewayId evidence blocks production enrollment.' FD-17, verbatim: 'Manufacturing/provisioning evidence must reject duplicate or cloned GatewayId enrollment.' -- an explicit, documented scoping decision was made rather than force-fitting a fake substitute: fleet-wide duplicate-enrollment detection (across physically different devices) needs a manufacturing backend/fleet registry this project does not have, and depends on the real eFuse burn/attestation workflow (plan #6-#8, S5) already found BLOCKED_SECURITY_PROVISIONING. Building a 'uniqueness check' with nothing real to check against would verify nothing real -- worse than not building it. Instead, a narrower, still-meaningful LOCAL self-consistency check was built: does the live-read GatewayId match the one recorded once during manufacturing?",
+    "This is explicitly NOT the same guarantee as fleet-wide duplicate-enrollment detection -- documented directly in the new module's own header comment and in CONTROL_PLANE_SECURITY.md Section 2.9, not overclaimed.",
+    "The manufacturing-recorded GatewayId is stored as a raw 6-byte blob under a new 'mfg_gateway_id' key, deliberately NOT parsed out of the full eFuse-provisioning-template JSON record (manufacturing_provisioning_get_efuse_record(), plan S5 #5) -- parsing JSON on-device today would duplicate plan #24's not-yet-built cJSON-backed StrictJsonObjectReader, which this project's own FD text forbids without a documented unmet product requirement.",
+    "Fails closed on every non-match outcome: kNoManufacturingRecord is treated exactly the same as kMismatch by gateway_id_verification_allows_production_enrollment() -- absence of manufacturing evidence is never implicit proof of authenticity. This predicate always returns false in a real deployment today, mirroring provisioning_secret_provider.hpp's own production adapter for the identical missing-manufacturing-material reason."
+  ],
+  "work_summary": {
+    "storage_extended": {
+      "status": "COMPLETE",
+      "detail": "nvs_namespace_registry.cpp's kManufacturingProvisioning entry extended from 2 to 3 key_patterns, adding 'mfg_gateway_id' (raw 6-byte GatewayId, encryption_required=true, kPreserveOnFactoryReset -- same classification as the namespace's existing mfg_pop/mfg_efuse_rec keys)."
+    },
+    "gateway_identity_verification_implemented": {
+      "status": "COMPLETE",
+      "detail": "get_stored_manufacturing_gateway_id()/set_stored_manufacturing_gateway_id() are typed wrappers over secure_storage_get_blob()/set_blob() (S5 Section 2.8/2.9), applying the fixed-length schema check via secure_storage_downgrade_to_corrupt_if_invalid(). verify_gateway_id_against_manufacturing_record(live_gateway_id) compares the live-read GatewayId against the stored one, returning kVerified/kMismatch/kNoManufacturingRecord. gateway_id_verification_allows_production_enrollment() is the single fail-closed predicate a future enrollment route should consult -- true only for kVerified."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "8 tests in test_gateway_identity_verification.cpp: not-provisioned before any write; kNoManufacturingRecord before any write and confirmed to never allow enrollment; null-out rejection; write rejected while encryption unverified and round-trips once verified; verification reports kVerified (and allows enrollment) on a match; verification reports kMismatch (and never allows enrollment) on a mismatch. Full repository host suite: 102/102 passing (101 pre-existing + 1 new test executable). cppcheck --enable=warning,style,performance,portability: zero findings. check_arch_invariants.sh: high=0/medium=0/low=0, unchanged. A single full real idf.py build inside espressif/idf:release-v5.5 succeeded on the first attempt (1197/1197 steps) -- only one build was needed (unlike prior sub-slices with a CONFIG_ZGW_PRODUCTION_PROFILE branch of their own) since this module is plain, unconditionally-compiled service-layer code with no dev/prod branch."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only a local, single-device self-consistency check is implemented -- fleet-wide duplicate/cloned-GatewayId enrollment detection across physically different devices (the more natural reading of plan #8's 'uniqueness' text and FD-17's 'reject duplicate or cloned GatewayId enrollment') is not built.",
+      "why": "Fleet-wide detection needs a manufacturing backend or fleet registry this project's architecture does not include at all (this repository is a single-gateway firmware codebase), and in any case depends on the real eFuse burn/attestation workflow (plan #6-#8, S5) already found BLOCKED_SECURITY_PROVISIONING. Building a 'uniqueness check' with no real manufacturing backend or attestation to check against would produce a check that verifies nothing real.",
+      "consequence": "This sub-slice cannot detect two different physical devices claiming the same GatewayId (a genuine cloning/counterfeiting scenario) -- only that THIS device's current live identity matches what was recorded on it during its own manufacturing. Real fleet-wide protection against cloning remains unimplemented and, per the plan's own precondition text, effectively blocked pending real manufacturing infrastructure this project does not have.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 2.9"
+    },
+    {
+      "deviation": "The manufacturing-recorded GatewayId is stored as its own separate, simple 6-byte blob ('mfg_gateway_id') rather than extracted from the existing full eFuse-provisioning-template JSON record (manufacturing_provisioning_get_efuse_record(), which already contains a gateway_id field per scripts/efuse_provisioning_template.py's own schema).",
+      "why": "Parsing JSON on-device ahead of plan #24's not-yet-built cJSON-backed StrictJsonObjectReader would duplicate that future, centralized work -- this project's own FD text explicitly forbids application code duplicating a platform/parsing primitive without a documented unmet product requirement, and a one-off ad-hoc JSON extraction here would be exactly that.",
+      "consequence": "A future real manufacturing/provisioning workflow (plan #6-#8) would need to write to BOTH the existing 'mfg_efuse_rec' JSON blob (for full audit/evidence purposes) AND this new 'mfg_gateway_id' simple blob (for this module's fast, JSON-free comparison) -- a small, deliberate redundancy accepted in exchange for not building a throwaway JSON parser.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 2.9"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s6_https_sessions_items_implemented": "7, 8 (scoped: local self-consistency only), 9, 13, 14, 15, 16",
+    "plan_s6_https_sessions_items_remaining": "10, 11, 12, 17",
+    "plan_s6_items_implemented_overall": "the 'Security invariants, bounded tunables and typed accessors' prerequisite cluster (S6 slice 1) + all of 'Provisioning and credentials' (#1-6, S6 slices 2-3) + 'HTTPS and sessions' #7, #8 (scoped), #9, #13-16 (S6 slices 4-7)",
+    "cpp_host_tests_total_this_repo": 102,
+    "cpp_host_test_assertions_this_sub_slice_new": 8,
+    "real_defects_found_and_fixed_this_sub_slice": 0,
+    "real_defects_found_and_fixed_across_s5_and_s6_so_far": 8
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "102/102 (100%) via ctest inside zgw-host-tools:s0, including the 1 new test executable (test_gateway_identity_verification). Full rebuild from a clean host-build directory." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/service/gateway_identity_verification.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "real_esp_idf_build": { "result": "PASSED", "detail": "idf.py -B build-s6-gwid set-target esp32c6 build inside espressif/idf:release-v5.5: 1197/1197 steps completed on the first attempt. Only one build configuration was needed (unlike sub-slices with a CONFIG_ZGW_PRODUCTION_PROFILE branch) since this module has no dev/prod branch of its own. Build artifacts cleaned up via docker run ... rm -rf; dependencies.lock unaffected (confirmed via git status)." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (full 102-test ctest suite) and zgw-host-tools:cppcheck (static analysis) for all host-testable logic -- this sub-slice's logic is 100% host-testable, no crypto library or ESP-IDF-only API surface of its own; AND via a single real idf.py build inside espressif/idf:release-v5.5 confirming the new translation unit compiles and links against the real ESP32-C6 target. No real ESP32-C6 hardware or manufacturing/eFuse environment was needed.",
+  "unresolved_deviations": [
+    "Only local self-consistency verification is implemented, not fleet-wide duplicate/cloned-GatewayId enrollment detection -- see this file's deviations above.",
+    "The manufacturing-recorded GatewayId is stored separately from the existing eFuse-provisioning-template JSON record rather than extracted from it -- see this file's deviations above.",
+    "Nothing calls any function in gateway_identity_verification.hpp yet -- the real consumer is plan #17's POST /api/v1/provisioning/enroll route, not yet implemented.",
+    "Certificate chain/SAN/CA validation (#10-#11), certificate rotation (#12) and the seven authentication routes (#17) remain unimplemented -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3.",
+    "None of S6's other required-change clusters (authorization/physical presence, strict JSON parsing, rate limiting/audit, MQTT security) have started -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3.",
+    "The three independent copies of the S6 tunable-range table (Kconfig/C++/Python, from S6 slice 1) are still not automatically kept in sync -- unchanged from prior evidence files, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- carried forward from S5, BLOCKED_SECURITY_PROVISIONING. This sub-slice's own work (the storage accessors and comparison logic) is not blocked by this at all -- it is pure software, verified against the real ESP-IDF toolchain. What IS blocked by it is the real manufacturing-recorded GatewayId this module needs to ever return kVerified in production -- that remains blocked pending plan #6-#8's own, separate implementation and, ultimately, a real manufacturing/provisioning environment. Fleet-wide duplicate-enrollment detection (the fuller reading of plan #8/FD-17's 'uniqueness' text) additionally needs manufacturing-backend/fleet-registry infrastructure this project's architecture does not include at all -- not something a future sub-slice in this repository alone could resolve without a broader product decision.",
+    "Certificate chain/SAN/CA validation (plan #10-11, the last remaining natural HTTPS/sessions sub-slice not blocked on a different cluster) needs real mbedtls X.509 parsing, unavailable on the host toolchain (zgw-host-tools:s0 has zero crypto library dev headers, confirmed by recon in S6-provisioning-credentials-completion.json) -- unchanged blocker, carried forward from prior sub-slices' own evidence files."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

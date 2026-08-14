@@ -53,6 +53,17 @@ CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE=y
 # CONFIG_SECURE_BOOT_ALLOW_JTAG is not set
 # CONFIG_SECURE_FLASH_ENCRYPTION_MODE_DEVELOPMENT is not set
 # CONFIG_ESP_COREDUMP_CAPTURE_DRAM is not set
+CONFIG_ZGW_PRODUCTION_PROFILE=y
+CONFIG_ZGW_COMMISSIONING_WINDOW_SECONDS=600
+CONFIG_ZGW_JSON_MAX_BODY_BYTES=2048
+CONFIG_ZGW_JSON_MAX_DEPTH=4
+CONFIG_ZGW_JSON_MAX_STRING_BYTES=512
+CONFIG_ZGW_JSON_MAX_KEYS=32
+CONFIG_ZGW_LOGIN_ATTEMPTS_PER_MINUTE=5
+CONFIG_ZGW_COMMANDS_PER_MINUTE=60
+CONFIG_ZGW_MUTATIONS_PER_MINUTE=5
+CONFIG_ZGW_FIRMWARE_OPS_PER_HOUR=2
+CONFIG_ZGW_AUDIT_RING_RECORDS=128
 CONFIG_ZGW_MQTT_CLIENT_ID="zigbee-gateway"
 """
 
@@ -81,6 +92,13 @@ class VerifyProfileTest(unittest.TestCase):
     def test_approved_fixture_passes(self):
         config = verifier.parse_sdkconfig(APPROVED_FIXTURE)
         self.assertEqual(verifier.verify_profile(config), [])
+
+    def test_production_profile_marker_required(self):
+        text = APPROVED_FIXTURE.replace(
+            "CONFIG_ZGW_PRODUCTION_PROFILE=y", "# CONFIG_ZGW_PRODUCTION_PROFILE is not set")
+        config = verifier.parse_sdkconfig(text)
+        violations = verifier.verify_profile(config)
+        self.assertTrue(any("CONFIG_ZGW_PRODUCTION_PROFILE" in v for v in violations))
 
     def test_missing_required_symbol_fails(self):
         text = APPROVED_FIXTURE.replace("CONFIG_SECURE_BOOT=y\n", "")
@@ -140,6 +158,59 @@ class VerifyProfileTest(unittest.TestCase):
         config = verifier.parse_sdkconfig(text)
         violations = verifier.verify_profile(config)
         self.assertEqual(len(violations), 2)
+
+
+class VerifyTunableRangesTest(unittest.TestCase):
+    """Plan S6: 'Kconfig rejects out-of-range values. The production
+    verifier ... verifies tunable range membership.' Exercises every one
+    of the ten FD-13 tunables at its minimum/default/maximum (must pass)
+    and one-below-minimum/one-above-maximum (must fail), plus the
+    explicit 'in-range but non-default' carve-out and the missing-symbol
+    case -- matching the plan's own boundary-test list.
+    """
+
+    def test_approved_fixture_tunables_all_pass(self):
+        config = verifier.parse_sdkconfig(APPROVED_FIXTURE)
+        self.assertEqual(verifier.verify_tunable_ranges(config), [])
+
+    def test_every_tunable_at_minimum_and_maximum_passes(self):
+        for symbol, minimum, maximum, _default, _ref in verifier.TUNABLE_RANGES:
+            for boundary in (minimum, maximum):
+                config = verifier.parse_sdkconfig(APPROVED_FIXTURE)
+                config[symbol] = str(boundary)
+                violations = verifier.verify_tunable_ranges(config)
+                self.assertEqual(violations, [], f"{symbol}={boundary} should be in range but was rejected: {violations}")
+
+    def test_every_tunable_one_below_minimum_and_one_above_maximum_fails(self):
+        for symbol, minimum, maximum, _default, _ref in verifier.TUNABLE_RANGES:
+            for out_of_range in (minimum - 1, maximum + 1):
+                config = verifier.parse_sdkconfig(APPROVED_FIXTURE)
+                config[symbol] = str(out_of_range)
+                violations = verifier.verify_tunable_ranges(config)
+                self.assertTrue(
+                    any(symbol in v for v in violations),
+                    f"{symbol}={out_of_range} should be rejected but was not: {violations}")
+
+    def test_in_range_non_default_value_passes(self):
+        # The plan's own explicit carve-out: "An in-range change from the
+        # approved default requires a reviewed release-manifest delta...
+        # rather than an automatic rejection solely for differing from
+        # the default."
+        config = verifier.parse_sdkconfig(APPROVED_FIXTURE)
+        config["CONFIG_ZGW_COMMANDS_PER_MINUTE"] = "45"  # in [10, 60], not the default 60
+        self.assertEqual(verifier.verify_tunable_ranges(config), [])
+
+    def test_missing_tunable_fails(self):
+        text = APPROVED_FIXTURE.replace("CONFIG_ZGW_AUDIT_RING_RECORDS=128\n", "")
+        config = verifier.parse_sdkconfig(text)
+        violations = verifier.verify_tunable_ranges(config)
+        self.assertTrue(any("CONFIG_ZGW_AUDIT_RING_RECORDS" in v for v in violations))
+
+    def test_unparseable_tunable_fails(self):
+        text = APPROVED_FIXTURE.replace("CONFIG_ZGW_AUDIT_RING_RECORDS=128", 'CONFIG_ZGW_AUDIT_RING_RECORDS="oops"')
+        config = verifier.parse_sdkconfig(text)
+        violations = verifier.verify_tunable_ranges(config)
+        self.assertTrue(any("not parseable as an integer" in v for v in violations))
 
 
 class RepositoryLayeredProfileTest(unittest.TestCase):

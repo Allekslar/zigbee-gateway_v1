@@ -22,3 +22,5 @@
 #define LOG_TAG_HAL_WIFI "hal_wifi"
 #define LOG_TAG_HAL_ZIGBEE "hal_zigbee"
 #define LOG_TAG_SECURE_STORAGE "secure_storage"
+#define LOG_TAG_PROVISIONING_SECRET "provisioning_secret"
+#define LOG_TAG_TLS_CERT_VALIDATOR "tls_cert_validator"

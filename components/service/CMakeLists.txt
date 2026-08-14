@@ -42,6 +42,14 @@ idf_component_register(
         "secure_log_redaction.cpp"
         "factory_reset_namespace_erase.cpp"
         "reset_journal_storage_port.cpp"
+        "security_bounds.cpp"
+        "provisioning_secrets.cpp"
+        "admin_verifier.cpp"
+        "provisioning_secret_provider.cpp"
+        "commissioning_window.cpp"
+        "session_store.cpp"
+        "session_security_policy.cpp"
+        "gateway_identity_verification.cpp"
         "tuya_fingerprint.cpp"
         "tuya_dp_parser.cpp"
         "tuya_contact_sensor_plugin.cpp"
@@ -54,7 +62,7 @@ idf_component_register(
         "../app_hal/ota_release_manifest_pub.pem"
         "../app_hal/ota_release_manifest_pub_next.pem"
     INCLUDE_DIRS "include"
-    REQUIRES core app_hal common
+    REQUIRES core app_hal common mbedtls
 )
 
 zg_apply_component_compile_policy(${COMPONENT_LIB})

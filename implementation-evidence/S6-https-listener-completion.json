@@ -1,0 +1,90 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S6-https-listener",
+  "stage_name": "S6 slice 5/N: production HTTPS listener, development HTTP fallback (plan \"HTTPS and sessions\" required change #7)",
+  "input_commit_sha": "80872dc96808d2c175f37b3a62a2964648d9d394",
+  "output_commit_sha": "80872dc96808d2c175f37b3a62a2964648d9d394",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 80872dc (merge of PR #49), layered on top of all uncommitted S5 work and S6 slices 1-4 (S6-security-bounds-completion.json, S6-provisioning-ap-secrets-completion.json, S6-provisioning-credentials-completion.json, S6-session-store-completion.json).",
+  "sequencing_note": "User's instruction: 'Далі в цьому кластері: #7 (HTTPS-листенер, потребує розвідки esp_https_server)' -- continuing the 'HTTPS and sessions' cluster after S6-session-store-completion.json, picking the option that sub-slice's own evidence file named as one of the two remaining natural next steps (the other being #10-#11 certificate validation, still blocked on the same host-toolchain mbedtls X.509 gap).",
+  "changed_files": [
+    "components/web_ui/CMakeLists.txt (extended: esp_https_server added to REQUIRES)",
+    "components/web_ui/include/web_server.hpp (changed: new using_https_ member)",
+    "components/web_ui/web_server.cpp (changed: WebServer::start()/stop() branch on CONFIG_ZGW_PRODUCTION_PROFILE -- production reads S5 TLS storage and calls httpd_ssl_start(), fails closed on missing cert/key; development keeps the prior unconditional httpd_start() path, now explicitly gated)",
+    "sdkconfig.defaults.esp32c6 (changed: CONFIG_ESP_HTTPS_SERVER_ENABLE=y added, for documentation -- recon found this symbol is not actually referenced by esp_https_server's own source)",
+    "docs/security/CONTROL_PLANE_SECURITY.md (Section 2 heading widened; new Section 2.7; Section 3/4 updated)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan #7, verbatim: 'Replace production httpd_start with HTTPS server configuration. Development HTTP is gated by an explicit non-production profile.' -- implemented exactly: production calls the real httpd_ssl_start() (esp_https_server, confirmed via direct recon against espressif/idf:release-v5.5's real header and .c source before writing any code) with certificate/key read from S5's tls_provisioning_storage_port.hpp; development's plain httpd_start() path is preserved unchanged but is now reachable only when CONFIG_ZGW_PRODUCTION_PROFILE is unset, not unconditionally as before.",
+    "Adapter selection is CONFIG_ZGW_PRODUCTION_PROFILE (introduced in S6-provisioning-credentials-completion.json), never CONFIG_ZGW_PRODUCTION_BUILD -- consistent with every other S6 dev/prod switch this stage has built.",
+    "Production fails closed (refuses to start, never falls back to plain HTTP) if either the certificate or private-key read from the 'current' TLS slot is not SecureStorageStatus::kAvailable -- matches the plan's own closing text ('the production listener... remain[s] disabled until certificate trust... [is] healthy'), even though this sub-slice does not itself implement the trust validation (#10-#11) that text also names.",
+    "Certificate chain-to-CA/SAN/issuer/expiry validation (plan #10-#11) is explicitly out of scope for this sub-slice -- only presence of cert/key material is checked, not trustworthiness. A real production build will therefore always refuse to start today (no real cert-issuance workflow exists yet, S5's own storage interfaces generate no real certificate/key material) -- an expected, documented consequence, not a defect.",
+    "app_main.cpp's existing (unmodified) call site treats WebServer::start() failure as fatal (infinite halt loop) -- this sub-slice deliberately did not change that all-or-nothing semantics, even though the plan's own text ('runtime failure leaves the routes unregistered') arguably implies a softer degraded-mode failure. Left as an inherited tension, not resolved by this sub-slice, and flagged directly rather than silently accepted."
+  ],
+  "work_summary": {
+    "esp_https_server_recon": {
+      "status": "COMPLETE",
+      "detail": "Grepped the real espressif/idf:release-v5.5 esp_https_server component in full before writing any code: httpd_ssl_config_t's exact fields, HTTPD_SSL_CONFIG_DEFAULT(), httpd_ssl_start()/httpd_ssl_stop()'s real signatures AND their real .c implementations (confirming httpd_ssl_stop() is a thin httpd_stop() wrapper plus an event post, and that httpd_ssl_start()'s SSL transport-context cleanup is registered via global_transport_ctx_free_fn, so it fires correctly regardless of which stop function tears the handle down -- calling the paired stop function still matters for the event). Also confirmed the component's own CMakeLists.txt REQUIRES (esp_http_server, esp-tls, esp_event) and, critically, that its Kconfig-declared CONFIG_ESP_HTTPS_SERVER_ENABLE bool is never referenced anywhere in the component's actual source -- a real, load-bearing recon finding that avoided a plausible but wrong assumption (that this symbol gates compilation)."
+    },
+    "web_server_updated": {
+      "status": "COMPLETE",
+      "detail": "WebServer::start() now branches on CONFIG_ZGW_PRODUCTION_PROFILE. Production path (start_production_https()): reads tls_identity_get_certificate()/tls_identity_get_private_key() for TlsCertificateSlot::kCurrent, builds an httpd_ssl_config_t with transport_mode=HTTPD_SSL_TRANSPORT_SECURE, calls httpd_ssl_start(); refuses to start (returns false) if either read is not kAvailable. Development path (start_development_http()): the prior unconditional httpd_start() logic, unchanged in behavior, now reachable only outside the production branch. WebServer::stop() tracks which start function was used (new using_https_ member) and calls the matching httpd_ssl_stop()/httpd_stop()."
+    },
+    "unused_function_bug_avoided_proactively": {
+      "status": "COMPLETE -- 0 new defects this sub-slice",
+      "detail": "S6-provisioning-credentials-completion.json found that a function compiled only under CONFIG_ZGW_PRODUCTION_PROFILE but defined unconditionally trips -Werror=unused-function on the build that never reaches it. Both start_production_https() and start_development_http() were written inside their own matching #if/#else guard from the start this time specifically to avoid repeating that bug. Both real idf.py builds (ordinary and ZGW_PRODUCTION_BUILD=1) succeeded on the first attempt -- no new defect found this sub-slice, unlike the prior three S6 sub-slices which each found at least one real bug only via the real build."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE (no new host tests -- file has no host-testable surface, matching its own pre-existing convention)",
+      "detail": "web_server.cpp requires esp_http_server.h/esp_https_server.h, both ESP_PLATFORM-only with no host stub -- it was never part of test/host/CMakeLists.txt before this change either (same as hal_wifi.c/hal_ota.c's own ESP_PLATFORM-only, non-host-tested crypto/radio code). Verified via: (1) cppcheck --enable=warning,style,performance,portability against the file (zero findings, analyzing only the ESP_PLATFORM-independent boilerplate visible without real ESP-IDF headers); (2) check_arch_invariants.sh (high=0/medium=0/low=0, unchanged); (3) the full pre-existing 101-test host ctest suite re-run to confirm zero regressions (this sub-slice touches no host-tested source file) -- still 101/101; (4) two full real idf.py builds inside espressif/idf:release-v5.5 -- an ordinary build (1196/1196 steps) and a ZGW_PRODUCTION_BUILD=1 build (1199/1199 steps, the 3 extra being start_production_https() and its dependents)."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only the httpd_start-to-httpd_ssl_start replacement itself (plan #7's literal text) is implemented -- certificate chain/SAN/issuer/expiry validation (#10-#11) is not, meaning a production build's HTTPS listener will always refuse to start today (no real cert material exists anywhere in this repository or its storage).",
+      "why": "Plan #10-#11 need real mbedtls X.509 parsing, which the host toolchain (zgw-host-tools:s0) cannot exercise at all (confirmed blocker, same recon that stopped host-testing PBKDF2 in an earlier sub-slice) -- deliberately scoped out as its own separate, larger sub-slice rather than attempted partially here.",
+      "consequence": "A CONFIG_ZGW_PRODUCTION_PROFILE=y binary flashed today would halt at boot (see the next deviation) rather than serving even an unvalidated HTTPS connection -- the fail-closed behavior is intentional and matches the plan's own text, but it does mean plan #7 alone does not yet produce a working production listener end-to-end.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 2.7"
+    },
+    {
+      "deviation": "main/app_main.cpp's existing call site treats WebServer::start() returning false as a fatal, infinite-halt-loop boot failure -- this sub-slice did not change that all-or-nothing semantics, even though the plan's own text ('runtime failure leaves the routes unregistered') could be read as implying a softer degraded mode (device continues running Zigbee/MQTT, just without a web UI) rather than a full device halt.",
+      "why": "Changing app_main.cpp's existing fail-closed convention for a critical service start failure is a larger, separate design decision (it already halts identically for Wi-Fi AP and mDNS start failures) -- out of scope for plan #7 alone, and changing it unilaterally risked silently weakening an existing safety property (a device that appears to boot successfully but silently has no way to reach its management plane) without an explicit decision to do so.",
+      "consequence": "Until plan #10-#12 populate real certificate material, a real production-profile binary flashed onto real hardware would not boot past this point at all -- not an urgent operational risk today (no live deployment or real users exist yet, per this project's own standing status), but a real, non-obvious consequence worth the project owner's explicit attention before ever flashing a production-profile build without real certs in hand.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 2.7"
+    },
+    {
+      "deviation": "CONFIG_ESP_HTTPS_SERVER_ENABLE was set to y in sdkconfig.defaults.esp32c6 even though recon found it has no actual effect on compilation in this ESP-IDF version.",
+      "why": "Kept for menuconfig-visible documentation of intent (a developer inspecting menuconfig should see HTTPS server support is deliberately enabled) and as defensive-future-proofing in case a later ESP-IDF version does start gating compilation on this symbol.",
+      "consequence": "None currently -- purely a documentation/future-proofing choice with no functional effect today, confirmed by two full real builds succeeding either way.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 2.7"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s6_https_sessions_items_implemented": "7, 13, 14, 15, 16",
+    "plan_s6_https_sessions_items_remaining": "8 (uniqueness verification half only), 9, 10, 11, 12, 17",
+    "plan_s6_items_implemented_overall": "the 'Security invariants, bounded tunables and typed accessors' prerequisite cluster (S6 slice 1) + all of 'Provisioning and credentials' (#1-6, S6 slices 2-3) + 'HTTPS and sessions' #7, #13-16 (S6 slices 4-5)",
+    "cpp_host_tests_total_this_repo": 101,
+    "cpp_host_test_assertions_this_sub_slice_new": 0,
+    "real_defects_found_and_fixed_this_sub_slice": 0,
+    "real_defects_found_and_fixed_across_s5_and_s6_so_far": 8
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "101/101 (100%) via ctest inside zgw-host-tools:s0 -- unchanged from the prior sub-slice, re-run to confirm zero regressions (this sub-slice touches no host-tested source file)." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/web_ui/web_server.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0 (analyzing only the ESP_PLATFORM-independent code, since real ESP-IDF headers are unavailable to this tool)." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "real_esp_idf_build": { "result": "PASSED", "detail": "Two full idf.py -B <dir> set-target esp32c6 builds inside espressif/idf:release-v5.5: an ordinary (non-production) build, 1196/1196 steps, and a ZGW_PRODUCTION_BUILD=1 build, 1199/1199 steps. Both succeeded on the first attempt (the unused-function guard was written correctly from the start, avoiding a repeat of a bug an earlier sub-slice found). Build artifacts (build-s6-https, build-s6-https-prod, sdkconfig, managed_components) cleaned up via docker run ... rm -rf; dependencies.lock unaffected (confirmed via git status)." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (full 101-test ctest suite, confirming zero regressions) and zgw-host-tools:cppcheck (static analysis of the ESP_PLATFORM-independent portion) for the parts of this change that can be checked without the real ESP-IDF toolchain; AND via two real idf.py builds inside espressif/idf:release-v5.5 for the actual httpd_ssl_start()/esp_https_server integration, which has no host equivalent at all (esp_http_server.h/esp_https_server.h are ESP_PLATFORM-only, matching this file's own pre-existing convention -- it was never part of the host test build before this change either). This project's Docker toolchain has no QEMU or real hardware to actually run the resulting firmware and observe a TLS handshake -- compile-and-link against the real target API is this sub-slice's full verification depth for web_server.cpp, exactly matching every other ESP_PLATFORM-only HAL/composition-root file in this project (hal_wifi.c, hal_ota.c). No real ESP32-C6 hardware or manufacturing/eFuse environment was needed.",
+  "unresolved_deviations": [
+    "A production build's HTTPS listener will always refuse to start until plan #10-#12 populate real certificate material -- see this file's deviations above.",
+    "app_main.cpp's existing fatal-halt semantics for a WebServer::start() failure were not revisited despite the plan's own text possibly implying a softer degraded mode -- see this file's deviations above and docs/security/CONTROL_PLANE_SECURITY.md Section 2.7.",
+    "GatewayId manufacturing-uniqueness verification (plan #8's remaining half), production mDNS host derivation (plan #9), certificate chain/SAN/CA validation (#10-#11), certificate rotation (#12) and the seven authentication routes (#17) remain unimplemented -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3.",
+    "None of S6's other required-change clusters (authorization/physical presence, strict JSON parsing, rate limiting/audit, MQTT security) have started -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3.",
+    "The three independent copies of the S6 tunable-range table (Kconfig/C++/Python, from S6 slice 1) are still not automatically kept in sync -- unchanged from prior evidence files, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- carried forward from S5, BLOCKED_SECURITY_PROVISIONING. This sub-slice's own work (the httpd_ssl_start()/httpd_start() branching logic itself) is not blocked by this -- it is pure software, verified against the real ESP-IDF toolchain. What IS blocked by it is the actual real certificate material this listener needs to ever successfully start in a production build -- that remains blocked pending plan #10-#12's own, separate implementation and, ultimately, a real manufacturing/provisioning environment.",
+    "Certificate chain/SAN/CA validation (plan #10-11, the natural next HTTPS/sessions sub-slice alongside #9's mDNS derivation) needs real mbedtls X.509 parsing, unavailable on the host toolchain (zgw-host-tools:s0 has zero crypto library dev headers, confirmed by recon in S6-provisioning-credentials-completion.json) -- that sub-slice will need a thin ESP_PLATFORM-only validation layer verified only via the real target build, following hal_ota.c's own established precedent for crypto logic that cannot be host-tested."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

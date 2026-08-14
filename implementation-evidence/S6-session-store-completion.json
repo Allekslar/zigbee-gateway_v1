@@ -1,0 +1,92 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S6-session-store",
+  "stage_name": "S6 slice 4/N: bounded session store + cookie/CSRF/CORS policy (plan \"HTTPS and sessions\" required changes #13, #14, #15 and #16 -- first sub-slice of the #7-17 cluster)",
+  "input_commit_sha": "80872dc96808d2c175f37b3a62a2964648d9d394",
+  "output_commit_sha": "80872dc96808d2c175f37b3a62a2964648d9d394",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 80872dc (merge of PR #49), layered on top of all uncommitted S5 work and S6 slices 1-3 (S6-security-bounds-completion.json, S6-provisioning-ap-secrets-completion.json, S6-provisioning-credentials-completion.json).",
+  "sequencing_note": "User's instruction: 'переходити до наступного кластера S6 — HTTPS/sessions (#7-17)'. Given the cluster's real size (11 items with genuine cross-dependencies and very different host-testability profiles), the user was asked directly (AskUserQuestion) which of three defensible starting points to build first: (a) session store + cookie/CSRF/CORS policy -- pure C++ logic, no crypto library dependency, fully host-testable; (b) the HTTPS listener itself (plan #7) -- needs real esp_https_server API recon and has little to gate on before certificate validation exists; (c) certificate chain/SAN/CA validation (plan #10-11) -- needs real mbedtls X.509 parsing, unavailable on the host toolchain (same blocker as S6-provisioning-credentials-completion.json's PBKDF2 recon found), and far too complex to hand-roll a test-only substitute for. The user chose (a), confirming the recommended option.",
+  "changed_files": [
+    "components/service/include/session_store.hpp (new: SessionRecord/SessionStoreState, create/is_valid/touch/revoke/get_csrf_token/sweep_expired declarations)",
+    "components/service/session_store.cpp (new: RAM-only bounded 4-session store, explicit-now_ms testable, fail-closed expiry)",
+    "components/service/include/session_security_policy.hpp (new: cookie header builders, CSRF match, same-origin check, CORS policy declarations)",
+    "components/service/session_security_policy.cpp (new: implementation, built on session_store.hpp)",
+    "components/service/CMakeLists.txt (extended: session_store.cpp/session_security_policy.cpp added to SRCS)",
+    "test/host/CMakeLists.txt (extended: new source files added to SERVICE_SOURCES; 2 new test executables/ctest registrations)",
+    "test/host/test_session_store.cpp (new: 15 tests)",
+    "test/host/test_session_security_policy.cpp (new: 14 tests)",
+    "docs/security/CONTROL_PLANE_SECURITY.md (Section 2 heading widened; new Section 2.6; Section 3/3.1-header-count/3.4 (new)/4 updated)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan #13, verbatim: 'Add a bounded store of four concurrent sessions. Each session has a 15-minute idle timeout, 8-hour absolute timeout, logout/revocation and boot invalidation.' -- implemented exactly: kMaxConcurrentSessions=4, kSessionIdleTimeoutSeconds=900, kSessionAbsoluteTimeoutSeconds=28800, explicit revoke(), and RAM-only storage (no NVS persistence at all) satisfies 'boot invalidation' by construction -- a store constructed fresh at boot starts empty, no explicit invalidation step needed.",
+    "Plan #14, verbatim: 'Use cookie name zgw_session with Secure, HttpOnly, SameSite=Strict and path /api/v1. CSRF token is a separate 256-bit session-bound value returned only by the authenticated session endpoint.' -- implemented exactly: build_session_cookie_header() emits precisely those four attributes with no additions; CSRF token is 256 bits (32 bytes), generated independently from the session ID, bound per-session in SessionRecord.",
+    "Plan #15, verbatim: 'Require session-bound CSRF token and same-origin validation for every state-changing browser request.' -- implemented as two independent, composable checks (session_csrf_token_matches(), constant-time comparison; is_same_origin_request(), fail-closed on a missing Origin header) -- neither wired into a real request handler yet since the production listener (plan #7) does not exist.",
+    "Plan #16, verbatim: 'Reject permissive CORS; default to same-origin only.' -- implemented as cors_cross_origin_allowed(), a single centralized policy function that always returns false -- no Access-Control-Allow-Origin header is ever issued for a cross-origin request by design.",
+    "Plan #6's reusable primitive (generate_random_secret_hex(), already built in S6-provisioning-ap-secrets-completion.json) is the one and only source of session IDs and CSRF tokens -- no persisted seed/signing key is used, an explicit, documented deviation from nvs_namespace_registry.cpp's own kSessionSeed entry description (added speculatively during S5).",
+    "Session-store capacity policy at exactly 4 live sessions: reject the 5th (kFull) rather than evict the oldest -- a judgment call (no plan-text resolution exists), made unilaterally in favor of the more conservative, fail-closed choice already threaded through every S5/S6 sub-slice (an already-authenticated session is never involuntarily logged out by a new login)."
+  ],
+  "work_summary": {
+    "session_store_implemented": {
+      "status": "COMPLETE",
+      "detail": "session_store.hpp/.cpp: SessionStoreState (fixed 4-element SessionRecord array, RAM-only). session_store_create() draws a fresh 128-bit session ID and 256-bit CSRF token from hal_random via generate_random_secret_hex(), runs an implicit expiry sweep before checking capacity (an idle/absolute-expired slot never blocks a new login), returns kFull if genuinely at capacity. session_store_is_valid()/_touch()/_revoke()/_get_csrf_token() all take now_ms explicitly (mirrors commissioning_window.hpp's testability discipline). Expiry is fail-closed on every angle: a non-in_use record is always expired; a now_ms that appears to precede created_at_ms/last_active_at_ms (impossible for hal_time_now_ms()'s own contract, guarded defensively) is treated as expired rather than computing an underflowed elapsed value."
+    },
+    "session_security_policy_implemented": {
+      "status": "COMPLETE",
+      "detail": "session_security_policy.hpp/.cpp: build_session_cookie_header()/build_session_cookie_clear_header() (the latter adds Max-Age=0, a necessary browser-cookie-deletion technique, not a change to the general cookie's own plan-#14-exact attribute set). session_csrf_token_matches() compares in constant time (never short-circuits on the first mismatched byte, matching admin_verifier.cpp's password-hash-comparison discipline) and rejects a wrong-length token before touching the stored value. is_same_origin_request() does an ASCII case-insensitive compare of a request's raw Origin header against an expected origin string, failing closed on either a missing Origin header or an unconfigured expected origin. cors_cross_origin_allowed() is a single centralized always-false policy decision."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "15 tests in test_session_store.cpp, 14 in test_session_security_policy.cpp -- 29 new test assertions total. Full repository host suite: 101/101 passing (99 pre-existing + 2 new test executables). cppcheck --enable=warning,style,performance,portability: zero findings against both new C++ files. check_arch_invariants.sh: high=0/medium=0/low=0, unchanged. A full real idf.py build inside espressif/idf:release-v5.5 succeeded end-to-end on the first attempt (1196/1196 steps) -- this sub-slice introduces no new ESP-IDF/mbedtls API surface of its own (only hal_time_now_ms() and generate_random_secret_hex(), both already verified against the real target in prior sub-slices), so this build mainly confirms the two new translation units compile and link cleanly."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "The session-store capacity policy (reject the 5th session outright, kFull, rather than evicting the oldest/least-recently-active one) is a judgment call with no literal plan-text resolution.",
+      "why": "Plan #13's 'bounded store of four concurrent sessions' does not itself specify eviction-vs-rejection behavior at capacity. The conservative, fail-closed choice (never involuntarily log out an already-authenticated session) was made unilaterally, matching the posture threaded through every S5/S6 sub-slice so far.",
+      "consequence": "In a real deployment with a single admin using multiple browser tabs/devices simultaneously, a 5th concurrent login attempt is rejected rather than silently displacing an older session -- the admin must explicitly log out somewhere first, or wait for an idle/absolute timeout. This is a real, revisable UX tradeoff, not a security gap.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 3.4"
+    },
+    {
+      "deviation": "Session IDs and CSRF tokens are generated fresh from hardware RNG per session, with no persisted signing/seed material used at all -- deviating from nvs_namespace_registry.cpp's own kSessionSeed entry description (added during S5), which anticipated 'session-token seed material for S6's bounded session store'.",
+      "why": "Nothing in plan #13's literal text requires deriving session tokens from a persisted signing seed, and RAM-only storage (chosen to satisfy 'boot invalidation' for free) already means no cross-reboot token derivation is needed. Plan #6's own reusable generate_random_secret_hex() primitive (already built and tested) is a complete, simpler solution for 'Generate session and CSRF secrets from hardware RNG'.",
+      "consequence": "kSessionSeed remains implemented_today=false in the registry, unused -- if a different design was actually intended (e.g. stateless HMAC-signed tokens for a future multi-listener architecture), this sub-slice does not implement it and would need revisiting.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 2.6 and Section 3.4"
+    },
+    {
+      "deviation": "Neither session_store.hpp's nor session_security_policy.hpp's functions are called by any real consumer anywhere in this repository.",
+      "why": "Matches this project's established 'port/state-machine defined ahead of its full pipeline' precedent (tls_provisioning_storage_port.hpp in S5, provisioning_secret_provider.hpp/commissioning_window.hpp in S6-provisioning-credentials-completion.json) -- the real HTTP request/response plumbing (plan #7's HTTPS listener) and the actual login/logout/session routes (plan #17) are both separate, larger, not-yet-started S6 sub-slices.",
+      "consequence": "This sub-slice's code has no observable effect on the running gateway's actual behavior yet -- it is foundation only, verified in isolation via host tests and a real target build, not via any end-to-end login scenario.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 2.6"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s6_https_sessions_items_implemented": "13, 14, 15, 16",
+    "plan_s6_https_sessions_items_remaining": "7, 8 (uniqueness verification half only), 9, 10, 11, 12, 17",
+    "plan_s6_items_implemented_overall": "the 'Security invariants, bounded tunables and typed accessors' prerequisite cluster (S6 slice 1) + all of 'Provisioning and credentials' (#1-6, S6 slices 2-3) + 'HTTPS and sessions' #13-16 (S6 slice 4)",
+    "cpp_host_tests_total_this_repo": 101,
+    "cpp_host_test_assertions_this_sub_slice_new": 29,
+    "real_defects_found_and_fixed_this_sub_slice": 0,
+    "real_defects_found_and_fixed_across_s5_and_s6_so_far": 8
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "101/101 (100%) via ctest inside zgw-host-tools:s0, including the 2 new test executables (test_session_store, test_session_security_policy). Full rebuild from a clean host-build directory." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/service/session_store.cpp and components/service/session_security_policy.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "real_esp_idf_build": { "result": "PASSED", "detail": "idf.py -B build-s6-sessions set-target esp32c6 build inside espressif/idf:release-v5.5: 1196/1196 steps completed on the first attempt (no bug found this time -- this sub-slice's new code calls no new ESP-IDF/mbedtls API surface, only already-verified primitives). Build artifacts (build-s6-sessions, sdkconfig, managed_components) cleaned up via docker run ... rm -rf; dependencies.lock unaffected (confirmed via git status)." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (build + full 101-test ctest suite) and zgw-host-tools:cppcheck (static analysis) for all host-testable logic -- this sub-slice's logic is 100% host-testable, unlike the prior PBKDF2 sub-slice, since it introduces no new crypto-library dependency of its own (only already-verified hal_time_now_ms()/generate_random_secret_hex() primitives) -- AND via a real idf.py build inside espressif/idf:release-v5.5 confirming the two new translation units compile and link against the real ESP32-C6 target. No real ESP32-C6 hardware or manufacturing/eFuse environment was needed.",
+  "unresolved_deviations": [
+    "Session-store capacity policy (reject-the-5th, not evict-oldest) is a judgment call, not a plan-text resolution -- see this file's deviations above.",
+    "kSessionSeed remains unimplemented/unused; this sub-slice's design does not need it -- see this file's deviations above and docs/security/CONTROL_PLANE_SECURITY.md Section 3.4.",
+    "Neither session_store.hpp nor session_security_policy.hpp is wired into any real consumer yet -- both are foundation-only, see this file's deviations above.",
+    "The remainder of the 'HTTPS and sessions' cluster (#7, #8's uniqueness-verification half, #9, #10, #11, #12, #17) has not started -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3.",
+    "None of S6's other required-change clusters (authorization/physical presence, strict JSON parsing, rate limiting/audit, MQTT security) have started -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3.",
+    "The three independent copies of the S6 tunable-range table (Kconfig/C++/Python, from S6 slice 1) are still not automatically kept in sync -- unchanged from prior evidence files, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- carried forward from S5, BLOCKED_SECURITY_PROVISIONING. This sub-slice's work (session store, cookie/CSRF/CORS policy) is not blocked by this at all -- it is pure software, verified against the real ESP-IDF toolchain, fully implemented and tested.",
+    "Certificate chain/SAN/CA validation (plan #10-11, the next natural HTTPS/sessions sub-slice) needs real mbedtls X.509 parsing, which the host toolchain (zgw-host-tools:s0) cannot exercise at all (no crypto library dev headers, confirmed by the same recon that blocked host-testing PBKDF2 in S6-provisioning-credentials-completion.json) -- that sub-slice will need a thin ESP_PLATFORM-only validation layer verified only via the real target build, following hal_ota.c's own established precedent for crypto logic that cannot be host-tested."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

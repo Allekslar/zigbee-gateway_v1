@@ -95,3 +95,34 @@ CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE=y
 # fixed this.
 CONFIG_PARTITION_TABLE_OFFSET=0x10000
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.production.csv"
+
+# --- S6 production-profile marker (plan #2: ProvisioningSecretProvider
+# adapter selection) ---
+# The ONLY place this is ever set to y; every dev/HIL sdkconfig.defaults*
+# file leaves it at its Kconfig default of n. See main/Kconfig.projbuild's
+# own help text for the exact contract.
+CONFIG_ZGW_PRODUCTION_PROFILE=y
+
+# --- S6 FD-13 bounded tunables (approved defaults) ---
+# main/Kconfig.projbuild's "Security" submenu already declares these with
+# the same (range MIN MAX / default N) pair, so a plain `idf.py build`
+# with no override at all would already resolve to these exact values;
+# pinned explicitly here too so the approved profile is visible in one
+# place and does not silently depend on an implicit Kconfig default that
+# a future edit to main/Kconfig.projbuild could change without this file
+# noticing. scripts/verify_production_security_profile.py's
+# TUNABLE_RANGES table and components/service/include/security_bounds.hpp's
+# kRanges table both declare the same ten (minimum, maximum,
+# approved_default) triples independently -- keeping all three in sync by
+# hand is a named, tracked responsibility (see that script's own module
+# docstring), not automated.
+CONFIG_ZGW_COMMISSIONING_WINDOW_SECONDS=600
+CONFIG_ZGW_JSON_MAX_BODY_BYTES=2048
+CONFIG_ZGW_JSON_MAX_DEPTH=4
+CONFIG_ZGW_JSON_MAX_STRING_BYTES=512
+CONFIG_ZGW_JSON_MAX_KEYS=32
+CONFIG_ZGW_LOGIN_ATTEMPTS_PER_MINUTE=5
+CONFIG_ZGW_COMMANDS_PER_MINUTE=60
+CONFIG_ZGW_MUTATIONS_PER_MINUTE=5
+CONFIG_ZGW_FIRMWARE_OPS_PER_HOUR=2
+CONFIG_ZGW_AUDIT_RING_RECORDS=128

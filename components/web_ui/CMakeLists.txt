@@ -19,7 +19,7 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
         "."
-    REQUIRES core service common esp_http_server esp_timer
+    REQUIRES core service common app_hal esp_http_server esp_https_server esp_timer
 )
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)

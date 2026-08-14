@@ -350,7 +350,14 @@ hal_wifi_status_t hal_wifi_start_ap(const char* ssid, const char* password) {
     if (password != 0 && password[0] != '\0') {
         const size_t pass_len = strnlen(password, sizeof(config.ap.password));
         memcpy(config.ap.password, password, pass_len);
-        config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+        /* Plan S6 "Provisioning and credentials" #4: "uses WPA2/WPA3
+         * settings supported by target." WIFI_AUTH_WPA2_WPA3_PSK is
+         * ESP-IDF's real mixed-mode auth setting (confirmed against
+         * esp_wifi_types_generic.h inside espressif/idf:release-v5.5) --
+         * accepts both WPA2-only and WPA3-capable clients, broader
+         * compatibility than WIFI_AUTH_WPA3_PSK alone for a provisioning
+         * network any admin device might join. */
+        config.ap.authmode = WIFI_AUTH_WPA2_WPA3_PSK;
     } else {
         config.ap.authmode = WIFI_AUTH_OPEN;
     }

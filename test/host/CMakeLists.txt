@@ -29,6 +29,7 @@ zg_apply_component_compile_policy(core_host)
 set(SERVICE_SOURCES
     ../../components/common/crc32c.cpp
     ../../components/common/gateway_id.cpp
+    ../../components/common/base32.cpp
     ../../components/service/application_command_mapper.cpp
     ../../components/service/bridge_snapshot_builder.cpp
     ../../components/service/command_manager.cpp
@@ -66,6 +67,14 @@ set(SERVICE_SOURCES
     ../../components/service/secure_log_redaction.cpp
     ../../components/service/factory_reset_namespace_erase.cpp
     ../../components/service/reset_journal_storage_port.cpp
+    ../../components/service/security_bounds.cpp
+    ../../components/service/provisioning_secrets.cpp
+    ../../components/service/admin_verifier.cpp
+    ../../components/service/provisioning_secret_provider.cpp
+    ../../components/service/commissioning_window.cpp
+    ../../components/service/session_store.cpp
+    ../../components/service/session_security_policy.cpp
+    ../../components/service/gateway_identity_verification.cpp
     ../../components/service/tuya_fingerprint.cpp
     ../../components/service/tuya_dp_parser.cpp
     ../../components/service/tuya_contact_sensor_plugin.cpp
@@ -79,6 +88,9 @@ set(SERVICE_SOURCES
 set(APP_HAL_SOURCES
     ../../components/app_hal/hal_identity.c
     ../../components/app_hal/hal_security_state.c
+    ../../components/app_hal/hal_random.c
+    ../../components/app_hal/hal_time.c
+    ../../components/app_hal/hal_tls_certificate_validator.c
     ../../components/app_hal/hal_led.c
     ../../components/app_hal/hal_matter.c
     ../../components/app_hal/hal_nvs.c
@@ -202,10 +214,70 @@ target_link_libraries(test_reset_journal_storage_port PRIVATE service_host)
 zg_apply_component_compile_policy(test_reset_journal_storage_port)
 add_test(NAME test_reset_journal_storage_port COMMAND test_reset_journal_storage_port)
 
+add_executable(test_security_bounds test_security_bounds.cpp)
+target_link_libraries(test_security_bounds PRIVATE service_host)
+zg_apply_component_compile_policy(test_security_bounds)
+add_test(NAME test_security_bounds COMMAND test_security_bounds)
+
+add_executable(test_hal_random test_hal_random.cpp)
+target_link_libraries(test_hal_random PRIVATE service_host)
+zg_apply_component_compile_policy(test_hal_random)
+add_test(NAME test_hal_random COMMAND test_hal_random)
+
+add_executable(test_provisioning_secrets test_provisioning_secrets.cpp)
+target_link_libraries(test_provisioning_secrets PRIVATE service_host)
+zg_apply_component_compile_policy(test_provisioning_secrets)
+add_test(NAME test_provisioning_secrets COMMAND test_provisioning_secrets)
+
+add_executable(test_hal_time test_hal_time.cpp)
+target_link_libraries(test_hal_time PRIVATE service_host)
+zg_apply_component_compile_policy(test_hal_time)
+add_test(NAME test_hal_time COMMAND test_hal_time)
+
+add_executable(test_admin_verifier test_admin_verifier.cpp)
+target_link_libraries(test_admin_verifier PRIVATE service_host)
+zg_apply_component_compile_policy(test_admin_verifier)
+add_test(NAME test_admin_verifier COMMAND test_admin_verifier)
+
+add_executable(test_provisioning_secret_provider test_provisioning_secret_provider.cpp)
+target_link_libraries(test_provisioning_secret_provider PRIVATE service_host)
+zg_apply_component_compile_policy(test_provisioning_secret_provider)
+add_test(NAME test_provisioning_secret_provider COMMAND test_provisioning_secret_provider)
+
+add_executable(test_commissioning_window test_commissioning_window.cpp)
+target_link_libraries(test_commissioning_window PRIVATE service_host)
+zg_apply_component_compile_policy(test_commissioning_window)
+add_test(NAME test_commissioning_window COMMAND test_commissioning_window)
+
+add_executable(test_session_store test_session_store.cpp)
+target_link_libraries(test_session_store PRIVATE service_host)
+zg_apply_component_compile_policy(test_session_store)
+add_test(NAME test_session_store COMMAND test_session_store)
+
+add_executable(test_session_security_policy test_session_security_policy.cpp)
+target_link_libraries(test_session_security_policy PRIVATE service_host)
+zg_apply_component_compile_policy(test_session_security_policy)
+add_test(NAME test_session_security_policy COMMAND test_session_security_policy)
+
+add_executable(test_gateway_identity_verification test_gateway_identity_verification.cpp)
+target_link_libraries(test_gateway_identity_verification PRIVATE service_host)
+zg_apply_component_compile_policy(test_gateway_identity_verification)
+add_test(NAME test_gateway_identity_verification COMMAND test_gateway_identity_verification)
+
+add_executable(test_hal_tls_certificate_validator test_hal_tls_certificate_validator.cpp)
+target_link_libraries(test_hal_tls_certificate_validator PRIVATE service_host)
+zg_apply_component_compile_policy(test_hal_tls_certificate_validator)
+add_test(NAME test_hal_tls_certificate_validator COMMAND test_hal_tls_certificate_validator)
+
 add_executable(test_common_crc32c test_common_crc32c.cpp ../../components/common/crc32c.cpp)
 target_include_directories(test_common_crc32c PRIVATE ../../components/common/include)
 zg_apply_component_compile_policy(test_common_crc32c)
 add_test(NAME test_common_crc32c COMMAND test_common_crc32c)
+
+add_executable(test_common_base32 test_common_base32.cpp ../../components/common/base32.cpp)
+target_include_directories(test_common_base32 PRIVATE ../../components/common/include)
+zg_apply_component_compile_policy(test_common_base32)
+add_test(NAME test_common_base32 COMMAND test_common_base32)
 
 add_executable(test_common_gateway_id test_common_gateway_id.cpp ../../components/common/gateway_id.cpp)
 target_include_directories(test_common_gateway_id PRIVATE ../../components/common/include)

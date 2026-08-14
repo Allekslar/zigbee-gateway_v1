@@ -1,0 +1,97 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S6-tls-certificate-validation",
+  "stage_name": "S6 slice 8/N: TLS certificate chain/SAN/expiry/key validation (plan \"HTTPS and sessions\" required changes #10 and #11)",
+  "input_commit_sha": "80872dc96808d2c175f37b3a62a2964648d9d394",
+  "output_commit_sha": "80872dc96808d2c175f37b3a62a2964648d9d394",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 80872dc (merge of PR #49), layered on top of all uncommitted S5 work and S6 slices 1-7 (S6-security-bounds-completion.json, S6-provisioning-ap-secrets-completion.json, S6-provisioning-credentials-completion.json, S6-session-store-completion.json, S6-https-listener-completion.json, S6-mdns-host-completion.json, S6-gateway-identity-verification-completion.json).",
+  "sequencing_note": "User's instruction: '#10/#11 (валідація сертифікатів — справжня X.509-крипта, без host-тестованості)' -- the last remaining 'HTTPS and sessions' item not blocked on a different, not-yet-started cluster, per S6-gateway-identity-verification-completion.json's own milestone note.",
+  "changed_files": [
+    "components/app_hal/include/hal_tls_certificate_validator.h (new: hal_tls_cert_validation_result_t, hal_tls_validate_certificate() declaration)",
+    "components/app_hal/hal_tls_certificate_validator.c (new: real mbedtls X.509/PK implementation under ESP_PLATFORM, fail-closed host stub otherwise -- relocated here from an initial components/service placement after a real INV-H002 architecture-gate finding, see deviations below)",
+    "components/app_hal/CMakeLists.txt (extended: hal_tls_certificate_validator.c added to SRCS)",
+    "components/common/include/log_tags.h (changed: new LOG_TAG_TLS_CERT_VALIDATOR)",
+    "components/service/include/provisioning_secrets.hpp (changed: new build_gateway_uri_san() declaration)",
+    "components/service/provisioning_secrets.cpp (changed: build_gateway_uri_san() implementation)",
+    "components/web_ui/web_server.cpp (changed: start_production_https() now reads the product CA, builds expected DNS/URI SAN values, and calls hal_tls_validate_certificate() before httpd_ssl_start(); fixed a real incomplete-type compiler error found only by the real ZGW_PRODUCTION_BUILD=1 target build, see deviations below)",
+    "components/web_ui/CMakeLists.txt (extended: app_hal added to REQUIRES)",
+    "test/host/CMakeLists.txt (extended: hal_tls_certificate_validator.c added to APP_HAL_SOURCES; 1 new test executable/ctest registration)",
+    "test/host/test_hal_tls_certificate_validator.cpp (new: 2 tests, host-stub fail-closed contract only)",
+    "test/host/test_provisioning_secrets.cpp (extended: 4 new tests for build_gateway_uri_san())",
+    "docs/security/CONTROL_PLANE_SECURITY.md (Section 2 heading widened; new Section 2.10; Section 3/4 updated)"
+  ],
+  "frozen_decisions_applied": [
+    "Plan #10, verbatim: 'Production uses the S5 encrypted current certificate/key slot. Its certificate must chain to the configured product management CA and contain both the exact mDNS DNS SAN and URI SAN urn:zgw:<gateway_id>.' -- implemented via two mbedtls_x509_crt_verify() calls (one per SAN value), each independently checking chain-to-CA, expiry, and the respective SAN, plus mbedtls_pk_check_pair() for the private-key/certificate pairing.",
+    "Plan #11, verbatim: 'Missing CA, invalid issuer/SAN/expiry/key match or unreadable current slot keeps the production management listener disabled.' -- web_server.cpp's start_production_https() now reads the CA (previously never read) and refuses to start on any non-VALID hal_tls_validate_certificate() result, in addition to its existing unreadable-slot gate from Section 2.7.",
+    "Real mbedtls API used exactly as confirmed via direct recon against the real espressif/idf:release-v5.5 source (not assumed from memory or header comments alone): mbedtls_x509_crt_verify()'s cn parameter checks chain+expiry+one-SAN-value in a single call (confirmed by reading the library's own x509_crt_verify_name()/x509_crt_check_san() implementation); mbedtls_esp_random() is a real, public, documented f_rng-compatible wrapper around esp_fill_random().",
+    "The validation module was relocated from components/service to components/app_hal (as hal_tls_certificate_validator.h/.c, a plain-C hal_* module) after check_arch_invariants.sh's INV-H002 correctly flagged mbedtls_x509_crt_free()/mbedtls_pk_free() calls under components/service -- matching hal_ota.c's own pre-existing precedent for exactly this category of mbedtls parse/free code."
+  ],
+  "work_summary": {
+    "hal_tls_certificate_validator_implemented": {
+      "status": "COMPLETE",
+      "detail": "hal_tls_validate_certificate() parses cert/CA/key via mbedtls_x509_crt_parse()/mbedtls_pk_parse_key(), verifies chain+expiry+DNS-SAN via one mbedtls_x509_crt_verify() call, chain+expiry+URI-SAN via a second call, and private-key/certificate pairing via mbedtls_pk_check_pair() -- returning one of 7 typed results (kValid or 6 specific failure reasons). ESP_PLATFORM-only real implementation; host builds get a fail-closed stub (always HAL_TLS_CERT_VALIDATION_CERTIFICATE_PARSE_FAILED regardless of input) matching hal_ota.c's own #ifdef ESP_PLATFORM-guarded-body convention exactly."
+    },
+    "build_gateway_uri_san_implemented": {
+      "status": "COMPLETE",
+      "detail": "New pure-logic function in provisioning_secrets.hpp/.cpp: builds exactly 'urn:zgw:<12-lowercase-hex-chars>' (plan #10's own literal URI SAN format). Host-testable (no crypto dependency), even though its one real consumer (web_server.cpp) is ESP_PLATFORM-only."
+    },
+    "web_server_wired": {
+      "status": "COMPLETE",
+      "detail": "start_production_https() now reads the product CA via tls_identity_get_product_ca() (S5, previously never called anywhere in this repository), builds the expected DNS SAN (build_gateway_mdns_host() + '.local') and URI SAN (build_gateway_uri_san()), and calls hal_tls_validate_certificate() before ever calling httpd_ssl_start(). Any non-VALID result keeps the listener from starting."
+    },
+    "architecture_gate_finding_resolved": {
+      "status": "COMPLETE -- real INV-H002 finding, corrected by relocation not suppression",
+      "detail": "The first version of this validation logic lived under components/service/tls_certificate_validator.hpp/.cpp. check_arch_invariants.sh flagged INV-H002 ('service layer must not use malloc/calloc/realloc/free') against mbedtls_x509_crt_free()/mbedtls_pk_free() calls -- a genuinely correct finding, not a false positive: those functions manage mbedtls's own internal heap allocations, exactly the category of code hal_ota.c's own pre-existing mbedtls_pk_free()/mbedtls_ecdsa_free() calls already establish belongs in components/app_hal, which INV-H002's check does not scope to at all. Relocated to components/app_hal/hal_tls_certificate_validator.h/.c (plain C, matching every other file in that directory) rather than suppressed via docs/architecture/ADR_EXCEPTIONS.md (a mechanism reserved for temporary, dated exceptions, not a permanent architectural fit). Re-ran cppcheck and check_arch_invariants.sh after relocation: both clean."
+    },
+    "real_bug_found_and_fixed": {
+      "status": "COMPLETE -- found only by the real ZGW_PRODUCTION_BUILD=1 target build",
+      "detail": "web_server.cpp's new runtime_->gateway_id() call (needed to build the expected SAN values) failed to compile with 'invalid use of incomplete type class service::ServiceRuntimeApi' -- web_server.hpp (via web_routes.hpp) only forward-declares that class; no prior translation unit needed the full definition. The ordinary (non-production) build never exercises this code path at all (compiled out entirely by the existing #if CONFIG_ZGW_PRODUCTION_PROFILE guard from Section 2.7), so only a real production-profile target build could catch this. Fixed by adding #include \"service_runtime_api.hpp\"; confirmed via a second, clean ZGW_PRODUCTION_BUILD=1 build (1201/1201 steps)."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "2 tests in test_hal_tls_certificate_validator.cpp (host-stub fail-closed contract, the full extent host testing can cover for this ESP_PLATFORM-only module), 4 new tests in test_provisioning_secrets.cpp for build_gateway_uri_san(). Full repository host suite: 103/103 passing (101 pre-existing + 2 new test executables). cppcheck --enable=warning,style,performance,portability: zero findings against all three changed/new files. check_arch_invariants.sh: high=0/medium=0/low=0 -- confirming the INV-H002 finding was fully resolved by relocation. Two full real idf.py builds inside espressif/idf:release-v5.5: an ordinary build (1198/1198 steps, confirming the real mbedtls X.509/PK calls compile even though nothing calls hal_tls_validate_certificate() at runtime in this configuration) and, after fixing the incomplete-type bug, a ZGW_PRODUCTION_BUILD=1 build (1201/1201 steps, confirming the actual production call site compiles and links)."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "The validation module lives in components/app_hal (a plain-C hal_* module) rather than components/service, where every other S6/S6-adjacent sub-slice's logic has lived so far.",
+      "why": "check_arch_invariants.sh's INV-H002 correctly identified that mbedtls_x509_crt_free()/mbedtls_pk_free() calls -- required to free mbedtls's own internally heap-allocated parse buffers -- violate the service layer's 'no malloc/calloc/realloc/free' invariant. This exact category of mbedtls parse/free code already lives in components/app_hal via hal_ota.c's own pre-existing mbedtls_pk_free()/mbedtls_ecdsa_free() calls -- app_hal is where this project's architecture already puts it.",
+      "consequence": "None negative -- this is a correction to the intended, correct architecture, not a compromise. The public API (hal_tls_validate_certificate(), a plain C function) is trivially callable from the C++ web_ui component via extern \"C\" linkage, same as every other hal_* function this project already calls from C++ code.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 2.10"
+    },
+    {
+      "deviation": "A production build's HTTPS listener still always refuses to start today, even after this sub-slice -- the fail-closed gate is now real and complete (checks trustworthiness, not just presence), but no real certificate/key/CA material exists anywhere in this repository's storage for it to actually validate as VALID.",
+      "why": "No real certificate-issuance workflow exists yet (plan #10-#12's own remaining piece, and ultimately blocked on the same manufacturing/eFuse environment gap as plan #6-#8, S5) -- this sub-slice's job was making the validation gate real and correct, not fabricating certificate material to make it pass.",
+      "consequence": "This sub-slice cannot be end-to-end tested against a real certificate on real hardware (no manufacturing environment exists) -- verification stops at 'the real mbedtls calls compile and link correctly and the production call site threads the right data through them', matching this project's own established, honest bar for ESP_PLATFORM-only crypto logic that cannot be host-tested (hal_ota.c's own manifest-signature verification is held to the identical bar).",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 2.10 and Section 2.7 (carried forward)"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s6_https_sessions_items_implemented": "7, 8 (scoped), 9, 10, 11, 13, 14, 15, 16",
+    "plan_s6_https_sessions_items_remaining": "12, 17",
+    "plan_s6_items_implemented_overall": "the 'Security invariants, bounded tunables and typed accessors' prerequisite cluster (S6 slice 1) + all of 'Provisioning and credentials' (#1-6, S6 slices 2-3) + 'HTTPS and sessions' #7, #8 (scoped), #9, #10, #11, #13-16 (S6 slices 4-8) -- only #12 and #17 remain in this cluster, both blocked on a different, not-yet-started cluster (#18-23, Authorization and physical presence)",
+    "cpp_host_tests_total_this_repo": 103,
+    "cpp_host_test_assertions_this_sub_slice_new": 6,
+    "real_defects_found_and_fixed_this_sub_slice": 2,
+    "real_defects_found_and_fixed_across_s5_and_s6_so_far": 10
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "103/103 (100%) via ctest inside zgw-host-tools:s0, including the 2 new test executables (test_hal_tls_certificate_validator, and 4 tests appended to test_provisioning_secrets)." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/service/provisioning_secrets.cpp, components/app_hal/hal_tls_certificate_validator.c and components/web_ui/web_server.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "FAILED then PASSED (real INV-H002 finding, resolved by relocation)", "detail": "First run against the initial components/service placement: high=1 (INV-H002, mbedtls_x509_crt_free()/mbedtls_pk_free() matched the service-layer malloc/free prohibition pattern). Relocated the module to components/app_hal; second run: high=0, medium=0, low=0, suppressed=0 -- PASSED." },
+    "real_esp_idf_build": { "result": "FAILED then PASSED (real incomplete-type bug found and fixed)", "detail": "Ordinary (non-production) idf.py build succeeded on the first attempt (1198/1198 steps). The ZGW_PRODUCTION_BUILD=1 build FAILED with a real compiler error (incomplete type service::ServiceRuntimeApi) in the newly-added runtime_->gateway_id() call inside web_server.cpp's production-only branch -- a bug the ordinary build structurally could not have caught since that code path is compiled out entirely outside the production profile. Fixed by adding #include \"service_runtime_api.hpp\"; second production build succeeded (1201/1201 steps). Both configurations' build artifacts cleaned up via docker run ... rm -rf; dependencies.lock unaffected (confirmed via git status)." },
+    "python_unit_tests": { "result": "N/A", "detail": "No Python changed in this pass." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (full 103-test ctest suite) and zgw-host-tools:cppcheck (static analysis) for the host-testable portions (build_gateway_uri_san(), and the host stub's fail-closed contract); via check_arch_invariants.sh (which found and, after relocation, confirmed resolution of a real INV-H002 violation); AND via two real idf.py builds inside espressif/idf:release-v5.5 for the real mbedtls X.509/PK integration, which has no host equivalent at all (the host toolchain has zero crypto library dev headers, the same blocker admin_verifier.cpp's PBKDF2 work found) -- the production-profile build additionally caught a real incomplete-type compiler error the ordinary build structurally could not have. This project's Docker toolchain has no QEMU or real hardware to actually run the resulting firmware and observe a TLS handshake against a real certificate -- compile-and-link against the real target API, with the real data threaded correctly through the real call sites, is this sub-slice's full verification depth, exactly matching hal_ota.c's own established bar for ESP_PLATFORM-only crypto logic. No real ESP32-C6 hardware or manufacturing/eFuse environment was needed.",
+  "unresolved_deviations": [
+    "A production build's HTTPS listener still always refuses to start today -- no real certificate material exists anywhere in this repository's storage for the (now real and complete) validation gate to ever pass -- see this file's deviations above and Section 2.7 (carried forward).",
+    "Only #12 (certificate rotation, blocked on the not-yet-started 'Authorization and physical presence' cluster) and #17 (the seven authentication routes, needs both the session store and central authorization middleware) remain in the 'HTTPS and sessions' cluster -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3.",
+    "None of S6's other required-change clusters (authorization/physical presence, strict JSON parsing, rate limiting/audit, MQTT security) have started -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3.",
+    "The three independent copies of the S6 tunable-range table (Kconfig/C++/Python, from S6 slice 1) are still not automatically kept in sync -- unchanged from prior evidence files, not addressed by this pass."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- carried forward from S5, BLOCKED_SECURITY_PROVISIONING. This sub-slice's own work (the validation logic itself) is not blocked by this at all -- it is real, correct, verified software. What IS blocked by it is the real certificate/key/CA material this validator needs to ever return HAL_TLS_CERT_VALIDATION_VALID in production, and the ability to test this module end-to-end against a real certificate on real hardware -- both remain blocked pending plan #10-#12's own real certificate-issuance workflow and, ultimately, a real manufacturing/provisioning environment.",
+    "'HTTPS and sessions' now has only #12 and #17 remaining, both blocked on the 'Authorization and physical presence' cluster (#18-23) rather than on any remaining work within this cluster itself -- this cluster's own foundation is now fully exhausted."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}

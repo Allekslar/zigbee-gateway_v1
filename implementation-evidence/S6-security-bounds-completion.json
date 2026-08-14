@@ -1,0 +1,94 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S6-security-bounds",
+  "stage_name": "S6 slice 1/N: security invariants, bounded tunables and typed accessor (plan's own \"before implementing the control-plane changes\" prerequisite cluster)",
+  "input_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "output_commit_sha": "228f227070ef8b035f15377619db6c00748c797e",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. This work is uncommitted on top of 228f227 (merge of PR #47), layered on top of all uncommitted S5 work (11 sub-slices, S5-completion.json).",
+  "sequencing_note": "User's instruction: 'Наступна стадія — S6' (next stage: S6). S6's own plan text explicitly orders this cluster first: 'Before implementing the control-plane changes, create the Kconfig definitions and one typed security-bounds accessor consumed by provisioning, Web parsing, rate limiting and audit storage.' This sub-slice implements exactly that prerequisite cluster and nothing else, matching S5's own established per-cluster sub-slicing discipline.",
+  "changed_files": [
+    "main/Kconfig.projbuild (extended: new 'Security' submenu with 10 range-bounded int symbols)",
+    "components/service/include/security_bounds.hpp (new: SecurityBounds struct, SecurityBoundField enum, SecurityBoundRange struct, security_bounds()/security_bound_range()/security_bound_value_in_range() declarations)",
+    "components/service/security_bounds.cpp (new: ESP_PLATFORM reads real CONFIG_ZGW_* macros; host builds fall back to the same approved-default values)",
+    "scripts/verify_production_security_profile.py (extended: TUNABLE_RANGES table, verify_tunable_ranges() function, wired into verify_profile())",
+    "scripts/test_verify_production_security_profile.py (extended: APPROVED_FIXTURE gained the 10 new symbols at their defaults; 8 new tests in VerifyTunableRangesTest)",
+    "sdkconfig.production.esp32c6 (extended: the 10 tunables pinned explicitly at their approved defaults)",
+    "test/host/test_security_bounds.cpp (new: 5 tests)",
+    "components/service/CMakeLists.txt (extended: security_bounds.cpp added to SRCS)",
+    "test/host/CMakeLists.txt (extended: security_bounds.cpp added to SERVICE_SOURCES; new test_security_bounds executable/ctest registration)",
+    "docs/security/CONTROL_PLANE_SECURITY.md (new -- this stage's own named deliverable, docs/implementation/PRODUCTION_HARDENING_PLAN.md's S6 Deliverables list)"
+  ],
+  "frozen_decisions_applied": [
+    "S6's own required-changes text, verbatim: 'Before implementing the control-plane changes, create the Kconfig definitions and one typed security-bounds accessor consumed by provisioning, Web parsing, rate limiting and audit storage.' -- implemented as exactly this: ten new Kconfig symbols plus one C++ accessor, consumed by nothing yet (each of the four named future consumers is its own later sub-slice).",
+    "Plan text: 'The typed accessor is the only application-facing source for tunables; handlers/adapters must not repeat numeric literals.' -- security_bounds() is designed as the single point every future S6 component will read from; this sub-slice does not yet have any such component to enforce this against, but the accessor itself is built to be that single source.",
+    "Plan text: 'The provisioning passphrase length remains a non-configurable 16 Base32 characters, and login backoff remains a non-configurable 2-second start with a 60-second maximum.' -- implemented as fixed constexpr members, not Kconfig symbols, so no build configuration can set them differently.",
+    "Plan text: 'An in-range change from the approved default requires a reviewed release-manifest delta... rather than an automatic rejection solely for differing from the default.' -- verify_tunable_ranges() checks range membership only, never equality to the default; verified directly by a dedicated test (test_in_range_non_default_value_passes)."
+  ],
+  "work_summary": {
+    "kconfig_symbols_added": {
+      "status": "COMPLETE",
+      "detail": "10 new int Kconfig symbols in a new 'Security' submenu of main/Kconfig.projbuild, each with a real `range MIN MAX` (matching this repository's own existing precedent, e.g. ZGW_OTA_BOOT_CONFIRM_TIMEOUT_MS) and the plan's exact approved default. Verified against a real idf.py build that all 10 appear in the generated sdkconfig with the expected default values."
+    },
+    "typed_accessor_implemented": {
+      "status": "COMPLETE",
+      "detail": "security_bounds.hpp/.cpp: SecurityBounds struct (10 configurable fields + 3 fixed constexpr non-configurable constants), security_bounds() (ESP_PLATFORM reads real CONFIG_ZGW_* macros once into a static instance; host builds fall back to the same approved-default values, letting every later host-tested S6 component build/test against real numbers without a real sdkconfig), security_bound_range()/security_bound_value_in_range() (the same range table exposed as a runtime-callable predicate, single-sourced with the host-fallback defaults within this file)."
+    },
+    "verifier_extended": {
+      "status": "COMPLETE",
+      "detail": "verify_production_security_profile.py's TUNABLE_RANGES + verify_tunable_ranges() reject an absent, unparseable, or out-of-range tunable, but explicitly allow an in-range non-default value (the plan's own carve-out). sdkconfig.production.esp32c6 pins all 10 tunables explicitly at their approved defaults, keeping RepositoryLayeredProfileTest's simulated-concatenation check passing and making the approved profile visible in one file rather than depending on an implicit Kconfig default."
+    },
+    "real_kconfig_range_behavior_confirmed": {
+      "status": "COMPLETE -- observed directly, not assumed",
+      "detail": "Edited a real generated sdkconfig to set CONFIG_ZGW_JSON_MAX_DEPTH=999 (its declared range is [2,4]) and ran idf.py reconfigure inside espressif/idf:release-v5.5: ESP-IDF's own Kconfig tooling printed a real warning ('user value 999 on the int symbol ZGW_JSON_MAX_DEPTH ... ignored due to being outside the active range ([2, 4]) -- falling back on defaults') and the regenerated sdkconfig reverted the value to 4, the approved default. This directly confirms the plan's own 'Kconfig rejects out-of-range values' text as real, observed ESP-IDF behavior."
+    },
+    "tests_and_verification": {
+      "status": "COMPLETE",
+      "detail": "8 new Python tests (VerifyTunableRangesTest, looping over TUNABLE_RANGES rather than hand-writing 10 separate cases): approved fixture passes; every tunable passes at its exact min/max; every tunable fails one-below-min/one-above-max; an in-range non-default value passes; a missing tunable fails; an unparseable value fails. 38/38 passing in scripts/test_verify_production_security_profile.py overall. 5 new C++ tests (test/host/test_security_bounds.cpp): host fallback matches approved defaults exactly; the 3 fixed constants have the plan's exact values; security_bounds() returns a stable reference; security_bound_range() matches the plan's table for all 10 fields (checked against the plan text directly, not tautologically against the function's own output); security_bound_value_in_range() checked at and around one boundary. Full repository host suite: 92/92 passing (91 pre-existing from S5 + this sub-slice's new executable). cppcheck: zero findings against security_bounds.cpp. check_arch_invariants.sh: high=0/medium=0/low=0, unchanged."
+    }
+  },
+  "deviations_from_literal_plan_text": [
+    {
+      "deviation": "Only the 'Security invariants, bounded tunables and typed accessors' cluster is implemented; none of S6's numbered required changes #1-#37 (provisioning, HTTPS/sessions, authorization/physical presence, strict JSON parsing, rate limiting/audit, MQTT security) has started.",
+      "why": "The plan's own text explicitly orders this cluster before all of them ('Before implementing the control-plane changes, create the Kconfig definitions and one typed security-bounds accessor'); the user's instruction was simply to move to S6, and this is the plan-mandated first piece, matching S5's own precedent of starting with its own foundational cluster (the production security profile) before anything else.",
+      "consequence": "Nothing in this repository calls security_bounds() yet -- it is fully implemented and tested scaffolding with zero real consumers, exactly matching every S5 sub-slice's own 'foundation only' pattern.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 3"
+    },
+    {
+      "deviation": "The (minimum, maximum, approved_default) table for the 10 tunables is declared independently, by hand, in three places: main/Kconfig.projbuild, security_bounds.cpp's kRanges, and verify_production_security_profile.py's TUNABLE_RANGES. Nothing automatically verifies the three stay in sync.",
+      "why": "Kconfig, C++ and Python have no shared single-source-of-truth mechanism already established in this repository; generating one from another would be a larger, separate piece of tooling work not requested for this foundational sub-slice.",
+      "consequence": "A future edit to one of the three tables without updating the other two would not be caught by any test in this repository today -- a real, named gap, not hidden.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 3.1, scripts/verify_production_security_profile.py module docstring"
+    },
+    {
+      "deviation": "S6's plan-text precondition 'hardware security evidence... are available' is only partially satisfied -- the software-only half of S5 is complete (implementation-evidence/S5-completion.json), but real Secure Boot/Flash Encryption/NVS Encryption hardware readback remains BLOCKED_SECURITY_PROVISIONING. This sub-slice proceeded anyway, on the judgment that S6's Kconfig/accessor foundation work does not itself depend on that hardware evidence existing.",
+      "why": "This is a judgment call about what 'ready' means for a foundational, non-security-enforcing piece of scaffolding, not a resolution of the plan-text precondition itself -- deciding whether S6 as a WHOLE can proceed without real hardware evidence is a project-owner call this sub-slice does not make.",
+      "consequence": "If the project owner decides S6 cannot proceed at all without real hardware security evidence, this sub-slice's work is still valid (it does not depend on or claim any hardware property) but the decision to have started S6 at all would need revisiting.",
+      "tracked_in": "docs/security/CONTROL_PLANE_SECURITY.md Section 3.2, implementation-evidence/S5-completion.json's s6_readiness field"
+    }
+  ],
+  "inventories_recomputed": {
+    "plan_s6_items_implemented": "the 'Security invariants, bounded tunables and typed accessors' prerequisite cluster (fully)",
+    "plan_s6_items_remaining": "1-37 (all numbered required changes)",
+    "cpp_host_tests_total_this_repo": 92,
+    "cpp_host_test_assertions_this_sub_slice_new": 5,
+    "python_tests_total_verify_production_security_profile_py": 38,
+    "python_tests_this_sub_slice_new": 8
+  },
+  "tests_and_checks": {
+    "host_tests": { "result": "PASSED", "detail": "92/92 (100%) via ctest inside zgw-host-tools:s0, including the new test_security_bounds (5 tests). Full rebuild from a clean host-build directory." },
+    "cppcheck": { "result": "PASSED", "detail": "cppcheck --enable=warning,performance,portability --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem against components/service/security_bounds.cpp via zgw-host-tools:cppcheck: zero findings, exit code 0." },
+    "architecture_gate": { "result": "PASSED", "detail": "check_arch_invariants.sh: high=0, medium=0, low=0, suppressed=0 -- unchanged." },
+    "python_unit_tests": { "result": "PASSED", "detail": "38/38 (100%) in scripts/test_verify_production_security_profile.py (30 pre-existing + 8 new)." },
+    "real_esp_idf_build": { "result": "PASSED", "detail": "ZGW_PRODUCTION_BUILD=1 idf.py -B build-s6-test set-target esp32c6 build inside espressif/idf:release-v5.5: all 10 new symbols appear in the real generated sdkconfig with approved-default values; verify_production_security_profile.py against that file reported OK. A follow-up idf.py reconfigure with CONFIG_ZGW_JSON_MAX_DEPTH manually set to 999 confirmed ESP-IDF's own Kconfig range-rejection behavior directly (real warning emitted, value reverted to the approved default of 4). Build artifacts (build dir + generated root sdkconfig/sdkconfig.old, root-owned) cleaned up via docker run ... rm -rf; dependencies.lock restored via git checkout." }
+  },
+  "environment_note": "Verified via zgw-host-tools:s0 (build + full 92-test ctest suite) and zgw-host-tools:cppcheck (static analysis) for the C++ accessor; via python3 directly (stdlib unittest) for the verifier's tunable-range logic; and via a full real idf.py production build plus a targeted reconfigure inside espressif/idf:release-v5.5 to confirm both the generated sdkconfig and ESP-IDF's own real Kconfig range-enforcement behavior. No real ESP32-C6 hardware or manufacturing/eFuse environment was needed for this sub-slice.",
+  "unresolved_deviations": [
+    "None of S6's 37 numbered required changes has started yet beyond this prerequisite cluster -- see docs/security/CONTROL_PLANE_SECURITY.md Section 3 and this file's deviations above.",
+    "The three independent copies of the tunable-range table (Kconfig, C++, Python) are not automatically kept in sync -- see this file's deviations above.",
+    "Whether S6 as a whole can proceed without real hardware security evidence (S5's remaining BLOCKED_SECURITY_PROVISIONING scope) is an open project-owner decision this sub-slice does not resolve -- see this file's deviations above."
+  ],
+  "unresolved_blockers": [
+    "No manufacturing/eFuse environment or physical ESP32-C6 hardware available -- carried forward from S5, BLOCKED_SECURITY_PROVISIONING. This sub-slice's work (Kconfig definitions and the typed accessor) is not blocked by this at all -- it is pure software, verified against the real ESP-IDF toolchain, fully implemented and tested."
+  ],
+  "releaseability": "NON_RELEASABLE"
+}
