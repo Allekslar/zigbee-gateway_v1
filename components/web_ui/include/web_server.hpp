@@ -5,6 +5,9 @@
 
 #include <atomic>
 
+#include "commissioning_window.hpp"
+#include "physical_presence_grant.hpp"
+#include "provisioning_secret_provider.hpp"
 #include "session_store.hpp"
 #include "web_routes.hpp"
 
@@ -36,6 +39,17 @@ private:
     // listener actually serves -- see web_server.cpp) -- plan #15's
     // same-origin check needs it on every mutation request.
     char expected_origin_[64]{};
+    // Plan #20/#21: RAM-only, boot-fresh -- see WebRouteContext's own
+    // comment for why nothing populates this yet.
+    service::PhysicalPresenceGrantState physical_presence_{};
+    // Plan #3: auto-started in start() when
+    // commissioning_window_first_boot_policy_applies() (no admin
+    // credential exists yet).
+    service::CommissioningWindowState commissioning_window_{};
+    // Plan #2/#17/#22: fetched exactly once in start() -- see
+    // WebRouteContext's own comment for why "exactly once" (not
+    // per-request) is load-bearing, not just an optimization.
+    service::ProvisioningSecret provisioning_secret_{};
     WebRouteContext route_context_{};
     bool started_{false};
     // Plan S6 "HTTPS and sessions" #7: which start function created

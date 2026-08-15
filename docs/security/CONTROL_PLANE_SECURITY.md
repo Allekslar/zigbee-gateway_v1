@@ -23,7 +23,7 @@ accessor consumed by provisioning, Web parsing, rate limiting and audit
 storage."* This document's Section 2.1 is exactly that foundation --
 nothing else in S6 has started yet.
 
-## 2. What is implemented and verified (sub-slices 1-9: security invariants/bounded tunables/typed accessor, provisioning AP secret generation, provisioning-credentials remainder, session store + cookie/CSRF/CORS policy, production HTTPS listener, production mDNS host derivation, gateway identity self-consistency verification, TLS certificate chain/SAN/expiry/key validation, central authorization middleware + capability taxonomy + login/logout/session -- plan #1-11, #13-16, #18-19, #23)
+## 2. What is implemented and verified (sub-slices 1-12: security invariants/bounded tunables/typed accessor, provisioning AP secret generation, provisioning-credentials remainder, session store + cookie/CSRF/CORS policy, production HTTPS listener, production mDNS host derivation, gateway identity self-consistency verification, TLS certificate chain/SAN/expiry/key validation, central authorization middleware + capability taxonomy + login/logout/session, physical-presence grant primitive, auth/password + provisioning/enroll + factory-reset policy stub, real button-to-grant wiring with HIL confirmation -- plan #1-11, #13-16, #18-21, #22-23)
 
 ### 2.1 `main/Kconfig.projbuild`'s new "Security" submenu + `security_bounds.hpp`/`.cpp`
 
@@ -1240,6 +1240,281 @@ produces the exact action label that work will want.
 
 Evidence: `implementation-evidence/S6-authorization-basic-completion.json`.
 
+### 2.12 Physical-presence grant primitive (plan #20, #21)
+
+Plan text: *"join, remove, Wi-Fi credential replacement, certificate
+rotation, OTA, RCP and factory reset require a recent one-time
+physical-presence grant."* (#20) *"Grant is created only from trusted
+GPIO/button event, has maximum 60-second lifetime, is bound to gateway
+boot/session/action class and is consumed once."* (#21)
+
+**Scope, chosen explicitly by the user** (`AskUserQuestion`, over "grant +
+a first real route" and "go straight to HIL"): the grant primitive and
+its GPIO source only, wired into nothing. No route requires a grant yet;
+none of plan #20's seven action classes are gated on anything from this
+sub-slice.
+
+**New `components/app_hal/include/hal_button.h`/`hal_button.c`**:
+`hal_button_is_pressed()` -- a raw, instantaneous GPIO level read, no
+debounce or edge-detection of its own (mirrors `commissioning_window.hpp`'s
+own already-documented "a caller with a real button task would call this
+once it has one" precedent -- that caller doesn't exist yet for this
+grant either). Reads `CONFIG_ZGW_PHYSICAL_PRESENCE_BUTTON_GPIO` (new
+Kconfig int in the "Security" submenu, default 9), configured with the
+internal pull-up enabled, active-low. GPIO9 as the default is not
+assumed: confirmed via Espressif's own official ESP32-C6-DevKitC-1
+documentation (WebSearch) that it is the real BOOT button, a strapping
+pin only during power-up/reset and safely readable as an ordinary input
+afterward; the Kconfig range (0-30) is grounded in the real
+`SOC_GPIO_PIN_COUNT` (31) read from `espressif/idf:release-v5.5`'s own
+`soc_caps.h`. Host builds: mockable via `hal_button_test.h`, default
+"not pressed" (fail closed).
+
+**New `components/service/include/physical_presence_grant.hpp`/`.cpp`**:
+`PhysicalPresenceActionClass` (plan #20's exact seven values),
+`physical_presence_grant_create()`/`_is_valid()`/`_consume()`. Bound to
+all three dimensions plan #21 names simultaneously -- boot (RAM-only
+storage, free), session (exact `session_id_hex` match, both-empty
+counting as a deliberate "not session-scoped" match), and action class
+(exact enum match). `_consume()` is the real one-time-use enforcement:
+atomically re-checks validity and deactivates the grant only on success,
+so an identical immediate second call always fails. A second `_create()`
+call replaces rather than rejects an already-active grant, the same
+"plan names no already-active error" resolution
+`commissioning_window_start()` already established for its own analogous
+case.
+
+**Tests**: `test_hal_button.cpp` (3 assertions), `test_physical_presence_grant.cpp`
+(19 assertions across 10 scenarios, including the 60-second boundary,
+the clock-goes-backward guard, and a failed `_consume()` not disturbing a
+still-valid grant).
+
+Full repository host suite: **108/108** passing. `cppcheck` and
+`check_arch_invariants.sh` both clean. Real `idf.py build` (development
+profile) succeeded, 1204/1204 steps, confirmed by grepping the build log
+directly for both new object files rather than trusting the step count
+alone.
+
+**Honest, named limits**: nothing calls either new module yet -- no
+debounce/edge-detection task, no route gated on a grant. No HIL exercise
+of the real GPIO9 read this round, despite real ESP32-C6 hardware being
+connected and available -- an explicit user choice, not a capability gap;
+compile/link against the real target is confirmed, the real button's
+actual behavior is not.
+
+Evidence: `implementation-evidence/S6-physical-presence-grant-completion.json`.
+
+### 2.13 `POST /api/v1/auth/password`, `POST /api/v1/provisioning/enroll`, `POST /api/v1/system/factory-reset/operations` (plan #17 remainder minus certificate rotation, plan #22)
+
+Real consumers of the physical-presence grant primitive (Section 2.12),
+the first anywhere in this codebase. At the time this sub-slice was
+written, every one of them would always return 403
+`physical_presence_required` against a real client -- nothing yet turned
+a real button press into a grant. Section 2.14 closes that gap.
+
+**`auth/password`**: wrapped mutation-grade (`kSecurityAdmin`). Verifies
+the CURRENT credential (`verify_admin_password()`, Section 2.5) *before*
+consuming the one-time grant -- a wrong-password attempt must never burn
+a real installer's grant. On success, overwrites the stored
+`AdminVerifierRecord` via `create_admin_verifier()`/`set_stored_admin_verifier()`.
+
+**`provisioning/enroll`**: NOT wrapped (reached without an existing
+session -- it creates the first admin credential). Gated on
+`commissioning_window_is_active()` (Section 2.5's state machine, now
+actually started for the first time -- `WebServer::start()` calls
+`commissioning_window_start()` when
+`commissioning_window_first_boot_policy_applies()`), a proof-of-possession
+match (new `provisioning_secret_matches()`, constant-time, in
+`provisioning_secret_provider.hpp`/`.cpp`), and the physical-presence
+grant (session-less, since no session exists yet). Production additionally
+requires `gateway_id_verification_allows_production_enrollment()` (Section
+2.9) -- always false today, same "no manufacturing record populated yet"
+reality Section 2.9 already documents; development skips this check
+entirely (no manufacturing record exists there either, and development
+already carries weaker trust guarantees throughout).
+
+A real, load-bearing fix made to enable this: the provisioning secret
+(`provisioning_secret_provider_get()`) is now fetched exactly ONCE, in
+`WebServer::start()`, and cached for the listener's lifetime via a new
+`WebRouteContext::provisioning_secret` field -- not re-fetched per
+request. The development adapter draws fresh randomness on every call
+(never persisted); fetching it per-request would make a real
+challenge/response impossible, since the value an installer reads from
+the boot-time log would never match a later request-time fetch. Caching
+once is what makes "installer reads the logged value, submits it back"
+work at all.
+
+**`factory-reset/operations`**: wrapped mutation-grade (`kFactoryReset`).
+Plan #22: "Factory reset additionally requires a fresh manufacturing PoP
+challenge. S6 owns policy validation; S8 owns the reset journal and
+erase execution." Read literally -- the POLICY half (PoP + physical
+presence) is real, enforced work here, not deferred; only once both pass
+does the route return `capability_unavailable` (503), the plan's own
+named stub outcome for the actual erase (S8, not built).
+
+**New `ApiV1ErrorCode` values**: `kPhysicalPresenceRequired` (403),
+`kProvisioningNotActive` (409) -- distinct real conditions get distinct
+stable tokens, matching plan #23.
+
+**Real defects found only by building/testing this round** (all three
+in the NEW test coverage, none in production code): (1) reusing the same
+`httpd_req_t` across multiple calls through a wrapped route without
+resetting `req.user_ctx` to the wrapper's own binding before each call --
+the trampoline (Section 2.11) overwrites it on every ALLOWED pass
+regardless of what the real handler decides afterward; (2) creating
+physical-presence grants/commissioning windows with an arbitrary fixed
+timestamp instead of the real `hal_time_now_ms()` the handler itself
+checks against; (3) the test's own `httpd_req_recv` mock destructively
+drains the simulated request body as it is read, so a second call reusing
+a now-empty body silently failed. All three fixed in the test file only,
+confirmed via a full ASan+UBSan rebuild.
+
+**Tests**: extended `test_web_handlers_auth.cpp` (real success and
+failure paths for all three routes, via captured real registrations --
+see Section 2.11's own note on why this is the real test methodology
+here). Full host suite: **108/108** (unchanged executable count). `cppcheck`
+and `check_arch_invariants.sh` both clean. Real `idf.py build` succeeded
+both profiles: development (1204/1204) and `ZGW_PRODUCTION_BUILD=1`
+(1207/1207 -- the build that actually compiles enroll's production-only
+gateway-identity check and `register_web_routes_v1()` itself).
+
+**Certificate rotation is explicitly NOT part of this sub-slice.** Real
+recon into plan #12's "bounded local listener/handshake verification"
+and "retain the previous confirmed slot through one successful reboot"
+rollback requirement found a genuinely large, novel scope: new mbedtls
+*client*-side TLS code (this project has only ever written server-side
+validation, Section 2.10), a new persisted multi-boot activation/rollback
+state machine (conceptually similar to but separate from this project's
+existing OTA rollback mechanism), and a temporary second local listener
+instance for the self-test -- comparable in size to everything else built
+in this entire session combined, and not meaningfully host-testable (the
+self-test and reboot-rollback protocol need real hardware). Flagged
+rather than attempted blind; remains the one open item in the
+"Authorization and physical presence" cluster's #17 route list besides
+the wiring gap named above.
+
+Evidence: `implementation-evidence/S6-auth-password-enroll-factory-reset-stub-completion.json`.
+
+### 2.14 Real button-to-grant wiring, HIL-confirmed (plan #21's "created only from trusted GPIO/button event")
+
+Closes the wiring gap Sections 2.12/2.13 both named: `hal_button_is_pressed()`
+now has a real caller, and a genuine physical button press on the
+connected ESP32-C6 was captured creating a grant over real serial output
+-- not simulated, not asserted from source reading alone.
+
+**`components/web_ui/web_server.cpp`**: a new `physical_presence_button_poll_callback()`,
+dispatched every 50ms by a periodic `esp_timer` (production profile only,
+started once in `WebServer::start()`). Requires 3 consecutive "pressed"
+reads (~150ms sustained -- comfortably past real mechanical bounce,
+which runs a few ms to a few tens of ms) before calling
+`physical_presence_grant_create_from_button()`; an `armed` flag requires
+a full release-then-press cycle before it will fire again, so holding the
+button down creates exactly one grant, not a stream of them. Timer
+creation failure is logged, not fatal to the listener -- every
+grant-gated route already fails closed on its own with no grant present.
+
+**New `physical_presence_grant_create_from_button()`** (added to the
+Section 2.12 primitive): an "ambient" grant matching ANY action class and
+ANY session, including none. A single GPIO edge carries no information
+about which of plan #20's seven action classes, or which caller session,
+an installer intends -- exactly the same problem WPS-style "press then
+act" flows solve the same way. Still respects the same 60-second lifetime
+and one-time `_consume()` semantics as an explicitly-bound grant; a
+second `_create()`/`_create_from_button()` call always fully replaces
+rather than merges with whatever grant existed before. `active` is
+written last in both create functions specifically because the button
+poller is now a genuinely concurrent writer against `WebServer`'s own
+single httpd worker task reading `PhysicalPresenceGrantState` -- the
+worst case of that ordering is a spuriously-still-invalid grant for one
+poll cycle, never a false positive.
+
+**Two real, hardware-only-discoverable defects found this round** (both
+fixed, neither guessed):
+
+1. **`httpd_register_uri_handler: no slots left for registering handler`**
+   -- the production listener failed to start on the real device.
+   `config.max_uri_handlers` was `24`, set long before this session;
+   the real production route total is 44 (24 legacy + 20 v1, this
+   sub-slice's own new auth routes among them). Neither the host httpd
+   mock (accepts every registration unconditionally) nor any compile/link
+   check can catch a runtime resource-limit exhaustion like this --
+   found only by booting the real firmware. Fixed: raised to `56` (12
+   slots of real headroom for near-future routes, certificate rotation
+   among them).
+2. **`Deferred Zigbee start task creation failed`** -- heap exhaustion.
+   The first implementation used a dedicated FreeRTOS task
+   (`xTaskCreate`, 3072-byte stack) for button polling. Real heap
+   diagnostics (`heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)`,
+   temporarily added and then removed once the fix was confirmed) showed
+   free heap right before the pre-existing deferred-Zigbee-start task's
+   own `xTaskCreate` call had dropped to ~4500 bytes total / 2240 bytes
+   largest contiguous block -- below the 4096 bytes that task's own stack
+   needs. MQTT client init alone consumes roughly 17KB on this device
+   (pre-existing, unrelated to this session); the new button task's stack
+   was what pushed an already-marginal budget over the edge, confirmed by
+   comparison against an earlier same-session HIL round where the
+   identical Zigbee task creation succeeded before this task existed.
+   Fixed by replacing the dedicated task with the `esp_timer` callback
+   described above -- `esp_timer` callbacks dispatch from the system's
+   own shared timer task, costing zero new task stack. Verified: free
+   heap right before Zigbee task creation went from a failing 4500/2240
+   bytes to a passing 7856/7680 bytes, and the task creates successfully
+   again.
+
+**A third defect, caught by `test/target`'s own CI build** (not HIL --
+the same class of gap Section 2.1's own `security_bounds.cpp` fallback
+table was written to close): `hal_button.c` used
+`CONFIG_ZGW_PHYSICAL_PRESENCE_BUTTON_GPIO` unconditionally, but
+`test/target` is a separate ESP-IDF project with its own `main/` that
+never sees the root `main/Kconfig.projbuild`, so the macro is undeclared
+there. Fixed with the same `#ifndef`-fallback pattern already established
+in this codebase, defaulting to GPIO9 -- the Kconfig option's own real
+default, not an arbitrary stand-in.
+
+**Real HIL verification, ESP32-C6-DevKitC-1, Flash Encryption
+(Development mode)**: full boot captured over real serial (non-interactive
+pyserial, DTR/RTS reset) -- production HTTPS listener starts with
+`max_uri_handlers=56`, commissioning window starts on first-boot policy,
+provisioning secret fetched once, deferred Zigbee task creates
+successfully, zero panics. A second capture, this time with the user
+physically pressing and releasing the real BOOT button (GPIO9) on the
+connected board, shows exactly one log line, no bounce/double-fire:
+
+```
+I (1362795) web_server: Physical presence grant created from a trusted button press
+```
+
+This confirms the full chain end to end on real hardware, from a real
+physical action: GPIO9 electrical level -> `hal_button_is_pressed()` ->
+`esp_timer` debounce callback -> `physical_presence_grant_create_from_button()`
+-> log line.
+
+**Tests**: 3 real test-authoring bugs found via ASan+UBSan rebuild while
+extending route coverage (stale `req.user_ctx` reused across calls
+through a wrapped route, wrong clock basis for grant/window creation in
+tests, the test's own `httpd_req_recv` mock destructively draining
+`g_request_body` on reuse) -- all fixed in test code only. Full host
+suite: **108/108**. `cppcheck` and `check_arch_invariants.sh` both clean.
+Real `idf.py build` production profile: 1207/1207. `test/target` build
+(the CI job the third defect above was caught by): clean after the fix,
+OTA slot size check PASSED (66% usage).
+
+**Honest, named limits**: no physical-presence-gated route
+(`auth/password`, `provisioning/enroll`, `factory-reset/operations`) was
+exercised end-to-end over a real HTTPS request against the real device
+this round -- only the button-to-grant half of the chain was HIL-verified;
+the route-side consumption of a button-created grant is host-test-covered
+(mocked `hal_button`) but not HIL-exercised. The debounce constants (50ms
+poll, 3 consecutive reads) were chosen from general mechanical-switch
+bounce characteristics, not measured against this specific button/board
+with an oscilloscope -- the real press test confirms they work in
+practice (one clean event, no double-fire) but does not establish a
+safety margin against a worse-bouncing unit. Certificate rotation (#12)
+remains the one fully-deferred item in this cluster; see Section 2.13's
+own recon notes.
+
+Evidence: `implementation-evidence/S6-physical-presence-button-wiring-completion.json`.
+
 ## 3. What is explicitly deferred
 
 Every other S6 required change remains unimplemented -- these four
@@ -1253,31 +1528,29 @@ consumer (no enrollment flow reads the provisioning secret; no request
 handler gates behavior on the commissioning window being active) -- that
 wiring is deferred to the sub-slices below that actually need it.
 
-- **HTTPS and sessions, remainder** (#12, #17 partial): authenticated
-  physical-presence-protected certificate rotation (#12), and 4 of #17's 7
-  authentication routes (`provisioning/enroll`, `auth/password`,
-  certificate rotation, factory-reset) -- all still blocked on the
-  "Authorization and physical presence" cluster's own remaining half
-  (physical-presence grants, #20-#22, which need a GPIO/button HAL that
-  does not exist yet). #17's other 3 routes (login/logout/session) are now
-  done -- Section 2.11. Every other "HTTPS and sessions" item (#7, #9,
-  #10, #11, #13-#16) is implemented -- #8 in its scoped,
-  local-self-consistency form only (Section 2.9's own text is explicit
-  that this is not the same guarantee as fleet-wide duplicate-enrollment
-  detection, which remains out of reach without a manufacturing backend
-  this project does not have). Sections 2.6-2.10 still have no
-  *automatic* production provisioning pipeline -- the HIL session's real
-  certificate (Section 2.10's own addendum) was loaded by a one-off manual
-  exercise onto one specific test device, not a repeatable flow any real
-  device goes through; Section 2.9's manufacturing-record gate is
-  similarly still never satisfied by anything automatic.
+- **HTTPS and sessions, remainder** (#12 only now): authenticated
+  physical-presence-protected certificate rotation. All 7 of #17's
+  routes are now built and wired -- Sections 2.11/2.13/2.14 -- only
+  `POST /api/v1/security/certificates/operations` (the certificate-
+  rotation route itself, #12's own FD-17 machinery) remains, and is the
+  one item shared between this cluster and "Authorization and physical
+  presence" below. Every other "HTTPS and sessions" item (#7, #9, #10,
+  #11, #13-#16) is implemented -- #8 in its scoped, local-self-consistency
+  form only (Section 2.9's own text is explicit that this is not the
+  same guarantee as fleet-wide duplicate-enrollment detection, which
+  remains out of reach without a manufacturing backend this project does
+  not have). Sections 2.6-2.10 still have no *automatic* production
+  provisioning pipeline -- the HIL session's real certificate (Section
+  2.10's own addendum) was loaded by a one-off manual exercise onto one
+  specific test device, not a repeatable flow any real device goes
+  through; Section 2.9's manufacturing-record gate is similarly still
+  never satisfied by anything automatic.
 - **Authorization and physical presence** (#18-#23): #18 (capability set),
-  #19 (central authorization middleware) and #23 (non-leaky errors) are
-  now done -- Section 2.11. Physical-presence grants (#20-#22) and
-  factory-reset policy validation remain -- both need a GPIO/button HAL
-  this repository does not have yet, though real hardware is now
-  available to HIL-test that HAL once it exists (see memory
-  esp32c6-hardware-available.md).
+  #19 (central authorization middleware), #20/#21 (the grant primitive +
+  real GPIO/button HAL, now wired and HIL-confirmed), #22 (factory-reset
+  PoP policy) and #23 (non-leaky errors) are all now done -- Sections
+  2.11-2.14. Certificate rotation itself (shared with the cluster above)
+  is the one remaining item in this cluster.
 - **Strict request parsing** (#24-#27): the `cJSON`-backed
   `StrictJsonObjectReader`, per-command schema validation, fuzz corpus.
 - **Rate limiting and audit** (#28-#31): the rate limiter itself, the

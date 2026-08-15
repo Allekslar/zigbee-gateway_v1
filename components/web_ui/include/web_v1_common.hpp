@@ -33,6 +33,13 @@ enum class ApiV1ErrorCode : uint8_t {
     // Plan #15/#23: session is valid, but a state-changing request's CSRF
     // token or Origin header did not check out.
     kCsrfOrOriginInvalid,     // 403
+    // Plan #20/#21: no valid, matching, unconsumed physical-presence
+    // grant exists for this session/action class.
+    kPhysicalPresenceRequired,  // 403
+    // Plan #17's `provisioning/enroll` (commissioning mode not active) or
+    // `auth/password`/`provisioning/enroll` (submitted proof-of-
+    // possession/current-password did not match).
+    kProvisioningNotActive,     // 409
 };
 
 const char* api_v1_error_token(ApiV1ErrorCode code) noexcept;

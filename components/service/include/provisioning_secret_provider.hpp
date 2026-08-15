@@ -74,4 +74,20 @@ enum class ProvisioningSecretStatus : uint8_t {
 // reasoning).
 ProvisioningSecretStatus provisioning_secret_provider_get(ProvisioningSecret* out) noexcept;
 
+// Plan S6 "Authorization and physical presence" #17's `POST
+// /api/v1/provisioning/enroll` ("proof of possession") and #22's factory-
+// reset "fresh manufacturing PoP challenge" both need to compare a
+// caller-submitted candidate against `expected` -- this is that
+// comparison, constant-time (never short-circuits on the first
+// mismatched byte), matching admin_verifier.cpp's own password-hash
+// comparison discipline and session_security_policy.cpp's CSRF-token
+// comparison discipline (each module owns its own small compare rather
+// than sharing one, the established convention here). False (not a
+// match) if the lengths differ at all -- a length mismatch is decided
+// before entering the constant-time loop, matching how a HMAC/hash
+// comparison of two different-length inputs is never meaningfully
+// "close" in the first place.
+bool provisioning_secret_matches(
+    const ProvisioningSecret& expected, const uint8_t* candidate_bytes, uint32_t candidate_len) noexcept;
+
 }  // namespace service

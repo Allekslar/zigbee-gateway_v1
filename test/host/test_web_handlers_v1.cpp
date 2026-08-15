@@ -119,11 +119,17 @@ int main() {
 
     std::atomic<uint32_t> next_id{1};
     service::SessionStoreState session_store_state{};
+    service::PhysicalPresenceGrantState physical_presence_state{};
+    service::CommissioningWindowState commissioning_window_state{};
+    service::ProvisioningSecret provisioning_secret_state{};
     web_ui::WebRouteContext route_ctx{};
     route_ctx.runtime = &runtime;
     route_ctx.next_correlation_id = &next_id;
     route_ctx.sessions = &session_store_state;
     route_ctx.expected_origin = "https://zigbee-gateway-test.local";
+    route_ctx.physical_presence = &physical_presence_state;
+    route_ctx.commissioning_window = &commissioning_window_state;
+    route_ctx.provisioning_secret = &provisioning_secret_state;
 
     httpd_req_t req{};
     req.user_ctx = &route_ctx;

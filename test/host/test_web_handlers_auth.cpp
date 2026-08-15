@@ -139,19 +139,31 @@ int main() {
 
     std::atomic<uint32_t> next_id{1};
     service::SessionStoreState sessions{};
+    service::PhysicalPresenceGrantState physical_presence{};
+    service::CommissioningWindowState commissioning_window{};
+    service::ProvisioningSecret provisioning_secret{};
     web_ui::WebRouteContext context{};
     context.runtime = &runtime;
     context.next_correlation_id = &next_id;
     context.sessions = &sessions;
     context.expected_origin = "https://zigbee-gateway-test.local";
+    context.physical_presence = &physical_presence;
+    context.commissioning_window = &commissioning_window;
+    context.provisioning_secret = &provisioning_secret;
 
     assert(web_ui::register_auth_routes_v1(reinterpret_cast<void*>(1), &context));
     const CapturedRoute* login = find_captured("/api/v1/auth/login", HTTP_POST);
     const CapturedRoute* logout = find_captured("/api/v1/auth/logout", HTTP_POST);
     const CapturedRoute* session_get = find_captured("/api/v1/auth/session", HTTP_GET);
+    const CapturedRoute* password = find_captured("/api/v1/auth/password", HTTP_POST);
+    const CapturedRoute* enroll = find_captured("/api/v1/provisioning/enroll", HTTP_POST);
+    const CapturedRoute* factory_reset = find_captured("/api/v1/system/factory-reset/operations", HTTP_POST);
     assert(login != nullptr && login->handler != nullptr);
     assert(logout != nullptr && logout->handler != nullptr);
     assert(session_get != nullptr && session_get->handler != nullptr);
+    assert(password != nullptr && password->handler != nullptr);
+    assert(enroll != nullptr && enroll->handler != nullptr);
+    assert(factory_reset != nullptr && factory_reset->handler != nullptr);
 
     // --- Bad-argument rejection at registration time. ---
     assert(!web_ui::register_auth_routes_v1(nullptr, &context));
@@ -265,6 +277,183 @@ int main() {
         const std::size_t value_end = g_last_response.find('"', value_start);
         csrf_token_hex = g_last_response.substr(value_start, value_end - value_start);
         assert(csrf_token_hex.size() == service::kCsrfTokenHexChars);
+    }
+
+    // --- POST /api/v1/auth/password: wrapped mutation-grade, plus
+    // current-credential and physical-presence checks of its own. ---
+    {
+        const std::string cookie_header = "zgw_session=" + session_id_hex;
+        httpd_req_t req{};
+        req.user_ctx = password->user_ctx;
+        req.method = HTTP_POST;
+        req.mock_cookie_header = cookie_header.c_str();
+        req.mock_csrf_header = csrf_token_hex.c_str();
+        req.mock_origin_header = context.expected_origin;
+
+        // Wrong current password -> 401, and the (still nonexistent)
+        // physical-presence grant is never even consulted -- next
+        // assertion confirms a *correct* attempt still needs a grant.
+        g_request_body = "{\"current_password\":\"nope\",\"new_password\":\"new password here\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(password->handler(&req) == ESP_OK);
+        assert(g_last_status == "401 Unauthorized");
+
+        // Correct current password, but no physical-presence grant yet
+        // (nothing in this repository creates one -- see
+        // web_handlers_auth.cpp's own top-of-file comment) -> 403. The
+        // wrapper's own trampoline overwrites req.user_ctx with the real
+        // WebRouteContext* on every ALLOWED pass (see
+        // web_route_auth_dispatch.cpp) regardless of what the real
+        // handler itself decides afterward -- req.user_ctx must be reset
+        // to the wrapper's own binding (password->user_ctx) before every
+        // subsequent call through this same wrapped route reusing `req`.
+        req.user_ctx = password->user_ctx;
+        g_request_body =
+            "{\"current_password\":\"correct horse battery staple\",\"new_password\":\"new password here\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(password->handler(&req) == ESP_OK);
+        assert(g_last_status == "403 Forbidden");
+        assert(g_last_response.find("physical_presence_required") != std::string::npos);
+
+        // Simulate what a future button-press wiring would do: create a
+        // grant for exactly this session/action-class, then retry. Must
+        // use hal_time_now_ms() -- the same real monotonic clock basis
+        // the handler itself checks against, not an arbitrary fixed
+        // value (which would appear either already-expired or, if the
+        // real clock reads less than it, "created in the future" and
+        // rejected by the clock-goes-backward guard).
+        service::physical_presence_grant_create(
+            &physical_presence, service::PhysicalPresenceActionClass::kAdminPasswordChange, session_id_hex.c_str(),
+            hal_time_now_ms());
+        req.user_ctx = password->user_ctx;
+        g_request_body =
+            "{\"current_password\":\"correct horse battery staple\",\"new_password\":\"new password here\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(password->handler(&req) == ESP_OK);
+        assert(g_last_status.empty());
+
+        // The new password actually took effect, and the grant was
+        // consumed (a second, otherwise-identical attempt is rejected
+        // again for lack of a grant).
+        service::AdminVerifierRecord updated_record{};
+        assert(service::get_stored_admin_verifier(&updated_record) == service::SecureStorageStatus::kAvailable);
+        assert(service::verify_admin_password("new password here", updated_record));
+        assert(!service::verify_admin_password("correct horse battery staple", updated_record));
+
+        req.user_ctx = password->user_ctx;
+        g_request_body = "{\"current_password\":\"new password here\",\"new_password\":\"yet another one\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(password->handler(&req) == ESP_OK);
+        assert(g_last_status == "403 Forbidden");
+    }
+
+    // --- POST /api/v1/provisioning/enroll: NOT wrapped (no session
+    // exists yet) -- gated on commissioning-mode-active, proof of
+    // possession, and physical presence, all checked directly. ---
+    {
+        httpd_req_t req{};
+        req.user_ctx = enroll->user_ctx;
+        req.method = HTTP_POST;
+        g_request_body = "{\"proof_of_possession\":\"deadbeef\",\"admin_password\":\"a whole new admin\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+
+        // Commissioning window not active -> 409, before the body is
+        // even inspected for content correctness.
+        clear_http_capture();
+        assert(enroll->handler(&req) == ESP_OK);
+        assert(g_last_status == "409 Conflict");
+        assert(g_last_response.find("provisioning_not_active") != std::string::npos);
+
+        service::commissioning_window_start(
+            &commissioning_window, service::CommissioningWindowTrigger::kFirstBootPolicy, hal_time_now_ms());
+
+        // Commissioning active, but the real provisioning secret ("")
+        // never matches the submitted "deadbeef" -> 401. read_request_
+        // body()'s host mock DESTRUCTIVELY drains g_request_body as it
+        // reads (see httpd_req_recv's own mock above) -- it must be
+        // reassigned before every call that reaches the body-read step,
+        // not just once at the top of this block.
+        g_request_body = "{\"proof_of_possession\":\"deadbeef\",\"admin_password\":\"a whole new admin\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(enroll->handler(&req) == ESP_OK);
+        assert(g_last_status == "401 Unauthorized");
+
+        // Set the real expected secret to match what the request submits.
+        provisioning_secret.bytes[0] = 0xDE;
+        provisioning_secret.bytes[1] = 0xAD;
+        provisioning_secret.bytes[2] = 0xBE;
+        provisioning_secret.bytes[3] = 0xEF;
+        provisioning_secret.len = 4U;
+
+        // Correct PoP now, but no physical-presence grant -> 403.
+        g_request_body = "{\"proof_of_possession\":\"deadbeef\",\"admin_password\":\"a whole new admin\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(enroll->handler(&req) == ESP_OK);
+        assert(g_last_status == "403 Forbidden");
+
+        // A real button-press grant, session-less (enroll has no session
+        // yet) -> success. The commissioning window closes early (plan
+        // #3's own text) and the admin credential is really overwritten.
+        service::physical_presence_grant_create(
+            &physical_presence, service::PhysicalPresenceActionClass::kProvisioningEnroll, nullptr,
+            hal_time_now_ms());
+        g_request_body = "{\"proof_of_possession\":\"deadbeef\",\"admin_password\":\"a whole new admin\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(enroll->handler(&req) == ESP_OK);
+        assert(g_last_status.empty());
+        assert(!service::commissioning_window_is_active(commissioning_window, hal_time_now_ms()));
+
+        service::AdminVerifierRecord enrolled_record{};
+        assert(service::get_stored_admin_verifier(&enrolled_record) == service::SecureStorageStatus::kAvailable);
+        assert(service::verify_admin_password("a whole new admin", enrolled_record));
+    }
+
+    // --- POST /api/v1/system/factory-reset/operations: wrapped
+    // mutation-grade, plus PoP and physical-presence checks of its own.
+    // Always ends in capability_unavailable (S8 not built) once policy
+    // checks pass -- the plan's own named stub outcome, not a failure. ---
+    {
+        const std::string cookie_header = "zgw_session=" + session_id_hex;
+        httpd_req_t req{};
+        req.user_ctx = factory_reset->user_ctx;
+        req.method = HTTP_POST;
+        req.mock_cookie_header = cookie_header.c_str();
+        req.mock_csrf_header = csrf_token_hex.c_str();
+        req.mock_origin_header = context.expected_origin;
+
+        g_request_body = "{\"proof_of_possession\":\"00\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(factory_reset->handler(&req) == ESP_OK);
+        assert(g_last_status == "401 Unauthorized");
+
+        // Reset req.user_ctx to the wrapper's own binding before every
+        // subsequent call -- see the auth/password test block's own
+        // comment for why this is load-bearing, not defensive noise.
+        req.user_ctx = factory_reset->user_ctx;
+        g_request_body = "{\"proof_of_possession\":\"deadbeef\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(factory_reset->handler(&req) == ESP_OK);
+        assert(g_last_status == "403 Forbidden");
+
+        service::physical_presence_grant_create(
+            &physical_presence, service::PhysicalPresenceActionClass::kFactoryReset, session_id_hex.c_str(),
+            hal_time_now_ms());
+        req.user_ctx = factory_reset->user_ctx;
+        g_request_body = "{\"proof_of_possession\":\"deadbeef\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(factory_reset->handler(&req) == ESP_OK);
+        assert(g_last_status == "503 Service Unavailable");
+        assert(g_last_response.find("capability_unavailable") != std::string::npos);
     }
 
     // --- POST /api/v1/auth/logout: wrapped mutation-grade -- needs

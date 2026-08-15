@@ -275,6 +275,19 @@ config ZGW_AUDIT_RING_RECORDS
     range 32 128
     default 128
 
+config ZGW_PHYSICAL_PRESENCE_BUTTON_GPIO
+    int "Physical-presence trusted button GPIO"
+    range 0 30
+    default 9
+    help
+        GPIO reporting the trusted physical-presence button state (plan
+        S6 "Authorization and physical presence" #21). Default 9 matches
+        the BOOT button on the ESP32-C6-DevKitC-1 reference board this
+        project targets -- confirmed via Espressif's own official
+        documentation: GPIO9 is a strapping pin only during power-up/
+        reset, safely readable as an ordinary active-low input
+        afterward (see components/app_hal/hal_button.c).
+
 endmenu
 
 endmenu

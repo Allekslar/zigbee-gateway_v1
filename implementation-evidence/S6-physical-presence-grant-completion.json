@@ -1,0 +1,81 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S6-physical-presence-grant-completion",
+  "stage_name": "S6 \"Authorization and physical presence\" -- the physical-presence grant primitive itself (plan #20's action-class list, #21's grant state machine) and its real GPIO/button HAL source. Deliberately NOT wired into any real caller yet.",
+  "input_commit_sha": "07264b3e643681f5b153bbaa45c1b5d6a3b69da3",
+  "output_commit_sha": "07264b3e643681f5b153bbaa45c1b5d6a3b69da3",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. Builds directly on the same-session S6-authorization-basic-completion.json sub-slice (capability/middleware/login-logout-session), itself not yet committed either.",
+  "sequencing_note": "User was shown the full remaining scope of 'Authorization and physical presence' (#17's 4 remaining routes + #20-23) and explicitly chose to scope this pass down to only #20/#21 -- the grant primitive alone, via AskUserQuestion, picking the recommended option over 'grant + auth/password' (a first real route) and 'go straight to HIL' (test the real button immediately). No route wiring, no HIL exercise, and no auth/password route were built this round -- all three are the natural next sub-slices, in that order or another the user picks.",
+  "design_decisions": [
+    {
+      "decision": "hal_button_is_pressed() is a raw, instantaneous GPIO level read -- no debounce, no edge-detection, no 'trusted event' semantics of its own.",
+      "why": "commissioning_window.hpp's own header already establishes the precedent this project follows for this exact situation: 'a caller with a real button interrupt/task would call commissioning_window_start() with kTrustedButtonAction once it has one' -- that caller/task does not exist yet for either grant, so building debounce logic now, with nothing real driving it, would be speculative. The HAL's contract is deliberately narrow and honest: 'is the pin low right now', nothing more."
+    },
+    {
+      "decision": "GPIO9 (the real ESP32-C6-DevKitC-1 BOOT button) as the Kconfig default, confirmed via Espressif's own official user-guide documentation before writing any code, not assumed from general ESP32 convention.",
+      "why": "This project's own established discipline: ground every hardware fact against a real source, not memory. WebSearch confirmed GPIO9 is a strapping pin only during power-up/reset and is safely readable as an ordinary active-low input afterward -- both facts this design depends on. SOC_GPIO_PIN_COUNT=31 for ESP32-C6 (checked in the real espressif/idf:release-v5.5 image's soc_caps.h) grounds the Kconfig range 0-30, not an arbitrary bound.",
+      "sources": [
+        "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c6/esp32-c6-devkitc-1/user_guide.html",
+        "https://esp32.co.uk/esp32-c6-devkitc-1-pinout-diagram-safe-gpios-v1-2/"
+      ]
+    },
+    {
+      "decision": "PhysicalPresenceGrantState is bound to all three dimensions plan #21 names (boot, session, action class) simultaneously, not just one or two.",
+      "why": "Read literally: 'is bound to gateway boot/session/action class' -- boot binding is free (RAM-only storage, same trick session_store.hpp/commissioning_window.hpp already use), session binding is an explicit char[] compare (empty/null on both sides counts as a deliberate 'not session-scoped' match, not a bypass), action-class binding is an explicit enum compare. All three must hold for physical_presence_grant_is_valid()/_consume() to succeed."
+    },
+    {
+      "decision": "A second physical_presence_grant_create() call REPLACES rather than rejects an already-active grant.",
+      "why": "The plan names no 'already active' error case for this grant, exactly the same textual gap commissioning_window_start()'s own doc comment already identified and resolved the same way for its own analogous case -- consistency with an established, already-user-facing precedent in the same codebase, not a new judgment call invented from nothing."
+    }
+  ],
+  "changed_files": {
+    "new": [
+      "components/app_hal/include/hal_button.h",
+      "components/app_hal/hal_button.c",
+      "components/app_hal/include/hal_button_test.h",
+      "components/service/include/physical_presence_grant.hpp",
+      "components/service/physical_presence_grant.cpp",
+      "test/host/test_hal_button.cpp",
+      "test/host/test_physical_presence_grant.cpp"
+    ],
+    "modified": [
+      "main/Kconfig.projbuild (new CONFIG_ZGW_PHYSICAL_PRESENCE_BUTTON_GPIO int, default 9, range 0-30, inside the existing 'Security' submenu)",
+      "components/app_hal/CMakeLists.txt, components/service/CMakeLists.txt, test/host/CMakeLists.txt (new source files wired into both the real ESP-IDF component build and the host test build; test_hal_button links only app_hal_host, the first host test to do so without also linking service_host, so it sets SERVICE_RUNTIME_TEST_HOOKS=1 itself rather than inheriting it transitively)"
+    ]
+  },
+  "real_defects_found_this_sub_slice": [],
+  "tests_and_checks": [
+    {
+      "check": "New host tests",
+      "detail": "test_hal_button.cpp (3 assertions: fail-closed default, mock set/read round-trip both states). test_physical_presence_grant.cpp (19 assertions across 10 scenarios: boot-fresh state has no grant, immediate validity after create, wrong action class, wrong session, session-less grant matching both nullptr and \"\" but not a real session, exactly-before/exactly-at the 60-second boundary, clock-goes-backward guard, one-time consume() semantics including a failed consume() not disturbing a still-valid grant, create() replacing rather than stacking, null-pointer rejection on every function)."
+    },
+    {
+      "check": "Full host suite",
+      "result": "108/108 passing (106 pre-existing including the same-session authorization sub-slice + 2 new test executables)."
+    },
+    {
+      "check": "cppcheck --enable=warning,style,performance,portability --error-exitcode=1",
+      "result": "Zero findings against both new C++ /C files."
+    },
+    {
+      "check": "check_arch_invariants.sh",
+      "result": "high=0, medium=0, low=0, suppressed=0."
+    },
+    {
+      "check": "Real idf.py build, development profile",
+      "result": "PASS, 1204/1204 steps -- confirmed hal_button.c.obj and physical_presence_grant.cpp.obj both actually compiled (grepped the build log directly, not just trusted the final step count) against the real ESP32-C6 target, including the real driver/gpio.h gpio_config()/gpio_get_level() calls."
+    },
+    {
+      "check": "Real idf.py build, production profile",
+      "result": "NOT re-run this round -- this sub-slice adds no CONFIG_ZGW_PRODUCTION_PROFILE-gated code at all (hal_button.c/physical_presence_grant.cpp compile identically in both profiles), so the dev-profile build is sufficient evidence; the immediately-prior sub-slice in this same session already confirmed the production profile builds clean with everything else this one is layered on top of."
+    }
+  ],
+  "honest_scope_boundary": [
+    "Nothing calls hal_button_is_pressed() or any physical_presence_grant_* function yet -- no debounce/edge-detection task exists, no route requires a grant, and plan #20's own 7 named action classes (join/remove/Wi-Fi/cert-rotation/OTA/RCP/factory-reset) are not gated on anything from this sub-slice. This is deliberate and matches the user's own explicit scope choice, not an oversight.",
+    "No HIL exercise of the real GPIO9 read this round, despite real ESP32-C6 hardware being available and connected -- also an explicit user choice (the 'go straight to HIL' option was offered and not picked). The real gpio_config()/gpio_get_level() calls are confirmed to compile and link against the real target; whether the real BOOT button actually reads correctly on the connected board is unverified.",
+    "No debounce policy chosen or implemented -- a real button press will bounce (multiple rapid level transitions) in real hardware; the eventual caller that turns hal_button_is_pressed() into a single 'trusted event' will need to decide one (a simple hold-time/sustained-read check is the most likely fit, matching this HAL's own 'raw read only' framing)."
+  ],
+  "unresolved_deviations": [],
+  "unresolved_blockers": [],
+  "releaseability": "Pure, additive, unwired groundwork -- no existing behavior changed, no new production code path is reachable yet. Real ESP-IDF compile/link confirmed; real hardware confirmation of the actual GPIO read deferred to a future HIL round by explicit user choice. No live production deployment yet (see memory project-not-yet-in-production.md)."
+}

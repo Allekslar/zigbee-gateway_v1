@@ -77,6 +77,7 @@ set(SERVICE_SOURCES
     ../../components/service/gateway_identity_verification.cpp
     ../../components/service/capability.cpp
     ../../components/service/route_authorization.cpp
+    ../../components/service/physical_presence_grant.cpp
     ../../components/service/tuya_fingerprint.cpp
     ../../components/service/tuya_dp_parser.cpp
     ../../components/service/tuya_contact_sensor_plugin.cpp
@@ -93,6 +94,7 @@ set(APP_HAL_SOURCES
     ../../components/app_hal/hal_random.c
     ../../components/app_hal/hal_time.c
     ../../components/app_hal/hal_tls_certificate_validator.c
+    ../../components/app_hal/hal_button.c
     ../../components/app_hal/hal_led.c
     ../../components/app_hal/hal_matter.c
     ../../components/app_hal/hal_nvs.c
@@ -287,6 +289,17 @@ add_executable(test_web_handlers_auth test_web_handlers_auth.cpp)
 target_link_libraries(test_web_handlers_auth PRIVATE service_host web_ui_host)
 zg_apply_component_compile_policy(test_web_handlers_auth)
 add_test(NAME test_web_handlers_auth COMMAND test_web_handlers_auth)
+
+add_executable(test_hal_button test_hal_button.cpp)
+target_link_libraries(test_hal_button PRIVATE app_hal_host)
+target_compile_definitions(test_hal_button PRIVATE SERVICE_RUNTIME_TEST_HOOKS=1)
+zg_apply_component_compile_policy(test_hal_button)
+add_test(NAME test_hal_button COMMAND test_hal_button)
+
+add_executable(test_physical_presence_grant test_physical_presence_grant.cpp)
+target_link_libraries(test_physical_presence_grant PRIVATE service_host)
+zg_apply_component_compile_policy(test_physical_presence_grant)
+add_test(NAME test_physical_presence_grant COMMAND test_physical_presence_grant)
 
 add_executable(test_hal_tls_certificate_validator test_hal_tls_certificate_validator.cpp)
 target_link_libraries(test_hal_tls_certificate_validator PRIVATE service_host)
