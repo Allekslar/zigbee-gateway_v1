@@ -6,6 +6,9 @@
 #include <atomic>
 #include <cstdint>
 
+#include "commissioning_window.hpp"
+#include "physical_presence_grant.hpp"
+#include "provisioning_secret_provider.hpp"
 #include "session_store.hpp"
 
 namespace service {
@@ -28,6 +31,31 @@ struct WebRouteContext {
     // check needs it on every mutation request. Owned by WebServer as a
     // fixed buffer, never null once WebServer::start() has run.
     const char* expected_origin{nullptr};
+    // Plan #20/#21: the one live physical-presence grant state every
+    // consuming route (auth/password, provisioning/enroll, certificate
+    // rotation, factory-reset) reads/consumes. Owned by WebServer. Nothing
+    // creates a grant in it yet (no button-debounce task exists) -- every
+    // consuming route therefore fails closed today, honestly, matching
+    // this project's own established "consumer built and wired against a
+    // real primitive before the primitive's own upstream input exists"
+    // precedent (e.g. Section 2.10's TLS validation before any real
+    // certificate existed).
+    service::PhysicalPresenceGrantState* physical_presence{nullptr};
+    // Plan #3's commissioning window, auto-started by WebServer::start()
+    // when commissioning_window_first_boot_policy_applies() (no admin
+    // credential exists yet). `provisioning/enroll` is the one real
+    // consumer of commissioning_window_is_active().
+    service::CommissioningWindowState* commissioning_window{nullptr};
+    // The manufacturing/development proof-of-possession value
+    // `provisioning/enroll` and the factory-reset PoP challenge (#22)
+    // both compare a caller-submitted candidate against, via
+    // provisioning_secret_provider_matches(). Cached ONCE by
+    // WebServer::start() (not re-fetched per request) specifically
+    // because the development adapter regenerates a fresh value on every
+    // call -- caching is what makes a real challenge/response actually
+    // possible in development mode, where the value is logged once at
+    // that same call site for an installer to read.
+    const service::ProvisioningSecret* provisioning_secret{nullptr};
 };
 
 bool register_web_routes(void* server_handle, WebRouteContext* context) noexcept;

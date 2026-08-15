@@ -97,4 +97,17 @@ ProvisioningSecretStatus provisioning_secret_provider_get(ProvisioningSecret* ou
 #endif
 }
 
+bool provisioning_secret_matches(
+    const ProvisioningSecret& expected, const uint8_t* candidate_bytes, uint32_t candidate_len) noexcept {
+    if (candidate_bytes == nullptr || candidate_len != expected.len || candidate_len == 0U) {
+        return false;
+    }
+
+    uint8_t diff = 0U;
+    for (uint32_t i = 0; i < candidate_len; ++i) {
+        diff = static_cast<uint8_t>(diff | (expected.bytes[i] ^ candidate_bytes[i]));
+    }
+    return diff == 0U;
+}
+
 }  // namespace service

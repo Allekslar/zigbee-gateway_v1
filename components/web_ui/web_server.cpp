@@ -10,7 +10,10 @@
 #include "esp_http_server.h"
 #include "esp_https_server.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "gateway_id.hpp"
+#include "hal_button.h"
+#include "hal_time.h"
 #include "hal_tls_certificate_validator.h"
 #include "provisioning_secrets.hpp"
 #include "secure_storage_port.hpp"
@@ -97,8 +100,23 @@ constexpr uint32_t kMaxCertOrKeyBytes = 4096U;
 httpd_config_t build_base_httpd_config() noexcept {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
-    // Keep headroom for future API additions.
-    config.max_uri_handlers = 24;
+    // Real bug found only by booting on real ESP32-C6 hardware (neither
+    // the host httpd mock -- which always accepts a registration
+    // unconditionally -- nor compile/link verification can catch a
+    // runtime resource-limit exhaustion like this one): production now
+    // registers BOTH the 24 legacy (register_web_routes()) AND 20 v1
+    // (register_web_routes_v1(), plan #17/#18/#19/#20/#21/#23's own auth
+    // routes included) handlers on the SAME httpd instance -- 44 total,
+    // comfortably over the old value of 24. `httpd_register_uri_handler()`
+    // failed silently on the real device ("no slots left for registering
+    // handler"), which this project's own fail-closed convention then
+    // correctly turned into "Web server start failed" rather than serving
+    // a partially-registered API -- the right failure mode, but for the
+    // wrong reason (a real capacity bug, not a real certificate/policy
+    // failure). 56 leaves real headroom (12 slots) for near-future routes
+    // (certificate rotation, #12) without needing another HIL round to
+    // catch the same class of bug again.
+    config.max_uri_handlers = 56;
     // Keep the HTTPD socket ceiling modest so MQTT and other system paths
     // still retain headroom in the tiny ESP32-C6 socket budget.
     config.max_open_sockets = 4;
@@ -125,6 +143,64 @@ httpd_config_t build_base_httpd_config() noexcept {
 }
 
 #if defined(CONFIG_ZGW_PRODUCTION_PROFILE) && CONFIG_ZGW_PRODUCTION_PROFILE
+// Plan S6 "Authorization and physical presence" #21: "Grant is created
+// only from trusted GPIO/button event..." -- the real debounce/edge-
+// detection this project's own physical_presence_grant.hpp/hal_button.h
+// headers both named as separate, not-yet-built work when those modules
+// were first written. This is that work: a periodic `esp_timer` callback
+// polling hal_button_is_pressed() (raw GPIO9 BOOT-button level, active-
+// low) every kButtonPollIntervalUs, requiring
+// kButtonDebounceConsecutivePolls consecutive "pressed" reads (real
+// mechanical button bounce is on the order of a few ms to a few tens of
+// ms; ~150ms of sustained level is comfortably past that without making
+// a real press feel unresponsive) before treating it as one discrete
+// trusted event. `armed` requires a full release-then-press cycle before
+// creating another grant -- holding the button down does not repeatedly
+// re-arm (harmless either way, since create_from_button() only ever
+// replaces, but a single clean event per physical press is the more
+// honest, unsurprising contract).
+//
+// A periodic esp_timer callback, not a dedicated FreeRTOS task: found
+// via real hardware boot testing that a NEW ~3KB-stack task pushed this
+// device's already-tight post-boot heap (MQTT client init alone consumes
+// roughly 17KB, confirmed via a real heap_caps_get_largest_free_block()
+// reading taken right before/after it) past the point where the
+// pre-existing deferred-Zigbee-start task could still find a large
+// enough contiguous block for ITS OWN stack -- a real, on-device-only
+// regression no host test or compile check could have caught.
+// esp_timer's own dispatch task already exists for the whole system
+// (shared with every other esp_timer consumer), so a callback here costs
+// no new stack at all -- only this file's own small state (defined
+// below), which is a few bytes.
+constexpr uint64_t kButtonPollIntervalUs = 50000ULL;  // 50ms
+constexpr uint32_t kButtonDebounceConsecutivePolls = 3U;
+constexpr const char* kButtonTimerName = "phys_presence_btn";
+
+void physical_presence_button_poll_callback(void* arg) {
+    // Safe as plain (non-atomic) statics: esp_timer dispatches every
+    // periodic callback from its own single dedicated task, so this
+    // function is never re-entered or called concurrently with itself --
+    // the same single-caller reasoning this project's other function-
+    // local statics already rely on (e.g. state_persistence_coordinator.cpp).
+    static bool s_armed = true;
+    static uint32_t s_consecutive_pressed_polls = 0U;
+
+    auto* state = static_cast<service::PhysicalPresenceGrantState*>(arg);
+    if (hal_button_is_pressed() != 0) {
+        if (s_consecutive_pressed_polls < kButtonDebounceConsecutivePolls) {
+            ++s_consecutive_pressed_polls;
+        }
+        if (s_armed && s_consecutive_pressed_polls >= kButtonDebounceConsecutivePolls) {
+            service::physical_presence_grant_create_from_button(state, hal_time_now_ms());
+            ESP_LOGI(kTag, "Physical presence grant created from a trusted button press");
+            s_armed = false;
+        }
+    } else {
+        s_consecutive_pressed_polls = 0U;
+        s_armed = true;
+    }
+}
+
 bool start_production_https(const common::GatewayId& gateway_id, httpd_handle_t* out_handle) noexcept {
     // `static`, not stack-local: three kMaxCertOrKeyBytes (4096-byte)
     // buffers -- 12KB total -- as ordinary locals overflowed the calling
@@ -239,6 +315,9 @@ WebServer::WebServer(service::ServiceRuntimeApi& runtime) noexcept
     route_context_.next_correlation_id = &next_correlation_id_;
     route_context_.sessions = &session_store_;
     route_context_.expected_origin = expected_origin_;
+    route_context_.physical_presence = &physical_presence_;
+    route_context_.commissioning_window = &commissioning_window_;
+    route_context_.provisioning_secret = &provisioning_secret_;
 }
 
 bool WebServer::start() noexcept {
@@ -267,6 +346,50 @@ bool WebServer::start() noexcept {
         std::snprintf(expected_origin_, sizeof(expected_origin_), "https://%s.local", mdns_host) <= 0) {
         (void)httpd_ssl_stop(handle);
         return false;
+    }
+
+    // Plan #17's `provisioning/enroll` and #22's factory-reset PoP
+    // challenge both compare a caller-submitted candidate against this
+    // value -- fetched exactly ONCE here, not per-request, because the
+    // development adapter (provisioning_secret_provider_get()) generates
+    // and logs a fresh value on every call; calling it once is what makes
+    // "installer reads the logged value, then submits it back" possible
+    // at all (see WebRouteContext's own comment). Production's value is
+    // deterministic either way. A fetch failure is not itself fatal to
+    // starting the listener -- provisioning_secret_ stays default-
+    // constructed (empty), so provisioning_secret_matches() can never
+    // succeed against it, correctly failing closed rather than blocking
+    // every other route this listener serves.
+    (void)service::provisioning_secret_provider_get(&provisioning_secret_);
+
+    // Plan #3's own Migration/compatibility text: "Upgrade boots into
+    // restricted migration mode if no admin credential exists." Starting
+    // the commissioning window here (once, at listener start) is the
+    // real trigger commissioning_window_first_boot_policy_applies() was
+    // always meant to gate -- nothing called it before this.
+    if (service::commissioning_window_first_boot_policy_applies()) {
+        service::commissioning_window_start(
+            &commissioning_window_, service::CommissioningWindowTrigger::kFirstBootPolicy, hal_time_now_ms());
+    }
+
+    // Plan #21: the real trusted-button-event source for every route this
+    // listener registers that consumes a physical-presence grant
+    // (auth/password, provisioning/enroll, factory-reset/operations
+    // today; certificate rotation once it exists). Not fatal to listener
+    // startup if timer creation fails -- every physical-presence-gated
+    // route already fails closed on its own when no grant exists, so a
+    // missing button poller degrades to "that one feature never works"
+    // rather than "the production listener never starts". `static`, not
+    // stack-local: WebServer::start() has exactly one call site (app_main(),
+    // once at boot, same precedent start_production_https()'s own static
+    // buffers above already rely on), and esp_timer_create() itself
+    // requires the handle to remain valid for the timer's whole lifetime.
+    static esp_timer_handle_t s_button_poll_timer = nullptr;
+    const esp_timer_create_args_t button_timer_args = {
+        &physical_presence_button_poll_callback, &physical_presence_, ESP_TIMER_TASK, kButtonTimerName, false};
+    if (esp_timer_create(&button_timer_args, &s_button_poll_timer) != ESP_OK ||
+        esp_timer_start_periodic(s_button_poll_timer, kButtonPollIntervalUs) != ESP_OK) {
+        ESP_LOGE(kTag, "Physical-presence button poll timer setup failed -- button-triggered grants will never work");
     }
 #else
     using_https_ = false;

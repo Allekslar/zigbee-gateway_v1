@@ -47,6 +47,10 @@ const char* api_v1_error_token(ApiV1ErrorCode code) noexcept {
             return "unauthenticated";
         case ApiV1ErrorCode::kCsrfOrOriginInvalid:
             return "csrf_or_origin_invalid";
+        case ApiV1ErrorCode::kPhysicalPresenceRequired:
+            return "physical_presence_required";
+        case ApiV1ErrorCode::kProvisioningNotActive:
+            return "provisioning_not_active";
         default:
             return "internal_error";
     }
@@ -75,7 +79,10 @@ const char* api_v1_error_status(ApiV1ErrorCode code) noexcept {
         case ApiV1ErrorCode::kUnauthenticated:
             return "401 Unauthorized";
         case ApiV1ErrorCode::kCsrfOrOriginInvalid:
+        case ApiV1ErrorCode::kPhysicalPresenceRequired:
             return "403 Forbidden";
+        case ApiV1ErrorCode::kProvisioningNotActive:
+            return "409 Conflict";
         default:
             return "503 Service Unavailable";
     }

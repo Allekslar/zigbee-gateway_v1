@@ -981,7 +981,9 @@ bool register_operations_routes_v1(void* server_handle, WebRouteContext* context
 
 bool register_web_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
     if (server_handle == nullptr || context == nullptr || context->runtime == nullptr ||
-        context->sessions == nullptr || context->expected_origin == nullptr) {
+        context->sessions == nullptr || context->expected_origin == nullptr ||
+        context->physical_presence == nullptr || context->commissioning_window == nullptr ||
+        context->provisioning_secret == nullptr) {
         return false;
     }
 

@@ -1,0 +1,95 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S6-physical-presence-button-wiring-completion",
+  "stage_name": "S6 \"Authorization and physical presence\" -- wiring the real GPIO/button HAL into a live debounce/edge-detection callback in production WebServer::start(), plus binding the grant primitive to the first real caller (auth/password) and building the rest of plan #17's remaining routes (provisioning/enroll, factory-reset/operations stub).",
+  "input_commit_sha": "d171136079e79e8023ff3d1167faf9827a4a8d79",
+  "output_commit_sha": "d171136079e79e8023ff3d1167faf9827a4a8d79",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. Builds directly on the same-session S6-physical-presence-grant-completion.json (grant primitive/HAL, deliberately left unwired) and S6-auth-password-enroll-factory-reset-stub-completion.json (routes, written against the not-yet-wired grant) sub-slices.",
+  "sequencing_note": "User explicitly asked to finish what was started: bind the grant to a real route (auth/password), build the rest of plan #17 (enroll/cert-rotation/factory-reset), then wire the real button-to-grant mechanism end to end and physically verify it on the connected ESP32-C6 -- explicitly authorizing a real physical button press for HIL verification rather than deferring it again. Certificate rotation (plan #12) was scoped out during recon: it needs new client-side mbedtls TLS code, a new persisted multi-boot activation/rollback state machine, and a temporary second local httpd_ssl listener for a bounded handshake self-test -- comparable in size to this entire sub-slice combined and not meaningfully host-testable, so it was explicitly flagged and deferred rather than rushed.",
+  "design_decisions": [
+    {
+      "decision": "A periodic esp_timer callback polling hal_button_is_pressed(), not a dedicated FreeRTOS task.",
+      "why": "The first real-hardware attempt used a dedicated xTaskCreate task (3072-byte stack) and caused a real, on-device-only heap exhaustion regression (see real_defects_found_this_sub_slice). esp_timer callbacks dispatch from the system's own shared esp_timer task, so the poller now costs zero new task stack -- only a few bytes of function-local state."
+    },
+    {
+      "decision": "Debounce: 50ms poll period, 3 consecutive 'pressed' reads (~150ms sustained) before treating a press as one trusted event; an 'armed' flag requires a full release-then-press cycle before re-arming.",
+      "why": "Real mechanical button bounce is on the order of a few ms to a few tens of ms; ~150ms of sustained level is comfortably past that without making a real press feel unresponsive. Holding the button down must not repeatedly fire new grants from one physical press."
+    },
+    {
+      "decision": "physical_presence_grant_create_from_button() creates an 'ambient' grant matching ANY action class and ANY session, rather than trying to guess which of plan #20's 9 action classes or which caller session a single button press was 'for'.",
+      "why": "One GPIO edge carries no information about installer intent. An ambient, WPS-style 'press then act within the window' grant is the only honest model for a single undifferentiated button; it still respects the same 60-second lifetime and one-time consume() semantics as an explicitly-bound grant, and a second create()/create_from_button() call always fully replaces (never merges with) whatever grant existed before."
+    },
+    {
+      "decision": "provisioning_secret_provider_get() is called exactly once, in WebServer::start(), and cached in a new provisioning_secret_ member -- not re-fetched per request.",
+      "why": "The development adapter generates fresh random bytes on every call; fetching once and caching is what makes a real challenge/response flow possible at all (installer reads the value the boot log printed once, submits it back later). A fetch failure leaves the member default-constructed/empty, so provisioning_secret_matches() can never succeed against it -- fails closed, not open."
+    },
+    {
+      "decision": "config.max_uri_handlers raised from 24 to 56, not to some other value.",
+      "why": "The real production route count is 44 (24 legacy + 20 v1, counted directly from register_web_routes()/register_web_routes_v1()) -- 56 gives 12 slots of real headroom for near-future routes (certificate rotation, #12) without needing another HIL round to catch the same class of bug again."
+    },
+    {
+      "decision": "Button poll timer creation failure is logged but not fatal to WebServer::start().",
+      "why": "Every physical-presence-gated route already fails closed on its own when no grant exists (403 kPhysicalPresenceRequired). A missing button poller degrades to 'that one feature never works' rather than taking down the entire production listener over a secondary mechanism."
+    }
+  ],
+  "changed_files": {
+    "modified": [
+      "components/web_ui/web_server.cpp (max_uri_handlers 24->56 with a bug-history comment; physical_presence_button_poll_callback() + esp_timer wiring in the CONFIG_ZGW_PRODUCTION_PROFILE branch of start(); provisioning_secret_ fetched once; commissioning_window_start() now actually invoked on first-boot policy)",
+      "components/web_ui/include/web_server.hpp (WebServer gained physical_presence_, commissioning_window_, provisioning_secret_ members)",
+      "components/web_ui/include/web_routes.hpp (WebRouteContext gained physical_presence/commissioning_window/provisioning_secret pointers)",
+      "components/web_ui/web_handlers_auth.cpp (decode_hex() helper; auth_password_post_handler_v1(), provisioning_enroll_post_handler_v1(), factory_reset_operations_post_handler_v1(); register_auth_routes_v1() now registers all 6 v1 auth routes)",
+      "components/web_ui/include/web_v1_common.hpp, components/web_ui/web_v1_common.cpp (kPhysicalPresenceRequired=403, kProvisioningNotActive=409 error codes + golden-matrix mapping)",
+      "components/service/include/provisioning_secret_provider.hpp, components/service/provisioning_secret_provider.cpp (provisioning_secret_matches() constant-time compare)",
+      "test/host/test_web_handlers_v1.cpp, test/host/test_web_handlers_auth.cpp (fixture extended with physical_presence/commissioning_window/provisioning_secret state; new coverage for auth/password, enroll, factory-reset routes)",
+      "docs/security/CONTROL_PLANE_SECURITY.md (sections 2.11-2.13 added/updated; Section 3 deferred-items list updated)"
+    ]
+  },
+  "real_defects_found_this_sub_slice": [
+    {
+      "defect": "httpd_register_uri_handler: no slots left for registering handler -- production listener failed to start on real hardware.",
+      "root_cause": "config.max_uri_handlers was 24, a value set long before this session's work; the real production route total (legacy register_web_routes() 24 + v1 register_web_routes_v1() 20, this sub-slice's own new auth routes among them) is 44. Neither the host httpd mock (always accepts a registration unconditionally) nor compile/link verification can catch a runtime resource-limit exhaustion like this.",
+      "how_found": "Real idf.py encrypted-flash to the connected ESP32-C6, real serial boot capture -- not simulated or guessed.",
+      "fix": "config.max_uri_handlers raised to 56 (12-slot real headroom over the current 44-route total)."
+    },
+    {
+      "defect": "Deferred Zigbee start task creation failed -- heap exhaustion right before the pre-existing deferred-Zigbee-start xTaskCreate call.",
+      "root_cause": "A new dedicated FreeRTOS task for button polling (3072-byte stack) was added on top of an already-marginal post-boot heap budget (MQTT client init alone consumes roughly 17KB, confirmed via a real heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)/heap_caps_get_free_size(MALLOC_CAP_INTERNAL) reading taken on real hardware, pre-existing and unrelated to this session's changes). Free heap right before the Zigbee task's own xTaskCreate call dropped to ~4500 bytes total / 2240 bytes largest contiguous block, below the 4096 bytes the Zigbee task's own stack needed.",
+      "how_found": "Temporary ESP_LOGW heap diagnostics added to web_server.cpp and main/app_main.cpp on real hardware, comparing against an earlier same-session HIL round where the identical Zigbee task creation succeeded before this sub-slice's button-task code existed. Diagnostics removed via targeted Edit once the fix was confirmed (never via git checkout, to avoid discarding other real uncommitted work in the same files).",
+      "fix": "Replaced the dedicated xTaskCreate button-poll task with a periodic esp_timer callback (dispatches from the shared system esp_timer task, costing zero new task stack). Verified fix: free heap right before Zigbee task creation went from a failing 4500/2240 bytes (total/largest) to a passing 7856/7680 bytes, and the deferred Zigbee task now creates successfully again."
+    }
+  ],
+  "tests_and_checks": [
+    {
+      "check": "Full host suite (ASan+UBSan rebuild after 3 real test-authoring bugs found and fixed: stale req.user_ctx reused across calls through a wrapped route, wrong clock basis for grant/window creation in tests, test's own httpd_req_recv mock destructively draining g_request_body on reuse -- all fixed in test code only, none in production code)",
+      "result": "108/108 passing."
+    },
+    {
+      "check": "check_arch_invariants.sh",
+      "result": "high=0, medium=0, low=0, suppressed=0."
+    },
+    {
+      "check": "cppcheck --enable=warning,style,performance,portability --error-exitcode=1",
+      "result": "Zero findings."
+    },
+    {
+      "check": "Real idf.py build, production profile (CONFIG_ZGW_PRODUCTION_PROFILE=y, Release+SecureBoot bundle)",
+      "result": "PASS, 1207/1207 steps -- confirmed against the real ESP32-C6 target."
+    },
+    {
+      "check": "Real HIL: idf.py encrypted-flash to the connected ESP32-C6-DevKitC-1 (Flash Encryption Development mode, already permanently active on this device from an earlier HIL round -- idf.py correctly refused a first attempt using the full Release+SecureBoot production sdkconfig, recovered by rebuilding with the session-scoped Development-mode-compatible sdkconfig fragment instead; no device impact, the refusal never reached the flash step)",
+      "result": "Flash succeeded. Full boot captured over real serial (DTR/RTS toggle, non-interactive pyserial): production HTTPS listener starts (`max_uri_handlers=56`), commissioning window starts on first-boot policy, provisioning secret fetched once, deferred Zigbee task creates successfully (`started=no`, matching pre-regression baseline, expected since no Wi-Fi credentials are saved on this dev unit), zero panics/crashes throughout boot."
+    },
+    {
+      "check": "Real HIL: physical button press",
+      "result": "PASS. User physically pressed and released the real BOOT button (GPIO9) on the connected board. Real serial capture shows exactly one log line, no bounce/double-fire: `I (1362795) web_server: Physical presence grant created from a trusted button press`, appearing ~23 seconds into the capture window, with no panics or errors around it. This confirms the full chain end to end: GPIO9 electrical level -> hal_button_is_pressed() -> esp_timer debounce callback -> physical_presence_grant_create_from_button() -> log line, on real hardware, from a real physical action, not simulated."
+    }
+  ],
+  "honest_scope_boundary": [
+    "No physical-presence-gated route (auth/password, provisioning/enroll, factory-reset/operations) was exercised end-to-end over a real HTTPS request against the real device this round -- only the grant-creation half of the chain (button -> grant) was verified on hardware. The route-side consumption of a button-created grant is covered by host tests (mocked hal_button) but not by a real HTTPS client request against the flashed device.",
+      "Certificate rotation (plan #12) remains fully deferred -- recon only, no code written, scope explicitly flagged as comparable in size to this whole sub-slice and not meaningfully host-testable (new client-side mbedtls TLS code, a new persisted activation/rollback state machine, a temporary second local httpd_ssl listener).",
+    "The debounce constants (50ms poll, 3 consecutive reads) were chosen from general mechanical-switch bounce characteristics, not measured against this specific button/board's actual bounce profile with an oscilloscope or logic analyzer -- the real HIL press test confirms the chosen values work in practice (single clean event, no double-fire) but does not establish safety margin against a worse-bouncing unit."
+  ],
+  "unresolved_deviations": [],
+  "unresolved_blockers": [],
+  "releaseability": "The physical-presence grant creation path (button -> grant) is now real, wired, and confirmed on real hardware end-to-end including a genuine physical button press. Two real, hardware-only-discoverable defects (URI handler slot exhaustion; heap exhaustion from the button task's own stack) were found and fixed on real hardware, not guessed or assumed. Route-side consumption of the grant is host-test-covered but not yet HIL-exercised over a real HTTPS request. No live production deployment yet (see memory project-not-yet-in-production.md)."
+}
