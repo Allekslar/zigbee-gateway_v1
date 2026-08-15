@@ -22,6 +22,7 @@
 #endif
 #include "service_runtime_api.hpp"
 #include "web_handler_common.hpp"
+#include "web_route_auth_dispatch.hpp"
 #include "web_v1_common.hpp"
 
 namespace web_ui {
@@ -826,7 +827,7 @@ bool register_capabilities_routes_v1(void* server_handle, WebRouteContext* conte
     capabilities_get_uri.handler = capabilities_get_handler_v1;
     capabilities_get_uri.user_ctx = context;
 
-    return httpd_register_uri_handler(static_cast<httpd_handle_t>(server_handle), &capabilities_get_uri) == ESP_OK;
+    return register_authenticated_uri_handler_v1(server_handle, capabilities_get_uri, service::Capability::kReadStatus);
 }
 
 bool register_device_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
@@ -840,7 +841,7 @@ bool register_device_routes_v1(void* server_handle, WebRouteContext* context) no
     devices_get_uri.method = HTTP_GET;
     devices_get_uri.handler = devices_get_handler_v1;
     devices_get_uri.user_ctx = context;
-    if (httpd_register_uri_handler(handle, &devices_get_uri) != ESP_OK) {
+    if (!register_authenticated_uri_handler_v1(handle, devices_get_uri, service::Capability::kReadStatus)) {
         return false;
     }
 
@@ -854,7 +855,7 @@ bool register_device_routes_v1(void* server_handle, WebRouteContext* context) no
     join_window_uri.method = HTTP_POST;
     join_window_uri.handler = device_join_window_post_handler_v1;
     join_window_uri.user_ctx = context;
-    if (httpd_register_uri_handler(handle, &join_window_uri) != ESP_OK) {
+    if (!register_authenticated_uri_handler_v1(handle, join_window_uri, service::Capability::kCommissionDevice)) {
         return false;
     }
 
@@ -863,7 +864,7 @@ bool register_device_routes_v1(void* server_handle, WebRouteContext* context) no
     power_uri.method = HTTP_POST;
     power_uri.handler = device_power_post_handler_v1;
     power_uri.user_ctx = context;
-    if (httpd_register_uri_handler(handle, &power_uri) != ESP_OK) {
+    if (!register_authenticated_uri_handler_v1(handle, power_uri, service::Capability::kControlDevice)) {
         return false;
     }
 
@@ -872,7 +873,7 @@ bool register_device_routes_v1(void* server_handle, WebRouteContext* context) no
     delete_uri.method = HTTP_DELETE;
     delete_uri.handler = device_delete_handler_v1;
     delete_uri.user_ctx = context;
-    if (httpd_register_uri_handler(handle, &delete_uri) != ESP_OK) {
+    if (!register_authenticated_uri_handler_v1(handle, delete_uri, service::Capability::kRemoveDevice)) {
         return false;
     }
 
@@ -881,7 +882,7 @@ bool register_device_routes_v1(void* server_handle, WebRouteContext* context) no
     reporting_put_uri.method = HTTP_PUT;
     reporting_put_uri.handler = device_reporting_put_handler_v1;
     reporting_put_uri.user_ctx = context;
-    return httpd_register_uri_handler(handle, &reporting_put_uri) == ESP_OK;
+    return register_authenticated_uri_handler_v1(handle, reporting_put_uri, service::Capability::kControlDevice);
 }
 
 bool register_network_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
@@ -895,7 +896,7 @@ bool register_network_routes_v1(void* server_handle, WebRouteContext* context) n
     network_get_uri.method = HTTP_GET;
     network_get_uri.handler = network_get_handler_v1;
     network_get_uri.user_ctx = context;
-    if (httpd_register_uri_handler(handle, &network_get_uri) != ESP_OK) {
+    if (!register_authenticated_uri_handler_v1(handle, network_get_uri, service::Capability::kReadStatus)) {
         return false;
     }
 
@@ -904,7 +905,7 @@ bool register_network_routes_v1(void* server_handle, WebRouteContext* context) n
     scans_uri.method = HTTP_POST;
     scans_uri.handler = network_scan_post_handler_v1;
     scans_uri.user_ctx = context;
-    if (httpd_register_uri_handler(handle, &scans_uri) != ESP_OK) {
+    if (!register_authenticated_uri_handler_v1(handle, scans_uri, service::Capability::kManageNetwork)) {
         return false;
     }
 
@@ -913,7 +914,7 @@ bool register_network_routes_v1(void* server_handle, WebRouteContext* context) n
     connections_uri.method = HTTP_POST;
     connections_uri.handler = network_connect_post_handler_v1;
     connections_uri.user_ctx = context;
-    return httpd_register_uri_handler(handle, &connections_uri) == ESP_OK;
+    return register_authenticated_uri_handler_v1(handle, connections_uri, service::Capability::kManageNetwork);
 }
 
 bool register_config_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
@@ -927,7 +928,7 @@ bool register_config_routes_v1(void* server_handle, WebRouteContext* context) no
     config_get_uri.method = HTTP_GET;
     config_get_uri.handler = config_get_handler_v1;
     config_get_uri.user_ctx = context;
-    if (httpd_register_uri_handler(handle, &config_get_uri) != ESP_OK) {
+    if (!register_authenticated_uri_handler_v1(handle, config_get_uri, service::Capability::kReadStatus)) {
         return false;
     }
 
@@ -936,7 +937,7 @@ bool register_config_routes_v1(void* server_handle, WebRouteContext* context) no
     config_patch_uri.method = HTTP_PATCH;
     config_patch_uri.handler = config_patch_handler_v1;
     config_patch_uri.user_ctx = context;
-    return httpd_register_uri_handler(handle, &config_patch_uri) == ESP_OK;
+    return register_authenticated_uri_handler_v1(handle, config_patch_uri, service::Capability::kManageNetwork);
 }
 
 bool register_ota_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
@@ -949,7 +950,7 @@ bool register_ota_routes_v1(void* server_handle, WebRouteContext* context) noexc
     ota_operations_uri.method = HTTP_POST;
     ota_operations_uri.handler = ota_operations_post_handler_v1;
     ota_operations_uri.user_ctx = context;
-    return httpd_register_uri_handler(static_cast<httpd_handle_t>(server_handle), &ota_operations_uri) == ESP_OK;
+    return register_authenticated_uri_handler_v1(server_handle, ota_operations_uri, service::Capability::kFirmwareAdmin);
 }
 
 bool register_rcp_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
@@ -962,7 +963,7 @@ bool register_rcp_routes_v1(void* server_handle, WebRouteContext* context) noexc
     rcp_operations_uri.method = HTTP_POST;
     rcp_operations_uri.handler = rcp_update_operations_post_handler_v1;
     rcp_operations_uri.user_ctx = context;
-    return httpd_register_uri_handler(static_cast<httpd_handle_t>(server_handle), &rcp_operations_uri) == ESP_OK;
+    return register_authenticated_uri_handler_v1(server_handle, rcp_operations_uri, service::Capability::kRcpAdmin);
 }
 
 bool register_operations_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
@@ -975,14 +976,23 @@ bool register_operations_routes_v1(void* server_handle, WebRouteContext* context
     operations_get_uri.method = HTTP_GET;
     operations_get_uri.handler = operations_get_handler_v1;
     operations_get_uri.user_ctx = context;
-    return httpd_register_uri_handler(static_cast<httpd_handle_t>(server_handle), &operations_get_uri) == ESP_OK;
+    return register_authenticated_uri_handler_v1(server_handle, operations_get_uri, service::Capability::kReadStatus);
 }
 
 bool register_web_routes_v1(void* server_handle, WebRouteContext* context) noexcept {
-    if (server_handle == nullptr || context == nullptr || context->runtime == nullptr) {
+    if (server_handle == nullptr || context == nullptr || context->runtime == nullptr ||
+        context->sessions == nullptr || context->expected_origin == nullptr) {
         return false;
     }
 
+    // Plan S6 #19: auth routes first -- not load-bearing for the other
+    // registrations below (each is independently guarded by
+    // register_authenticated_uri_handler_v1()), but matches the plan's
+    // own framing of authentication as the precondition for every other
+    // production mutation route.
+    if (!register_auth_routes_v1(server_handle, context)) {
+        return false;
+    }
     if (!register_capabilities_routes_v1(server_handle, context)) {
         return false;
     }

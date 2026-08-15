@@ -14,6 +14,8 @@ idf_component_register(
         "web_handlers_ota.cpp"
         "web_handlers_rcp.cpp"
         "web_handlers_v1.cpp"
+        "web_handlers_auth.cpp"
+        "web_route_auth_dispatch.cpp"
         "web_handler_common.cpp"
         "web_v1_common.cpp"
     INCLUDE_DIRS

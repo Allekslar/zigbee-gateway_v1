@@ -157,6 +157,74 @@ bool find_json_string_field(const char* body, const char* key, char* out, std::s
     return true;
 }
 
+#ifndef ESP_PLATFORM
+// Host-only mocks of the real esp_http_server cookie/header readers,
+// shared by every host test that (transitively, via authorize_v1_request()
+// in web_v1_common.cpp) needs them -- defined once here, unlike the
+// per-test-file httpd_register_uri_handler()/httpd_resp_send() mocks,
+// because there is exactly one sensible behavior for these two (read the
+// simulated field straight off httpd_req_t), not a test-specific one.
+extern "C" esp_err_t httpd_req_get_cookie_val(
+    const httpd_req_t* req, const char* cookie_name, char* val, size_t* val_size) {
+    if (req == nullptr || cookie_name == nullptr || val == nullptr || val_size == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (req->mock_cookie_header == nullptr) {
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    const std::size_t name_len = std::strlen(cookie_name);
+    const char* cursor = req->mock_cookie_header;
+    while (cursor != nullptr && *cursor != '\0') {
+        while (*cursor == ' ') {
+            ++cursor;
+        }
+        if (std::strncmp(cursor, cookie_name, name_len) == 0 && cursor[name_len] == '=') {
+            const char* value_start = cursor + name_len + 1;
+            const char* value_end = std::strchr(value_start, ';');
+            const std::size_t value_len =
+                value_end != nullptr ? static_cast<std::size_t>(value_end - value_start) : std::strlen(value_start);
+            if (value_len + 1 > *val_size) {
+                return ESP_ERR_HTTPD_RESULT_TRUNC;
+            }
+            std::memcpy(val, value_start, value_len);
+            val[value_len] = '\0';
+            *val_size = value_len;
+            return ESP_OK;
+        }
+        cursor = std::strchr(cursor, ';');
+        if (cursor != nullptr) {
+            ++cursor;
+        }
+    }
+    return ESP_ERR_NOT_FOUND;
+}
+
+extern "C" esp_err_t httpd_req_get_hdr_value_str(const httpd_req_t* r, const char* field, char* val, size_t val_size) {
+    if (r == nullptr || field == nullptr || val == nullptr || val_size == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const char* source = nullptr;
+    if (std::strcmp(field, "X-CSRF-Token") == 0) {
+        source = r->mock_csrf_header;
+    } else if (std::strcmp(field, "Origin") == 0) {
+        source = r->mock_origin_header;
+    }
+    if (source == nullptr) {
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    const std::size_t source_len = std::strlen(source);
+    if (source_len + 1 > val_size) {
+        return ESP_ERR_HTTPD_RESULT_TRUNC;
+    }
+    std::memcpy(val, source, source_len);
+    val[source_len] = '\0';
+    return ESP_OK;
+}
+#endif  // !ESP_PLATFORM
+
 uint32_t allocate_correlation_id(WebRouteContext* context) noexcept {
     if (context == nullptr || context->next_correlation_id == nullptr) {
         return 1U;

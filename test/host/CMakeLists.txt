@@ -75,6 +75,8 @@ set(SERVICE_SOURCES
     ../../components/service/session_store.cpp
     ../../components/service/session_security_policy.cpp
     ../../components/service/gateway_identity_verification.cpp
+    ../../components/service/capability.cpp
+    ../../components/service/route_authorization.cpp
     ../../components/service/tuya_fingerprint.cpp
     ../../components/service/tuya_dp_parser.cpp
     ../../components/service/tuya_contact_sensor_plugin.cpp
@@ -122,11 +124,18 @@ zg_apply_component_compile_policy(service_host)
 add_library(web_ui_host STATIC
     ../../components/web_ui/web_handler_common.cpp
     ../../components/web_ui/web_v1_common.cpp
+    ../../components/web_ui/web_route_auth_dispatch.cpp
 )
-target_include_directories(web_ui_host PUBLIC 
+target_include_directories(web_ui_host PUBLIC
     ../../components/web_ui/include
     ../../components/web_ui
 )
+# Plan S6 "Authorization and physical presence" #19: web_route_auth_
+# dispatch.cpp/web_v1_common.cpp now call into service::authorize_read_
+# request()/authorize_mutation_request() (route_authorization.cpp) and
+# capability.hpp -- both part of service_host. PUBLIC so the include
+# paths propagate to every test that links web_ui_host.
+target_link_libraries(web_ui_host PUBLIC service_host)
 zg_apply_component_compile_policy(web_ui_host)
 
 add_executable(test_core_registry test_core_registry.cpp)
@@ -263,6 +272,21 @@ add_executable(test_gateway_identity_verification test_gateway_identity_verifica
 target_link_libraries(test_gateway_identity_verification PRIVATE service_host)
 zg_apply_component_compile_policy(test_gateway_identity_verification)
 add_test(NAME test_gateway_identity_verification COMMAND test_gateway_identity_verification)
+
+add_executable(test_capability test_capability.cpp)
+target_link_libraries(test_capability PRIVATE service_host)
+zg_apply_component_compile_policy(test_capability)
+add_test(NAME test_capability COMMAND test_capability)
+
+add_executable(test_route_authorization test_route_authorization.cpp)
+target_link_libraries(test_route_authorization PRIVATE service_host)
+zg_apply_component_compile_policy(test_route_authorization)
+add_test(NAME test_route_authorization COMMAND test_route_authorization)
+
+add_executable(test_web_handlers_auth test_web_handlers_auth.cpp)
+target_link_libraries(test_web_handlers_auth PRIVATE service_host web_ui_host)
+zg_apply_component_compile_policy(test_web_handlers_auth)
+add_test(NAME test_web_handlers_auth COMMAND test_web_handlers_auth)
 
 add_executable(test_hal_tls_certificate_validator test_hal_tls_certificate_validator.cpp)
 target_link_libraries(test_hal_tls_certificate_validator PRIVATE service_host)

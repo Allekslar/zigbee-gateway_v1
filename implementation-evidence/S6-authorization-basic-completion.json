@@ -1,0 +1,118 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S6-authorization-basic-completion",
+  "stage_name": "S6 \"Authorization and physical presence\" -- basic slice: capability taxonomy (#18), central authentication/authorization middleware (#19) wired into a real registration-level dispatch wrapper, non-leaky stable 401/403 errors (#23), and the login/logout/session subset of #17 (POST /api/v1/auth/login, POST /api/v1/auth/logout, GET /api/v1/auth/session) -- and, as a consequence, the FIRST-EVER production registration of the /api/v1 contract (plan S4 #28/#29's \"S6 owns the first production registration path\")",
+  "input_commit_sha": "07264b3e643681f5b153bbaa45c1b5d6a3b69da3",
+  "output_commit_sha": "07264b3e643681f5b153bbaa45c1b5d6a3b69da3",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. Builds on the prior HIL session's work (already committed via PR #51/#53, merged to canary) and the security_bounds.cpp CI fix from the same session.",
+  "sequencing_note": "User chose this cluster (\"Authorization and physical presence\", #18-23) after the prior HIL session closed out the reachable half of \"HTTPS and sessions\" (#7-17 minus #12/#17, both blocked here). Recon before designing anything found that #19's middleware has nothing to authenticate a caller AGAINST without a login route (#17, nominally a different cluster) -- so this sub-slice's scope was explicitly widened, with the user's confirmation, to cover #17's login/logout/session routes together with #18/#19/#23. The remaining #17 routes (provisioning/enroll, auth/password, certificate rotation, factory-reset) and #20-22 (the physical-presence grant itself, needing a not-yet-built GPIO/button HAL) are deliberately NOT built here -- named as the next sub-slice.",
+  "design_decisions": [
+    {
+      "decision": "Capability is a single, flat 9-value taxonomy (plan #18's exact list) with no per-user grant table -- every authenticated session holds every capability the current build supports.",
+      "why": "This codebase has exactly one administrative role (a single AdminVerifierRecord, S6 'Provisioning and credentials' #5) -- there is no user/role concept anywhere to check a real subset against. Building a fake per-capability check would verify nothing real, the same reasoning gateway_identity_verification.hpp's own header already applies to its narrower self-consistency-vs-uniqueness scoping decision. capability.hpp documents this explicitly and names what WOULD need to change (only the grant step) if a real multi-role system is ever added. The per-route Capability tag passed at every v1 handler's registration call site is real today for two things: filtering GET /api/v1/auth/session's 'actor capabilities' response by actual build capability (ota/rcp availability), and a self-describing, grep-able label for the not-yet-built #30/#31 audit-record 'action' field."
+    },
+    {
+      "decision": "The middleware is a registration-level dispatch WRAPPER (web_route_auth_dispatch.cpp's register_authenticated_uri_handler_v1() + authenticated_dispatch_trampoline), not an inline check added to the top of each of the 13 pre-existing v1 handler function bodies.",
+      "why": "Every pre-existing v1 handler's own host test calls that handler function directly (e.g. devices_get_handler_v1(&req)), never through a real dispatch path -- that is how this project's v1 handlers have been host-testable without a real esp_http_server at all. An inline auth check would have forced every one of those tests to first fabricate a valid session, conflating business-logic testing with authentication testing. Wrapping only the REGISTRATION call means existing handler bodies and their existing tests are unchanged byte-for-byte, the real (only reachable-by-a-client) dispatch path is fully gated, and the wrapper gets its own small, focused test suite (test_web_handlers_auth.cpp) instead of duplicating auth setup across every handler's tests."
+    },
+    {
+      "decision": "Login's own response never includes the CSRF token; only GET /api/v1/auth/session does.",
+      "why": "Plan #14's exact text: 'CSRF token is a separate 256-bit session-bound value returned only by the authenticated session endpoint.' Read literally rather than assumed -- the client's flow is login (sets cookie) -> GET /auth/session (reads CSRF token + capabilities)."
+    },
+    {
+      "decision": "Logout is mutation-grade (requires CSRF+Origin, same as any other state-changing route), even though the plan does not name an exception for it.",
+      "why": "Plan #15's text ('every state-changing browser request') names no logout exception; a forged-logout CSRF attack is lower-impact than a forged-mutation one, but inventing an unstated exception would be a real, undocumented judgment call in the wrong direction (weakening a plan requirement, not narrowing an ambiguous one)."
+    },
+    {
+      "decision": "register_web_routes_v1() is now actually called (from web_server.cpp's start_production_https() path only, never development) -- the first production registration of the /api/v1 contract, previously forbidden by plan S4 #28/#29 until 'S6 owns the first production registration path'.",
+      "why": "INV-H010 (check_arch_invariants.sh) was re-read before changing anything: its check_absent guard name-greps main/app_main.cpp specifically, never components/web_ui/web_server.cpp (the real composition root) -- confirming the invariant was always scoped to block the WRONG place from doing this, not to block it everywhere. web_server.cpp's start_production_https() is exactly 'the production listener/control-plane composition root' the plan's own prose (just above the #18 heading) describes registering mutation routes from 'only after certificate/trust validation, secure-storage readiness and central authentication/authorization policy initialization' -- this sub-slice's own auth plumbing is that last precondition. No invariant-script change was needed or made; re-verified via a real check_arch_invariants.sh run (still high=0/medium=0/low=0)."
+    },
+    {
+      "decision": "v1/auth routes are registered in production only, never development.",
+      "why": "The session cookie carries the `Secure` attribute (plan #14) -- meaningless (browsers will not send it back) without HTTPS, which only the production listener serves (S6 #7). Development is completely unchanged by this sub-slice."
+    }
+  ],
+  "changed_files": {
+    "new": [
+      "components/service/include/capability.hpp",
+      "components/service/capability.cpp",
+      "components/service/include/route_authorization.hpp",
+      "components/service/route_authorization.cpp",
+      "components/web_ui/include/web_route_auth_dispatch.hpp",
+      "components/web_ui/web_route_auth_dispatch.cpp",
+      "components/web_ui/web_handlers_auth.cpp",
+      "test/host/test_capability.cpp",
+      "test/host/test_route_authorization.cpp",
+      "test/host/test_web_handlers_auth.cpp"
+    ],
+    "modified": [
+      "components/web_ui/include/web_v1_common.hpp (2 new ApiV1ErrorCode values: kUnauthenticated/401, kCsrfOrOriginInvalid/403; authorize_v1_request()/send_v1_auth_error() declarations)",
+      "components/web_ui/web_v1_common.cpp (golden-matrix mapping for the 2 new codes; authorize_v1_request()/send_v1_auth_error() implementation)",
+      "components/web_ui/web_handler_common.hpp (host-only httpd_req_t gains method + mock cookie/CSRF/Origin header simulation fields; declares httpd_req_get_cookie_val/httpd_req_get_hdr_value_str/httpd_resp_set_hdr)",
+      "components/web_ui/web_handler_common.cpp (host-only mock implementations of the two request-side readers, shared across every test that needs them -- response-side httpd_resp_set_hdr stays per-test-file, matching the existing convention for response-inspecting mocks)",
+      "components/web_ui/include/web_routes.hpp (WebRouteContext gains sessions/expected_origin; register_auth_routes_v1() declared; INV-H010 comment updated to describe the real wiring instead of its absence)",
+      "components/web_ui/web_handlers_v1.cpp (all 13 pre-existing v1 route registrations now go through register_authenticated_uri_handler_v1() with a named Capability instead of raw httpd_register_uri_handler(); register_web_routes_v1() now also registers auth routes first and requires context->sessions/expected_origin)",
+      "components/web_ui/include/web_server.hpp (WebServer gains session_store_ member + expected_origin_ buffer)",
+      "components/web_ui/web_server.cpp (constructor wires route_context_.sessions/expected_origin; start()'s production branch builds expected_origin_ from the real mDNS host and calls register_web_routes_v1())",
+      "components/service/CMakeLists.txt, components/web_ui/CMakeLists.txt, test/host/CMakeLists.txt (new source files wired into both the real ESP-IDF component build and the host test build)",
+      "test/host/test_web_handlers_v1.cpp (route_ctx gains sessions/expected_origin so its own register_web_routes_v1() assertions keep passing; direct-includes the new web_handlers_auth.cpp per this file's established unity-build convention; new httpd_resp_set_hdr mock)"
+    ]
+  },
+  "real_defects_found_and_fixed_this_sub_slice": [
+    {
+      "defect": "New test_web_handlers_auth.cpp segfaulted (ASan: 'member access within misaligned address ... which requires 8 byte alignment').",
+      "root_cause": "Test bug, not a production bug: for a WRAPPED route (session/logout), a real esp_http_server dispatch places register_authenticated_uri_handler_v1()'s own AuthenticatedRouteBinding* in req->user_ctx (that is the whole point of the wrapper), never the WebRouteContext* directly. The test initially set req.user_ctx to an unrelated pointer, which the trampoline then mis-cast as a binding.",
+      "fix": "Set req.user_ctx to the CAPTURED registration's own .user_ctx (i.e. exactly what a real dispatch would place there) for every wrapped-route test case. Confirmed via a full ASan+UBSan rebuild after the fix: clean."
+    },
+    {
+      "defect": "auth_logout_post_handler_v1's clear_header[64] buffer was too small for build_session_cookie_clear_header()'s real output ('zgw_session=; Secure; HttpOnly; SameSite=Strict; Path=/api/v1; Max-Age=0' = 72 chars + NUL = 73 bytes needed) -- build_session_cookie_clear_header() correctly detected the truncation and returned false, so the real bug (undersized buffer) surfaced as a genuine handler failure (logout returning ESP_FAIL), not a silent truncation.",
+      "root_cause": "Estimated the buffer size instead of computing it from the real format string.",
+      "fix": "clear_header[64] -> clear_header[96]. Confirmed by the same test case (logout with correct CSRF+Origin) now returning ESP_OK and a correctly truncation-free Set-Cookie header."
+    },
+    {
+      "defect": "Real ESP-IDF target build failure: 'httpd_handler_t' does not name a type on ESP_PLATFORM.",
+      "root_cause": "httpd_handler_t is a name this project's OWN host mock invents (web_handler_common.hpp); the real esp_http_server.h declares httpd_uri_t::handler inline (`esp_err_t (*handler)(httpd_req_t *r)`) with no portable named typedef at all. AuthenticatedRouteBinding's real_handler field used httpd_handler_t, compiling fine on host (where the name exists) but not on the real target.",
+      "fix": "decltype(httpd_uri_t{}.handler) instead of naming a type -- portable across both host and ESP_PLATFORM by construction, confirmed by a full real idf.py build succeeding after the fix (both dev and ZGW_PRODUCTION_BUILD=1 profiles)."
+    }
+  ],
+  "tests_and_checks": [
+    {
+      "check": "New host tests",
+      "detail": "test_capability.cpp (11 assertions: token spelling for all 9 + unknown fallback, granted_capabilities() build-capability filtering, undersized-buffer truncation, null-out rejection), test_route_authorization.cpp (14 assertions: read/mutation grade decisions, idle-timeout extension via touch, CSRF/origin failure classified as kCsrfOrOriginInvalid not kUnauthenticated, a CSRF/origin failure does not itself touch the session, unknown session id classified as kUnauthenticated), test_web_handlers_auth.cpp (real end-to-end coverage of login/logout/session through CAPTURED real registrations -- httpd_register_uri_handler's test mock stores every registered httpd_uri_t and each test case invokes the captured .handler directly, exercising the real authenticated_dispatch_trampoline for the two wrapped routes, not a direct call to the anonymous-namespace handler functions)."
+    },
+    {
+      "check": "Full host suite",
+      "result": "106/106 passing (103 pre-existing + 3 new test executables), confirmed twice (before and after the buffer-size/user_ctx fixes)."
+    },
+    {
+      "check": "AddressSanitizer + UndefinedBehaviorSanitizer rebuild of test_web_handlers_auth",
+      "result": "Clean after both fixes -- used specifically to get an exact root cause for the initial segfault rather than guessing from the bare SIGSEGV."
+    },
+    {
+      "check": "cppcheck --enable=warning,style,performance,portability --error-exitcode=1",
+      "result": "Zero findings against all 8 changed/new C++ files, after fixing 1 real style finding (std::fill instead of a raw loop) and consciously suppressing (with a documented cppcheck-suppress + comment) 1 finding that would have broken the real ESP-IDF build if applied: authorize_v1_request()'s req parameter cannot be narrowed to const httpd_req_t* because it is passed straight through to the real, non-const-parameter httpd_req_get_cookie_val()/httpd_req_get_hdr_value_str() on ESP_PLATFORM."
+    },
+    {
+      "check": "check_arch_invariants.sh",
+      "result": "high=0, medium=0, low=0, suppressed=0 -- confirms INV-H010 still holds (main/app_main.cpp still never calls any register_*_routes_v1 function directly; only web_server.cpp, the real composition root, now does)."
+    },
+    {
+      "check": "Real idf.py build, development profile",
+      "result": "PASS, clean rebuild after the httpd_handler_t/decltype fix."
+    },
+    {
+      "check": "Real idf.py build, ZGW_PRODUCTION_BUILD=1 (production profile)",
+      "result": "PASS, 1205/1205 steps -- this is the build that actually exercises register_web_routes_v1()/register_authenticated_uri_handler_v1() being compiled and linked for the production listener for the first time. One pre-existing, unrelated warning (provisioning_secret_provider.cpp's get_development_secret unused in this profile) -- confirmed pre-existing, not introduced by this sub-slice, and already covered by this project's existing -Wno-error=unused-function policy."
+    }
+  ],
+  "honest_scope_boundary": [
+    "No external HTTP client / real hardware exercise of these routes this round (no new HIL session) -- verification depth is host-test + real-target compile/link, matching every other S6 sub-slice's own accepted bar before HIL became possible, and matching plan #7's own precedent (compile+link accepted since this sandbox has no way to observe a live TLS handshake).",
+    "GET /api/v1/auth/session's CSRF token is delivered in the JSON response body, not a separate header or a double-submit-cookie pattern -- a real judgment call (plan #14 names only 'returned... by the authenticated session endpoint', not a transport). Documented at the call site, not hidden.",
+    "No rate limiting on POST /api/v1/auth/login yet (plan #28, cluster 'Rate limiting and audit', not started) -- a real, present brute-force exposure until that cluster lands. Named directly rather than left implicit.",
+    "No audit logging of login/logout/denied-authorization events yet (plan #30/#31, same not-yet-started cluster) -- capability_token() already produces the exact action label that future work will want, but nothing writes an audit record today.",
+    "#17's remaining routes (provisioning/enroll, auth/password, certificate rotation, factory-reset) and #20-22 (the physical-presence grant itself) are not built -- all need a physical GPIO/button HAL that does not exist in this repository yet. This is the natural next sub-slice, and (per the prior HIL session) could now genuinely be hardware-in-the-loop tested on the connected ESP32-C6, unlike everything in this sub-slice."
+  ],
+  "unresolved_deviations": [],
+  "unresolved_blockers": [],
+  "releaseability": "The code is real, tested (host + real-target compile/link), and internally consistent with the rest of S5/S6's fail-closed conventions. Not yet HIL-verified with a real client (no external TLS handshake performed this round, matching the honest boundary noted above). No live production deployment yet (see memory project-not-yet-in-production.md), so this is a normal incremental step, not a release gate."
+}

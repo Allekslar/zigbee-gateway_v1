@@ -237,6 +237,8 @@ WebServer::WebServer(service::ServiceRuntimeApi& runtime) noexcept
     : runtime_(&runtime) {
     route_context_.runtime = runtime_;
     route_context_.next_correlation_id = &next_correlation_id_;
+    route_context_.sessions = &session_store_;
+    route_context_.expected_origin = expected_origin_;
 }
 
 bool WebServer::start() noexcept {
@@ -255,6 +257,17 @@ bool WebServer::start() noexcept {
     if (!start_production_https(runtime_->gateway_id(), &handle)) {
         return false;
     }
+
+    // Plan S6 "Authorization and physical presence" #15: this gateway's
+    // own origin, built once here from the exact same production mDNS
+    // host plan #9 derives -- "https://" always (production speaks HTTPS
+    // only, plan #7's own branch above).
+    char mdns_host[32]{};
+    if (!service::build_gateway_mdns_host(runtime_->gateway_id(), mdns_host, sizeof(mdns_host)) ||
+        std::snprintf(expected_origin_, sizeof(expected_origin_), "https://%s.local", mdns_host) <= 0) {
+        (void)httpd_ssl_stop(handle);
+        return false;
+    }
 #else
     using_https_ = false;
     if (!start_development_http(&handle)) {
@@ -270,6 +283,22 @@ bool WebServer::start() noexcept {
         }
         return false;
     }
+
+#if defined(CONFIG_ZGW_PRODUCTION_PROFILE) && CONFIG_ZGW_PRODUCTION_PROFILE
+    // Plan #19: the first-ever production registration of the /api/v1
+    // contract (plan S4 #28/#29's "S6 owns the first production
+    // registration path") -- gated behind everything above: certificate/
+    // trust validation (plan #7/#10/#11, start_production_https()) and
+    // secure-storage readiness, with central authentication/authorization
+    // (this function's own route_context_.sessions/expected_origin) wired
+    // in via every route's register_authenticated_uri_handler_v1() call.
+    // Development never calls this -- v1 sessions require the `Secure`
+    // cookie attribute (plan #14), meaningless without HTTPS.
+    if (!register_web_routes_v1(static_cast<void*>(handle), &route_context_)) {
+        (void)httpd_ssl_stop(handle);
+        return false;
+    }
+#endif
 
     server_handle_ = static_cast<void*>(handle);
     started_ = true;

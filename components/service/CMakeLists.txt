@@ -50,6 +50,8 @@ idf_component_register(
         "session_store.cpp"
         "session_security_policy.cpp"
         "gateway_identity_verification.cpp"
+        "capability.cpp"
+        "route_authorization.cpp"
         "tuya_fingerprint.cpp"
         "tuya_dp_parser.cpp"
         "tuya_contact_sensor_plugin.cpp"
