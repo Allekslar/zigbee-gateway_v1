@@ -8,6 +8,9 @@
 #include <cstring>
 #include <limits>
 
+#include "hal_time.h"
+#include "session_security_policy.hpp"
+
 namespace web_ui {
 
 namespace {
@@ -40,6 +43,10 @@ const char* api_v1_error_token(ApiV1ErrorCode code) noexcept {
             return "invalid_request";
         case ApiV1ErrorCode::kLegacyMutationDisabled:
             return "legacy_mutation_disabled";
+        case ApiV1ErrorCode::kUnauthenticated:
+            return "unauthenticated";
+        case ApiV1ErrorCode::kCsrfOrOriginInvalid:
+            return "csrf_or_origin_invalid";
         default:
             return "internal_error";
     }
@@ -65,6 +72,10 @@ const char* api_v1_error_status(ApiV1ErrorCode code) noexcept {
             return "400 Bad Request";
         case ApiV1ErrorCode::kLegacyMutationDisabled:
             return "410 Gone";
+        case ApiV1ErrorCode::kUnauthenticated:
+            return "401 Unauthorized";
+        case ApiV1ErrorCode::kCsrfOrOriginInvalid:
+            return "403 Forbidden";
         default:
             return "503 Service Unavailable";
     }
@@ -241,6 +252,56 @@ esp_err_t send_api_v1_ok(httpd_req_t* req) noexcept {
 
     (void)httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, payload, HTTPD_RESP_USE_STRLEN);
+}
+
+// `req` cannot be `const httpd_req_t*` despite never being written through
+// here: on ESP_PLATFORM this is passed straight to the real
+// httpd_req_get_cookie_val()/httpd_req_get_hdr_value_str() (esp_http_
+// server.h), which both declare a non-const `httpd_req_t*` parameter --
+// narrowing this function's own parameter would not compile against the
+// real target. The host-only mock versions of those two functions (see
+// web_handler_common.hpp/.cpp) take `const httpd_req_t*` precisely
+// because they have no such real-API constraint.
+service::RouteAuthResult authorize_v1_request(
+    // cppcheck-suppress constParameterPointer
+    httpd_req_t* req, WebRouteContext* context, service::Capability /*required*/) noexcept {
+    if (req == nullptr || context == nullptr) {
+        return service::RouteAuthResult::kUnauthenticated;
+    }
+
+    char session_id_hex[service::kSessionIdHexChars + 1U]{};
+    size_t session_id_capacity = sizeof(session_id_hex);
+    const bool has_session =
+        httpd_req_get_cookie_val(req, service::kSessionCookieName, session_id_hex, &session_id_capacity) == ESP_OK;
+    const char* session_id = has_session ? session_id_hex : nullptr;
+
+    const uint64_t now_ms = hal_time_now_ms();
+
+    if (req->method == HTTP_GET) {
+        return service::authorize_read_request(context->sessions, session_id, now_ms);
+    }
+
+    char csrf_token_hex[service::kCsrfTokenHexChars + 1U]{};
+    const bool has_csrf =
+        httpd_req_get_hdr_value_str(req, "X-CSRF-Token", csrf_token_hex, sizeof(csrf_token_hex)) == ESP_OK;
+
+    char origin[96]{};
+    const bool has_origin = httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin)) == ESP_OK;
+
+    return service::authorize_mutation_request(
+        context->sessions, session_id, has_csrf ? csrf_token_hex : nullptr, has_origin ? origin : nullptr,
+        context->expected_origin, now_ms);
+}
+
+esp_err_t send_v1_auth_error(httpd_req_t* req, service::RouteAuthResult result) noexcept {
+    switch (result) {
+        case service::RouteAuthResult::kCsrfOrOriginInvalid:
+            return send_api_v1_error(req, ApiV1ErrorCode::kCsrfOrOriginInvalid);
+        case service::RouteAuthResult::kUnauthenticated:
+        case service::RouteAuthResult::kAllowed:
+        default:
+            return send_api_v1_error(req, ApiV1ErrorCode::kUnauthenticated);
+    }
 }
 
 }  // namespace web_ui

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "capability.hpp"
+#include "route_authorization.hpp"
 #include "web_handler_common.hpp"
 
 namespace web_ui {
@@ -25,6 +27,12 @@ enum class ApiV1ErrorCode : uint8_t {
     kConflict,                // 409
     kInvalidRequest,          // 400
     kLegacyMutationDisabled,  // 410
+    // Plan S6 "Authorization and physical presence" #19/#23: no session
+    // cookie, or the named session does not exist / has expired.
+    kUnauthenticated,         // 401
+    // Plan #15/#23: session is valid, but a state-changing request's CSRF
+    // token or Origin header did not check out.
+    kCsrfOrOriginInvalid,     // 403
 };
 
 const char* api_v1_error_token(ApiV1ErrorCode code) noexcept;
@@ -74,5 +82,28 @@ bool extract_uri_device_id_and_reporting_segments(
 // GET /api/v1/operations/{operation_id}). Rejects empty, non-digit,
 // leading-zero-only or out-of-range (> UINT32_MAX) segments.
 bool extract_uri_decimal_segment(const char* uri, const char* prefix, uint32_t* out_value) noexcept;
+
+// Plan S6 "Authorization and physical presence" #19: the one real call
+// site every v1 handler that requires authentication uses, first thing,
+// before any request-body parsing/use-case invocation. Reads the
+// `zgw_session` cookie (session_security_policy.hpp's kSessionCookieName)
+// via the real esp_http_server `httpd_req_get_cookie_val()`; for a
+// state-changing request (`req->method != HTTP_GET`) also reads the
+// `X-CSRF-Token` and `Origin` request headers and applies
+// service::authorize_mutation_request()'s CSRF+origin check --
+// otherwise applies service::authorize_read_request() (session validity
+// only). `context->sessions`/`context->expected_origin` must be non-null
+// (WebServer::start() wires both before any route is registered).
+// `required` is accepted for the call site's own self-documentation (see
+// capability.hpp) but does not change this function's decision -- see
+// that header's comment for why.
+service::RouteAuthResult authorize_v1_request(
+    httpd_req_t* req, WebRouteContext* context, service::Capability required) noexcept;
+
+// Sends the golden-matrix 401/403 response for a non-kAllowed
+// authorize_v1_request() result -- a terse, stable, non-leaky
+// {"schema_version":1,"error":"<token>"} body (plan #23), same shape and
+// call convention as send_api_v1_error() above.
+esp_err_t send_v1_auth_error(httpd_req_t* req, service::RouteAuthResult result) noexcept;
 
 }  // namespace web_ui

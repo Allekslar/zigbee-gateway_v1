@@ -23,7 +23,7 @@ accessor consumed by provisioning, Web parsing, rate limiting and audit
 storage."* This document's Section 2.1 is exactly that foundation --
 nothing else in S6 has started yet.
 
-## 2. What is implemented and verified (sub-slices 1-8: security invariants/bounded tunables/typed accessor, provisioning AP secret generation, provisioning-credentials remainder, session store + cookie/CSRF/CORS policy, production HTTPS listener, production mDNS host derivation, gateway identity self-consistency verification, TLS certificate chain/SAN/expiry/key validation -- plan #1-11, #13-16)
+## 2. What is implemented and verified (sub-slices 1-9: security invariants/bounded tunables/typed accessor, provisioning AP secret generation, provisioning-credentials remainder, session store + cookie/CSRF/CORS policy, production HTTPS listener, production mDNS host derivation, gateway identity self-consistency verification, TLS certificate chain/SAN/expiry/key validation, central authorization middleware + capability taxonomy + login/logout/session -- plan #1-11, #13-16, #18-19, #23)
 
 ### 2.1 `main/Kconfig.projbuild`'s new "Security" submenu + `security_bounds.hpp`/`.cpp`
 
@@ -1060,6 +1060,186 @@ above, a `ZGW_PRODUCTION_BUILD=1` build (1201/1201 steps, confirming the
 actual production call site -- CA read, SAN construction, and the
 validation call itself -- compiles and links).
 
+**Real hardware-in-the-loop update (2026-08-14/15):** a real private CA +
+device certificate satisfying this section's own chain/SAN/expiry/key
+checks was generated and loaded onto the connected ESP32-C6, and the
+production HTTPS listener was confirmed to actually start
+(`esp_https_server: Server listening on port 443`) -- the first real
+positive-path confirmation of this whole #7/#10/#11 chain, not just
+compile verification. See `implementation-evidence/HIL-real-tls-
+certificate-end-to-end-verification.json` and Section 2.7/2.8's own HIL
+addenda. The "no real certificate exists anywhere" framing in Section
+3 below predates this and is now stale for the specific *test/HIL*
+device it was loaded onto -- it remains true for any device that has not
+been through that same manual, one-off provisioning exercise, since no
+real certificate-issuance/loading pipeline exists yet (Section 2.11 below
+does not add one either).
+
+### 2.11 Central authorization middleware, capability taxonomy and login/logout/session routes (plan #18, #19, #23, and the login/logout/session subset of #17)
+
+Plan text: *"Define capabilities: read_status; control_device;
+manage_network; commission_device; remove_device; firmware_admin;
+rcp_admin; security_admin; factory_reset."* (#18) *"Central middleware
+authenticates and authorizes before request-body parsing/use-case
+invocation."* (#19) *"Direct route access without capability returns
+non-leaky stable errors and does not reveal private state."* (#23)
+
+**Scope note, decided with the user before writing any code**: #19's
+middleware has nothing to authenticate a caller against without a login
+route to create a session in the first place -- so this sub-slice's scope
+was explicitly widened to include #17's `POST /api/v1/auth/login`,
+`POST /api/v1/auth/logout` and `GET /api/v1/auth/session`, even though
+#17 is nominally filed under the "HTTPS and sessions" cluster. The other
+four #17 routes (`provisioning/enroll`, `auth/password`, certificate
+rotation, factory-reset) all need the physical-presence grant (#20-#22,
+not built -- needs a GPIO/button HAL this repository does not have) and
+stay unregistered.
+
+**New `components/service/include/capability.hpp`/`.cpp`**: the plan's
+exact 9-value `Capability` enum and `capability_token()`. This system has
+exactly one administrative role (a single `AdminVerifierRecord`, Section
+2.5) -- there is no user/role table to check a real per-capability subset
+against, so `granted_capabilities()` grants every capability the current
+build actually supports (withholding `firmware_admin`/`rcp_admin` when
+OTA/RCP are not built) rather than implementing a fake check with nothing
+real to verify. Documented as a deliberate, reversible scope boundary, the
+same pattern `gateway_identity_verification.hpp`'s own self-consistency
+(not fleet-uniqueness) scoping already established.
+
+**New `components/service/include/route_authorization.hpp`/`.cpp`**:
+`authorize_read_request()`/`authorize_mutation_request()` -- pure,
+host-testable decision functions built entirely on Section 2.6's
+`session_store.hpp`/`session_security_policy.hpp` primitives. A read
+needs only a valid session; a mutation additionally needs a matching
+CSRF token and same-origin `Origin` header (plan #15). Neither function
+branches on a `Capability` value -- see `capability.hpp`'s own comment for
+why that is honest rather than an oversight.
+
+**New `components/web_ui/include/web_route_auth_dispatch.hpp`/`.cpp`**:
+the actual "central middleware" plan #19 names, implemented as a
+registration-level dispatch wrapper (`register_authenticated_uri_handler_v1()`
++ a shared `authenticated_dispatch_trampoline`), not as a check inlined
+into each of the 13 pre-existing v1 handler function bodies. Every
+pre-existing v1 handler's own host test calls that handler function
+directly, never through a real dispatch path -- an inline check would
+have forced every one of those tests to first fabricate a valid session,
+conflating business-logic testing with authentication testing. The
+wrapper stores a small, fixed-capacity (`kMaxAuthenticatedRoutes = 24`,
+no malloc/new) table of `{real handler, WebRouteContext*, Capability}`
+bindings; at real request time the trampoline calls
+`web_v1_common.hpp`'s new `authorize_v1_request()` (the HTTP-layer glue --
+reads the `zgw_session` cookie via the real `httpd_req_get_cookie_val()`,
+and for a state-changing request the `X-CSRF-Token`/`Origin` headers via
+`httpd_req_get_hdr_value_str()`) before ever calling through to the real
+handler, restoring `req->user_ctx` to the real `WebRouteContext*` first so
+the real handler's own body is completely unaware the wrapper exists.
+
+**New `components/web_ui/include/web_v1_common.hpp`/`.cpp` additions**:
+two new `ApiV1ErrorCode` values in the existing golden-matrix convention
+-- `kUnauthenticated` (401) and `kCsrfOrOriginInvalid` (403), satisfying
+plan #23's "non-leaky stable errors" the same way every other v1 error
+already does (a terse `{"schema_version":1,"error":"<token>"}` body, never
+echoing which specific check failed beyond that one classification).
+
+**New `components/web_ui/web_handlers_auth.cpp`**: `auth_login_post_handler_v1()`
+(reads `{"password":"..."}`, fails closed via `kCapabilityUnavailable` if
+no admin credential has ever been enrolled -- no enrollment flow exists
+yet, so this is the real state of a fresh device, not a defensive-only
+branch; verifies via Section 2.5's `verify_admin_password()`; on success
+creates a session via `session_store_create()` and sets the exact plan
+#14 `Set-Cookie` header; never distinguishes wrong-password from
+no-such-account since there is only ever one account), `auth_logout_post_handler_v1()`
+(revokes the session, sends the clear-cookie header -- registered as a
+mutation-grade wrapped route, requiring CSRF+origin like any other
+state-changing request, since the plan names no logout exception),
+`auth_session_get_handler_v1()` (`GET /api/v1/auth/session`, wrapped
+read-grade: returns the session's CSRF token and `granted_capabilities()`
+as a JSON array -- plan #14's own text assigns CSRF-token delivery to
+exactly this route, so login's own response never includes it).
+
+**`components/web_ui/web_handlers_v1.cpp`**: all 13 pre-existing v1 route
+registrations now go through `register_authenticated_uri_handler_v1()`
+with a named `Capability` (e.g. device power -> `kControlDevice`, OTA
+operations -> `kFirmwareAdmin`, config `PATCH` -> `kManageNetwork`)
+instead of a raw `httpd_register_uri_handler()` call -- a mechanical,
+one-line-per-route change; no handler function body was touched.
+`register_web_routes_v1()` now also registers the three auth routes
+first and requires `context->sessions`/`context->expected_origin` to be
+set.
+
+**`components/web_ui/web_server.cpp`**: `WebServer` now owns a
+`SessionStoreState` member and a fixed `expected_origin_` buffer, wired
+into `route_context_` in the constructor. `start()`'s production branch
+builds `expected_origin_` as `"https://" + <production mDNS host> +
+".local"` (Section 2.8's own derivation) and calls `register_web_routes_v1()`
+-- **the first-ever production registration of the `/api/v1` contract**,
+previously forbidden by plan S4 required changes #28/#29 ("S6 owns the
+first production registration path") and enforced by `INV-H010`.
+Re-checked before writing any code: `INV-H010`'s `check_absent` guard
+name-greps `main/app_main.cpp` specifically, never
+`components/web_ui/web_server.cpp` (the real composition root) -- the
+invariant was always scoped to block the wrong file from doing this, not
+to block it everywhere. No invariant-script change was made or needed;
+re-verified via a real `check_arch_invariants.sh` run after this change
+(`high=0, medium=0, low=0`, unchanged). Development is completely
+untouched by this addition -- v1 sessions need the `Secure` cookie
+attribute (plan #14), meaningless without HTTPS.
+
+**Real defects found only by building/testing, not review** (11th-13th
+across this project's whole S5/S6 body of work): (1) the new
+`test_web_handlers_auth.cpp` segfaulted under a wrapped-route test case --
+root-caused via a full ASan+UBSan rebuild to a test-authoring mistake, not
+a production bug (`req.user_ctx` must be the wrapper's own captured
+binding pointer for a wrapped route, matching what a real dispatch would
+place there, not an arbitrary pointer); (2) `auth_logout_post_handler_v1()`'s
+clear-cookie buffer was 64 bytes against a real 73-byte-including-NUL
+requirement, caught because `build_session_cookie_clear_header()`
+correctly detected the truncation and returned false rather than silently
+truncating; (3) the real `idf.py build` failed with `'httpd_handler_t'
+does not name a type` -- that name is this project's OWN host-mock
+invention (`web_handler_common.hpp`), not a real symbol the actual
+`esp_http_server.h` declares (`httpd_uri_t::handler` is declared inline
+there, with no portable named typedef at all); fixed with
+`decltype(httpd_uri_t{}.handler)`, portable by construction.
+
+**Tests**: `test/host/test_capability.cpp` (11 assertions),
+`test/host/test_route_authorization.cpp` (14 assertions),
+`test/host/test_web_handlers_auth.cpp` (real end-to-end coverage through
+*captured real registrations* -- the test's own `httpd_register_uri_handler`
+mock stores every registered `httpd_uri_t` and each test case invokes the
+captured `.handler` directly, exercising the real
+`authenticated_dispatch_trampoline` for the two wrapped routes, never a
+direct call to the handler functions themselves).
+
+Full repository host suite: **106/106** passing (103 pre-existing + 3 new
+test executables). `cppcheck --enable=warning,style,performance,portability`
+reports zero findings against all 8 changed/new C++ files (one real style
+finding fixed; one finding consciously suppressed with a documented
+`cppcheck-suppress` + comment, because applying it would have broken the
+real ESP-IDF build -- `authorize_v1_request()`'s `req` parameter is passed
+straight through to the real, non-const-parameter
+`httpd_req_get_cookie_val()`/`httpd_req_get_hdr_value_str()` on
+`ESP_PLATFORM`). `check_arch_invariants.sh` reports `high=0, medium=0,
+low=0`. Two full real `idf.py build`s succeeded end-to-end: an ordinary
+build and, after the `httpd_handler_t` fix, a `ZGW_PRODUCTION_BUILD=1`
+build (1205/1205 steps) -- the build that actually compiles and links
+`register_web_routes_v1()`/`register_authenticated_uri_handler_v1()` for
+the production listener for the first time.
+
+**Honest, named limits, not hidden**: no external HTTP client or real
+hardware exercise of these routes this round (no new HIL session --
+verification depth is host-test + real-target compile/link, the same bar
+Section 2.7's own #7 sub-slice was originally held to before HIL access
+existed). `GET /api/v1/auth/session` delivers the CSRF token in the JSON
+response body, a real judgment call the plan text does not pin down a
+transport for. No rate limiting on `POST /api/v1/auth/login` yet (plan
+#28, not started) -- a real brute-force exposure until that cluster
+lands. No audit logging of login/logout/denied-authorization events yet
+(plan #30/#31, same not-started cluster) -- `capability_token()` already
+produces the exact action label that work will want.
+
+Evidence: `implementation-evidence/S6-authorization-basic-completion.json`.
+
 ## 3. What is explicitly deferred
 
 Every other S6 required change remains unimplemented -- these four
@@ -1073,26 +1253,31 @@ consumer (no enrollment flow reads the provisioning secret; no request
 handler gates behavior on the commissioning window being active) -- that
 wiring is deferred to the sub-slices below that actually need it.
 
-- **HTTPS and sessions, remainder** (#12, #17): authenticated
-  physical-presence-protected certificate rotation (#12, blocked on the
-  "Authorization and physical presence" cluster below -- needs
-  physical-presence grants that do not exist yet), and the seven exact
-  authentication routes (#17, needs both the session store from Section
-  2.6 AND the central authorization middleware from the next cluster).
-  Every other "HTTPS and sessions" item (#7, #9, #10, #11, #13-#16) is
-  now implemented -- #8 in its scoped, local-self-consistency form only
-  (Section 2.9's own text is explicit that this is not the same guarantee
-  as fleet-wide duplicate-enrollment detection, which remains out of
-  reach without a manufacturing backend this project does not have). The
-  HTTPS listener (Section 2.7), mDNS host (Section 2.8), gateway-identity
-  verification (Section 2.9) and certificate validation (Section 2.10)
-  all still have no real end-to-end production effect today, each for
-  its own already-documented reason -- no real certificate exists
-  anywhere to satisfy Section 2.7/2.10's fail-closed gates, and no
-  manufacturing record exists to satisfy Section 2.9's. Sections 2.6-2.10.
-- **Authorization and physical presence** (#18-#23): the capability set,
-  central authorization middleware, physical-presence grants, factory-reset
-  policy validation.
+- **HTTPS and sessions, remainder** (#12, #17 partial): authenticated
+  physical-presence-protected certificate rotation (#12), and 4 of #17's 7
+  authentication routes (`provisioning/enroll`, `auth/password`,
+  certificate rotation, factory-reset) -- all still blocked on the
+  "Authorization and physical presence" cluster's own remaining half
+  (physical-presence grants, #20-#22, which need a GPIO/button HAL that
+  does not exist yet). #17's other 3 routes (login/logout/session) are now
+  done -- Section 2.11. Every other "HTTPS and sessions" item (#7, #9,
+  #10, #11, #13-#16) is implemented -- #8 in its scoped,
+  local-self-consistency form only (Section 2.9's own text is explicit
+  that this is not the same guarantee as fleet-wide duplicate-enrollment
+  detection, which remains out of reach without a manufacturing backend
+  this project does not have). Sections 2.6-2.10 still have no
+  *automatic* production provisioning pipeline -- the HIL session's real
+  certificate (Section 2.10's own addendum) was loaded by a one-off manual
+  exercise onto one specific test device, not a repeatable flow any real
+  device goes through; Section 2.9's manufacturing-record gate is
+  similarly still never satisfied by anything automatic.
+- **Authorization and physical presence** (#18-#23): #18 (capability set),
+  #19 (central authorization middleware) and #23 (non-leaky errors) are
+  now done -- Section 2.11. Physical-presence grants (#20-#22) and
+  factory-reset policy validation remain -- both need a GPIO/button HAL
+  this repository does not have yet, though real hardware is now
+  available to HIL-test that HAL once it exists (see memory
+  esp32c6-hardware-available.md).
 - **Strict request parsing** (#24-#27): the `cJSON`-backed
   `StrictJsonObjectReader`, per-command schema validation, fuzz corpus.
 - **Rate limiting and audit** (#28-#31): the rate limiter itself, the

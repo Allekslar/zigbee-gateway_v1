@@ -74,6 +74,13 @@ extern "C" esp_err_t httpd_resp_send_chunk(httpd_req_t* req, const char* buf, ss
     return ESP_OK;
 }
 
+extern "C" esp_err_t httpd_resp_set_hdr(httpd_req_t* req, const char* field, const char* value) {
+    (void)req;
+    (void)field;
+    (void)value;
+    return ESP_OK;
+}
+
 void clear_http_capture() {
     g_last_response.clear();
     g_last_status.clear();
@@ -87,6 +94,9 @@ void set_request_body(httpd_req_t* req, const char* body) {
 // Direct include for anonymous-namespace handlers, matching the established
 // pattern (e.g. test_web_handlers_config_post.cpp).
 #include "../../components/web_ui/web_handlers_v1.cpp"
+// register_web_routes_v1() (above) now also calls register_auth_routes_v1()
+// (plan S6 #17-basic) -- same direct-include convention.
+#include "../../components/web_ui/web_handlers_auth.cpp"
 
 int main() {
     core::CoreRegistry registry;
@@ -108,9 +118,12 @@ int main() {
     runtime.mark_wifi_credentials_available();
 
     std::atomic<uint32_t> next_id{1};
+    service::SessionStoreState session_store_state{};
     web_ui::WebRouteContext route_ctx{};
     route_ctx.runtime = &runtime;
     route_ctx.next_correlation_id = &next_id;
+    route_ctx.sessions = &session_store_state;
+    route_ctx.expected_origin = "https://zigbee-gateway-test.local";
 
     httpd_req_t req{};
     req.user_ctx = &route_ctx;

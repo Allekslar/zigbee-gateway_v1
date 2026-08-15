@@ -13,6 +13,9 @@
 typedef int esp_err_t;
 #define ESP_OK 0
 #define ESP_FAIL -1
+#define ESP_ERR_INVALID_ARG 0x102
+#define ESP_ERR_NOT_FOUND 0x105
+#define ESP_ERR_HTTPD_RESULT_TRUNC 0x8004  // real ESP_ERR_HTTPD_BASE(0x8000)+4
 #define HTTPD_RESP_USE_STRLEN -1
 
 typedef enum {
@@ -31,6 +34,20 @@ typedef struct {
     // MQTT topic strings instead). v1 path-parameter routes (device_id,
     // reporting endpoint/cluster_id) need it; tests set it directly.
     const char* uri;
+    // Mirrors real esp_http_server's httpd_req_t::method -- plan S6
+    // "Authorization and physical presence" #19's authorize_v1_request()
+    // needs it to tell a read (GET) from a state-changing request. Real
+    // handlers never read this field directly (same as `uri`).
+    httpd_method_t method;
+    // Test-only header/cookie simulation. Real esp_http_server has no such
+    // fields -- production code (authorize_v1_request()) only ever reads
+    // this indirectly, through httpd_req_get_cookie_val()/
+    // httpd_req_get_hdr_value_str() below, exactly as it would the real
+    // API. A null field behaves as "header/cookie absent", matching the
+    // real API's ESP_ERR_NOT_FOUND for a missing field.
+    const char* mock_cookie_header;   // raw "Cookie:" value, e.g. "zgw_session=<hex>"
+    const char* mock_csrf_header;     // raw "X-CSRF-Token:" value
+    const char* mock_origin_header;   // raw "Origin:" value
 } httpd_req_t;
 
 typedef esp_err_t (*httpd_handler_t)(httpd_req_t *r);
@@ -55,6 +72,9 @@ int httpd_req_recv(httpd_req_t *r, char *buf, size_t len);
 esp_err_t httpd_resp_send_chunk(httpd_req_t *r, const char *buf, ssize_t len);
 esp_err_t httpd_req_get_url_query_str(httpd_req_t *r, char *buf, size_t len);
 esp_err_t httpd_query_key_value(const char *qry, const char *key, char *val, size_t len);
+esp_err_t httpd_req_get_cookie_val(const httpd_req_t *req, const char *cookie_name, char *val, size_t *val_size);
+esp_err_t httpd_req_get_hdr_value_str(const httpd_req_t *r, const char *field, char *val, size_t val_size);
+esp_err_t httpd_resp_set_hdr(httpd_req_t *r, const char *field, const char *value);
 #ifdef __cplusplus
 }
 #endif
