@@ -23,7 +23,7 @@ accessor consumed by provisioning, Web parsing, rate limiting and audit
 storage."* This document's Section 2.1 is exactly that foundation --
 nothing else in S6 has started yet.
 
-## 2. What is implemented and verified (sub-slices 1-12: security invariants/bounded tunables/typed accessor, provisioning AP secret generation, provisioning-credentials remainder, session store + cookie/CSRF/CORS policy, production HTTPS listener, production mDNS host derivation, gateway identity self-consistency verification, TLS certificate chain/SAN/expiry/key validation, central authorization middleware + capability taxonomy + login/logout/session, physical-presence grant primitive, auth/password + provisioning/enroll + factory-reset policy stub, real button-to-grant wiring with HIL confirmation -- plan #1-11, #13-16, #18-21, #22-23)
+## 2. What is implemented and verified (sub-slices 1-13: security invariants/bounded tunables/typed accessor, provisioning AP secret generation, provisioning-credentials remainder, session store + cookie/CSRF/CORS policy, production HTTPS listener, production mDNS host derivation, gateway identity self-consistency verification, TLS certificate chain/SAN/expiry/key validation, central authorization middleware + capability taxonomy + login/logout/session, physical-presence grant primitive, auth/password + provisioning/enroll + factory-reset policy stub, real button-to-grant wiring with HIL confirmation, certificate rotation active-slot state machine + bounded self-test + route (compile/link-verified, HIL pending) -- plan #1-23 in full; plus a live HIL round that found and fixed four real boot-time task/stack defects without yet reaching the certificate-rotation route itself)
 
 ### 2.1 `main/Kconfig.projbuild`'s new "Security" submenu + `security_bounds.hpp`/`.cpp`
 
@@ -1515,6 +1515,288 @@ own recon notes.
 
 Evidence: `implementation-evidence/S6-physical-presence-button-wiring-completion.json`.
 
+### 2.15 Certificate rotation: active-slot state machine, bounded self-test and `POST /api/v1/security/certificates/operations` (plan #12/FD-17)
+
+Plan #12/FD-17: *"Certificate storage has encrypted `current` and `next`
+slots plus one atomic active-slot reference. Rotation is authenticated,
+requires physical presence, validates key/certificate/SAN/issuer/expiry,
+starts a bounded local verification using `next`, atomically switches the
+active reference only after validation, and retains the previous
+confirmed slot until one successful reboot/post-activation check
+completes... Power loss or failed verification selects the last
+confirmed `current` slot before listener enablement."*
+
+Built across two passes in the same session. **Pass 1, scope chosen
+explicitly by the user** (`AskUserQuestion`, over "everything including
+the bounded self-test and `esp_restart()`"): the active-slot state
+machine and the route's real policy checks (decode, offline X.509
+validation, physical presence, staging-slot write) only -- the route
+always returned 503 `capability_unavailable` on the policy-pass path, the
+same "policy real, terminal mechanism honestly stubbed" pattern
+Section 2.13's factory-reset/operations route already established for
+S8. **Pass 2** (user: "далі") completed the chain: the bounded local
+handshake self-test, real atomic activation, and a scheduled reboot.
+
+**Real recon finding that reduced this feature's original scope
+estimate**: `hal_ota.c` already performs real client-side TLS (an HTTPS
+`esp_http_client` GET, pinning a CA via `cert_pem`, for OTA image
+download) -- so the "bounded local listener/handshake verification" step
+did not need hand-written raw mbedtls client code from scratch, as
+earlier recon (Section 2.13's own notes) assumed; it reuses this
+project's existing, already-working `esp_http_client`/esp-tls client path
+against a temporary local `httpd_ssl` listener.
+
+**New `components/service/include/cert_rotation_state.hpp`/`.cpp`**:
+`tls_provisioning_storage_port.hpp` (plan S5 #13) already provides two
+PHYSICAL slots (`kCurrent`/`kNext`); what plan #12 additionally wants --
+named explicitly as "S6's job" in that module's own header comment -- is
+a separately-persisted ACTIVE-SLOT REFERENCE, so "atomically switch the
+active reference" is a single `u32` NVS write (inherits atomicity from
+ESP-IDF's own commit semantics, the exact reasoning
+`reset_journal_storage_port.hpp` already established) rather than copying
+cert/key bytes between slots. Encoded as 2 bits (active slot, pending-
+confirmation flag) under a new `tls_active_state` key in the existing
+`kTlsIdentity` namespace (registry bumped from 5 to 6 key patterns). A
+rotation always stages a new candidate into the COMPLEMENT of whatever
+slot is currently active (`cert_rotation_staging_slot()`), so "the
+previous confirmed slot" plan #12 wants retained needs no separate field
+-- it is always the complement of the now-active slot. Default state
+(nothing ever written): active = `kCurrent`, confirmed -- exactly
+Section 2.7's original, pre-#12 behavior, so this module is purely
+additive on any device that has never rotated.
+
+`cert_rotation_activate(slot)`: the atomic switch itself, rejects a slot
+that is not the current staging slot (refuses to "activate" an
+already-active slot, or to re-arm mid-rotation). Sets confirmation =
+pending. `cert_rotation_confirm_pending_with_result(bool)`: pure,
+host-testable state-machine core (dependency-injection on the
+already-computed validation outcome, matching `commissioning_window.hpp`'s
+own explicit-`now_ms` precedent) -- confirms in place on success, or
+rolls back to the complement slot on failure, always leaving confirmation
+resolved (never left pending). `cert_rotation_confirm_pending(dns_san,
+uri_san)`: the real entry point, re-reads the active slot's own material
+and re-validates via `hal_tls_validate_certificate()` (ESP_PLATFORM-only,
+fails closed unconditionally on host -- same boundary Section 2.10's own
+validator already established) before delegating to the pure core above.
+
+**`web_server.cpp` wiring**: `start_production_https()` calls
+`cert_rotation_confirm_pending()` once per boot (before reading which
+slot to load) and reads `cert_rotation_active_slot_for_listener_start()`
+instead of a hardcoded `TlsCertificateSlot::kCurrent`. This is the real
+mechanism behind plan #12's "one successful reboot/post-activation
+check": the reboot the route schedules on activation (below) is exactly
+what triggers this call on the very next boot.
+
+**New `components/web_ui/include/cert_rotation_self_test.hpp`/`.cpp`**
+(pass 2): `cert_rotation_bounded_self_test()` starts a temporary,
+minimal second `httpd_ssl` listener (4096-byte stack, 1 URI handler, 1
+open socket -- the library's own conservative default, nothing like
+production's 20480-byte/56-handler budget) bound to the CANDIDATE
+material on a dedicated non-production port (`8443`), makes one real
+HTTPS request against it over loopback via `esp_http_client`, and tears
+the listener down unconditionally before returning. The self-test
+client's identity check is decoupled from its connection target via
+`esp_http_client_config_t`'s own documented `common_name` field: the
+socket connects to `127.0.0.1` (no network/mDNS dependency), but the
+presented certificate must still match this gateway's real production
+DNS SAN and chain to the real product CA -- the same identity a genuine
+remote client would check, not a weakened loopback-only check.
+`schedule_cert_rotation_reboot()` defers `esp_restart()` by 2 seconds via
+a one-shot `esp_timer` (`ESP_TIMER_TASK` dispatch, no new task/stack
+cost, same reasoning already established for the periodic button-poll
+timer) so the route's own HTTP response has time to actually flush over
+the socket before the device restarts. Both functions are ESP_PLATFORM-
+only real logic with an unconditionally-defined, fail-closed/no-op host
+branch -- callers never need `#ifdef ESP_PLATFORM`, matching
+`hal_tls_validate_certificate()`'s own established convention.
+
+**`POST /api/v1/security/certificates/operations`** (`web_handlers_
+auth.cpp`): wrapped mutation-grade (`kSecurityAdmin`, same grade as
+`auth/password`). Accepts `certificate_pem_hex`/`private_key_pem_hex`
+(hex-encoded PEM text, reusing the existing `decode_hex()` helper --
+avoids this project's own ad-hoc JSON reader needing to understand
+embedded-newline escaping inside a JSON string, the same reasoning
+`provisioning/enroll`'s proof-of-possession field already established).
+Full chain, in order, mirroring `auth/password`'s own "a bad attempt must
+never burn the grant" principle at every gate: decode -> reject a
+candidate missing the mbedtls PEM-convention trailing NUL byte -> read
+the product CA -> build this gateway's own expected DNS/URI SAN ->
+offline-validate via `hal_tls_validate_certificate()` -> the bounded
+local handshake self-test -> only THEN consume the physical-presence
+grant (`kCertificateRotation`) -> write the now-validated candidate into
+`cert_rotation_staging_slot()` for real (encrypted, S5's write gate) ->
+atomically activate it (`cert_rotation_activate()`, confirmation
+pending) -> send a success response -> schedule the reboot. An installer
+can now actually rotate the production certificate through this route.
+
+**Tests**: `test_cert_rotation_state.cpp` (13 scenarios covering every
+state transition, including a full two-rotation confirm/roll-back cycle
+and the real `cert_rotation_confirm_pending()` entry point's
+host-fails-closed behavior). `test_web_handlers_auth.cpp` extended: every
+rejection this route applies BEFORE the real validator call is
+host-tested (malformed JSON, bad hex, missing NUL terminator, CA never
+provisioned); the validator call itself is an unconditional host gate
+(same boundary as every other real-crypto path in this project), so the
+self-test/activation/reboot path is real code, confirmed to compile and
+link against the real ESP32-C6 target, but not host-exercised -- the
+same split `cert_rotation_state.hpp`'s own tests already document.
+
+Full host suite: **109/109** (108 pre-existing + 1 new executable,
+`test_cert_rotation_state`; `test_web_handlers_auth`'s own assertion
+count grew in place, not a new executable). `cppcheck` and
+`check_arch_invariants.sh` both clean. Real `idf.py build` succeeded both
+profiles (development and `ZGW_PRODUCTION_BUILD=1`), confirming the new
+`esp_http_client` component dependency (`web_ui`'s `CMakeLists.txt`
+`REQUIRES` list, needed for the self-test client) links correctly and
+that binary size headroom remains healthy (32% free flash in both
+profiles).
+
+**Honest, named limits**: no live HIL exercise of this route yet --
+running a SECOND `httpd_ssl` listener concurrently with the already-live
+production one, on a device this same session already found to have a
+tight post-boot heap budget (Section 2.14's own real heap-exhaustion
+bug), is a genuine, not-yet-measured resource-pressure question that only
+real hardware can answer; triggering it also means a real, deliberate
+device reboot via `esp_restart()`, an outward-facing action on hardware
+the user is actively relying on for other testing. Compile/link
+verification (this section's own bar) confirms the code is correct and
+resource-bounded by construction (minimal stack/socket/handler budget for
+the temporary listener), but not that the real device survives running
+two listeners at once under real memory pressure. The debounce/retry
+behavior of a FAILED self-test (candidate written to staging slot but
+never activated, exactly like a rejected offline-validation candidate)
+was reasoned through but not exercised against a real broken candidate on
+real hardware either.
+
+Evidence: `implementation-evidence/S6-cert-rotation-state-and-route-completion.json`.
+
+### 2.16 Live HIL round for certificate rotation: four real boot-stability defects found and fixed; the route itself still not reached
+
+User authorized a live HIL round for Section 2.15's route (`AskUserQuestion`:
+"Так, робимо HIL зараз"). The route was never exercised: real hardware
+crashed before `WebServer::start()` on every attempt, for reasons entirely
+unrelated to certificate rotation's own code. Chasing each crash to a real,
+evidence-backed root cause (UART core dumps decoded via `idf.py
+coredump-info` and, when that itself failed under heap pressure,
+`riscv32-esp-elf-addr2line` against the real build ELF; real
+`heap_caps_get_free_size()`/`heap_caps_get_largest_free_block()`
+diagnostics) found and fixed four independent, hardware-only-discoverable
+defects in this project's own boot-time task/stack management --
+none previously exercised because no earlier HIL round on this project had
+ever reached a real, connected Wi-Fi station event before this one:
+
+- **Stack overflow / silent LP-RAM fallback in `ServiceRuntime::start()`'s
+  task creation.** Plain `xTaskCreate()`'s default allocator can silently
+  place a task's stack in LP-RAM (~15KB, meant for ULP code) instead of
+  real SRAM when the preferred pool is fragmented -- confirmed by reading
+  ESP-IDF's own `components/heap/port/esp32c6/memory_layout.c`: on
+  ESP32-C6, `MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT` alone does not exclude
+  LP-RAM. Fixed with a new `components/app_hal/hal_memory.c`/`.h`
+  (`hal_alloc_internal_sram()`, adding `MALLOC_CAP_DMA` -- the one
+  capability real SRAM's high-priority set has that LP-RAM's sets never
+  do) plus `xTaskCreateStatic()` for all of `ServiceRuntime::start()`'s
+  tasks, and reordering `g_runtime.start()` in `app_main.cpp` to run
+  immediately after Wi-Fi driver init (which alone consumes ~65KB) rather
+  than after Wi-Fi connect.
+- **A second, different stack overflow**, in `CoreRegistry::snapshot_copy()`'s
+  own by-value local (`CoreState` is ~2.5KB with `kMaxDevices=64`) --
+  unreachable until the very first time this project's code ever processed
+  a real Wi-Fi "connected" event on hardware. `persist_current_core_state()`
+  already had a `static`-local fix for this exact bug class, scoped only to
+  itself; `CoreRegistry::snapshot_copy()` (a shared public API with other,
+  concurrent callers, so it cannot safely use the same `static` fix) still
+  had its own copy. Fixed by increasing `kRuntimeTaskStackSize`.
+- **The same LP-RAM-fallback class as the first defect, in a different
+  component**: `hal_zigbee.c`'s `zigbee_main` task, created via plain
+  `xTaskCreate()`, was never covered by that fix (a different component,
+  `app_hal`, not `service`). Fixed with the same `hal_alloc_internal_sram()`
+  + `xTaskCreateStatic()` pattern.
+- **A regression from the second defect's own fix**: the larger
+  `kRuntimeTaskStackSize` needed to fix the `snapshot_copy()` overflow did
+  not fit the PRODUCTION + Flash-Encryption-Development profile's own,
+  much tighter heap budget on this hardware (roughly half the free heap at
+  `app_main()` start compared to the same code without Flash Encryption) --
+  `service_runtime` failed to start at all there, a worse outcome than the
+  original overflow. Re-tuned to a value real HIL confirmed fits both
+  profiles. (Section 2.17 later removed the underlying heap shortage
+  entirely, making this constant comfortable again rather than marginal.)
+
+Evidence: `implementation-evidence/S6-cert-rotation-hil-round-stack-and-heap-fixes.json`.
+
+### 2.17 The Wi-Fi station failure: one memory bug behind three symptoms
+
+> Full engineering post-mortem, including every hypothesis that was tested and
+> ruled out and the diagnostic method that finally worked:
+> [`docs/process/POSTMORTEM_WIFI_HEAP_STARVATION.md`](../process/POSTMORTEM_WIFI_HEAP_STARVATION.md).
+> This section covers only the security-relevant summary.
+
+The Wi-Fi station connectivity failure that blocked Section 2.16's whole
+HIL round -- 100% reproducible on the one board provisioned with Flash
+Encryption, the only board that can run the production HTTPS profile the
+certificate-rotation route lives behind -- was root-caused and fixed.
+Several earlier hypotheses were tested and ruled out along the way
+(router-side MAC filtering, corruption of the `phy_init` RF-calibration
+partition, and an ESP-IDF 5.5.2-vs-5.5.5 toolchain regression -- an
+earlier finding claiming 5.5.2 fixed it was retested with current code
+and did NOT reproduce, superseding that claim).
+
+**Root cause: ~166KB of permanently reserved `.bss` in four global
+objects**, dominated by `MqttBridge`'s `pending_publications_[192]`
+staging queue (192 x 452 bytes = ~85KB). That queue is purely transient
+-- filled by one sync pass, then drained to empty in batches of 8 in the
+same task iteration -- yet it was reserved for the device's entire
+uptime. On the production + Flash-Encryption profile (whose own overhead
+roughly halves the available heap) this left the Wi-Fi driver with
+**280-476 bytes of DMA-capable heap, largest free block 92-272 bytes**,
+measured directly on hardware at the moment of disconnect. The driver
+simply could not allocate a buffer for its own management frames.
+
+**One cause, three symptoms.** The driver's `m f auth` / `m f assoc req`
+/ `m f beacon` messages are frame-buffer *allocation failures* (it prints
+the explicit form, `alloc eb len=752 type=4 fail`, on the SoftAP path).
+The SoftAP crash and the station auth timeout were the same exhaustion
+failing at whichever stage allocated first; ESP-IDF coexistence, which
+needs its own memory, consumed enough extra to push the failure earlier
+(auth rather than the WPA2 4-way handshake). This also explains every
+previously puzzling property: perfectly deterministic, and completely
+unaffected by signal strength, distance, router configuration, RF
+calibration, or toolchain version.
+
+**Diagnosis method** (worth repeating for this class of bug): a
+line-by-line boot-log diff against a known-good board isolated
+coexistence as the one consistent difference; disabling it moved the
+failure from auth to the 4-way handshake (with RSSI -59 / SNR 38,
+proving RF was healthy) rather than fixing it; a temporary heap probe in
+the STA-disconnected handler then measured the actual exhaustion; and
+`idf.py size-components` plus a parse of the `.map` file's largest
+`.bss` symbols identified the responsible objects.
+
+**Fixes**: `pending_publications_` became a lifecycle-scoped allocation
+claimed in `MqttBridge::start()` -- which runs only once the network is
+already up, precisely when the Wi-Fi association buffers are no longer
+needed -- and released in `stop()`, with capacity and drop-when-full
+semantics unchanged (a failed allocation degrades to skipping
+publications). `PersistedStateStore::probe_slot()`'s ~2.2KB stack local
+became a function-local `static`, fixing a stack overflow on the
+network-up persistence path that only became reachable once association
+started working. `kRuntimeTaskStackSize` returned to 16384 now that the
+freed memory makes real margin affordable again.
+
+**Verified on real hardware** with coexistence **re-enabled** (the
+configuration the product actually needs, since the gateway runs Wi-Fi
+and Zigbee together): one boot with no reboots at all across a 55-second
+window (the board previously crash-looped 10-16 times per window), Wi-Fi
+connected, DHCP address obtained, zero disconnects, zero crashes, mDNS
+advertising, and the production HTTPS listener correctly failing closed
+on absent certificate material. Heap at boot rose from 66 KiB to 148 KiB.
+
+The certificate-rotation route still has no live HIL exercise, but it is
+no longer blocked by connectivity -- only by this board's TLS identity
+material, which an earlier flash-erase during the investigation wiped and
+which needs re-provisioning.
+
+Evidence: `implementation-evidence/S6-cert-rotation-hil-round-stack-and-heap-fixes.json`.
+
 ## 3. What is explicitly deferred
 
 Every other S6 required change remains unimplemented -- these four
@@ -1528,29 +1810,32 @@ consumer (no enrollment flow reads the provisioning secret; no request
 handler gates behavior on the commissioning window being active) -- that
 wiring is deferred to the sub-slices below that actually need it.
 
-- **HTTPS and sessions, remainder** (#12 only now): authenticated
-  physical-presence-protected certificate rotation. All 7 of #17's
-  routes are now built and wired -- Sections 2.11/2.13/2.14 -- only
-  `POST /api/v1/security/certificates/operations` (the certificate-
-  rotation route itself, #12's own FD-17 machinery) remains, and is the
-  one item shared between this cluster and "Authorization and physical
-  presence" below. Every other "HTTPS and sessions" item (#7, #9, #10,
-  #11, #13-#16) is implemented -- #8 in its scoped, local-self-consistency
-  form only (Section 2.9's own text is explicit that this is not the
-  same guarantee as fleet-wide duplicate-enrollment detection, which
-  remains out of reach without a manufacturing backend this project does
-  not have). Sections 2.6-2.10 still have no *automatic* production
-  provisioning pipeline -- the HIL session's real certificate (Section
-  2.10's own addendum) was loaded by a one-off manual exercise onto one
-  specific test device, not a repeatable flow any real device goes
-  through; Section 2.9's manufacturing-record gate is similarly still
-  never satisfied by anything automatic.
-- **Authorization and physical presence** (#18-#23): #18 (capability set),
-  #19 (central authorization middleware), #20/#21 (the grant primitive +
-  real GPIO/button HAL, now wired and HIL-confirmed), #22 (factory-reset
-  PoP policy) and #23 (non-leaky errors) are all now done -- Sections
-  2.11-2.14. Certificate rotation itself (shared with the cluster above)
-  is the one remaining item in this cluster.
+- **HTTPS and sessions** (#7-#17): all 11 items implemented -- #7/#9/#10/
+  #11/#13-#17 fully, #8 in its scoped, local-self-consistency form only
+  (Section 2.9's own text is explicit that this is not the same guarantee
+  as fleet-wide duplicate-enrollment detection, which remains out of
+  reach without a manufacturing backend this project does not have), and
+  #12 (Section 2.15) real end to end but not yet HIL-exercised (compile/
+  link-verified only -- see that section's own honest-limits note on the
+  real, not-yet-measured resource-pressure question of running two
+  `httpd_ssl` listeners at once on real hardware). A live HIL round was
+  attempted (Section 2.16) and found/fixed four real, unrelated boot-time
+  defects, then root-caused and fixed the Wi-Fi station failure that had
+  blocked it (Section 2.17: ~166KB of permanently reserved `.bss` starving
+  the Wi-Fi driver of DMA-capable heap). The device now boots stably with
+  working Wi-Fi under the production profile; the route still awaits its
+  HIL exercise, now only pending re-provisioning of that board's TLS
+  identity material. Sections 2.6-2.10 still
+  have no *automatic* production provisioning pipeline -- the HIL
+  session's real certificate (Section 2.10's own addendum) was loaded by
+  a one-off manual exercise onto one specific test device, not a
+  repeatable flow any real device goes through; Section 2.9's
+  manufacturing-record gate is similarly still never satisfied by
+  anything automatic.
+- **Authorization and physical presence** (#18-#23): all done -- Sections
+  2.11-2.15. #12/certificate rotation (shared with the cluster above)
+  is real end to end but still needs its own HIL round, same caveat as
+  above (Section 2.16).
 - **Strict request parsing** (#24-#27): the `cJSON`-backed
   `StrictJsonObjectReader`, per-command schema validation, fuzz corpus.
 - **Rate limiting and audit** (#28-#31): the rate limiter itself, the

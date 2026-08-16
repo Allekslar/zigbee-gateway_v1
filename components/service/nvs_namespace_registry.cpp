@@ -111,14 +111,23 @@ const std::array<NvsNamespaceEntry, kNvsNamespaceCount> kRegistry = {{
         NvsResetClassification::kPreserveOnFactoryReset,
         /*encryption_required=*/true,
         /*implemented_today=*/true,
-        make_key_patterns<5>({
+        make_key_patterns<6>({
             {"tls_key_cur", false},
             {"tls_key_nxt", false},
             {"tls_cert_cur", false},
             {"tls_cert_nxt", false},
             {"tls_ca", false},
+            // Plan #12/FD-17's "one atomic active-slot reference" --
+            // cert_rotation_state.hpp's own small persisted state (which
+            // slot is active + whether that choice is still pending a
+            // post-activation confirmation). Not secret material itself
+            // (a 2-bit state value), but co-located in this namespace
+            // since it is conceptually part of the same TLS identity
+            // record and Section 2.7's registry already scopes ownership
+            // per-key, not per-byte-sensitivity.
+            {"tls_active_state", false},
         }),
-        5,
+        6,
     },
     {
         NvsNamespaceId::kSessionSeed,

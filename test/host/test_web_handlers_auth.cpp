@@ -158,12 +158,14 @@ int main() {
     const CapturedRoute* password = find_captured("/api/v1/auth/password", HTTP_POST);
     const CapturedRoute* enroll = find_captured("/api/v1/provisioning/enroll", HTTP_POST);
     const CapturedRoute* factory_reset = find_captured("/api/v1/system/factory-reset/operations", HTTP_POST);
+    const CapturedRoute* certificates = find_captured("/api/v1/security/certificates/operations", HTTP_POST);
     assert(login != nullptr && login->handler != nullptr);
     assert(logout != nullptr && logout->handler != nullptr);
     assert(session_get != nullptr && session_get->handler != nullptr);
     assert(password != nullptr && password->handler != nullptr);
     assert(enroll != nullptr && enroll->handler != nullptr);
     assert(factory_reset != nullptr && factory_reset->handler != nullptr);
+    assert(certificates != nullptr && certificates->handler != nullptr);
 
     // --- Bad-argument rejection at registration time. ---
     assert(!web_ui::register_auth_routes_v1(nullptr, &context));
@@ -454,6 +456,91 @@ int main() {
         assert(factory_reset->handler(&req) == ESP_OK);
         assert(g_last_status == "503 Service Unavailable");
         assert(g_last_response.find("capability_unavailable") != std::string::npos);
+    }
+
+    // --- POST /api/v1/security/certificates/operations: wrapped
+    // mutation-grade (kSecurityAdmin). hal_tls_validate_certificate()
+    // always fails closed on host (no real mbedtls -- see
+    // hal_tls_certificate_validator.h's own header comment), so the
+    // "candidate actually validates, grant gets consumed, staging slot
+    // gets written" success path can only be exercised via a real
+    // idf.py build -- exactly the same host-testability boundary
+    // cert_rotation_state.hpp's own tests already document. What IS
+    // host-testable: every rejection this handler applies BEFORE ever
+    // reaching the real validator call. ---
+    {
+        const std::string cookie_header = "zgw_session=" + session_id_hex;
+        httpd_req_t req{};
+        req.user_ctx = certificates->user_ctx;
+        req.method = HTTP_POST;
+        req.mock_cookie_header = cookie_header.c_str();
+        req.mock_csrf_header = csrf_token_hex.c_str();
+        req.mock_origin_header = context.expected_origin;
+
+        // Missing fields -> 400, before any decoding is attempted.
+        g_request_body = "{\"certificate_pem_hex\":\"deadbeef00\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(certificates->handler(&req) == ESP_OK);
+        assert(g_last_status == "400 Bad Request");
+
+        // Malformed hex (odd length) -> 400.
+        req.user_ctx = certificates->user_ctx;
+        g_request_body = "{\"certificate_pem_hex\":\"abc\",\"private_key_pem_hex\":\"deadbeef00\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(certificates->handler(&req) == ESP_OK);
+        assert(g_last_status == "400 Bad Request");
+
+        // Well-formed hex, but missing the trailing-NUL byte mbedtls's
+        // own PEM convention requires ("deadbeef" decodes to bytes with
+        // no trailing 0x00) -> 400, caught by this handler's own
+        // explicit check before ever calling the real validator.
+        req.user_ctx = certificates->user_ctx;
+        g_request_body = "{\"certificate_pem_hex\":\"deadbeef\",\"private_key_pem_hex\":\"deadbeef00\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(certificates->handler(&req) == ESP_OK);
+        assert(g_last_status == "400 Bad Request");
+
+        // Well-formed candidate (both fields end in a NUL byte), but no
+        // product CA has ever been provisioned in this test's storage --
+        // 503, and this happens BEFORE the real validator is ever
+        // called (CA is read first).
+        req.user_ctx = certificates->user_ctx;
+        g_request_body = "{\"certificate_pem_hex\":\"deadbeef00\",\"private_key_pem_hex\":\"deadbeef00\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(certificates->handler(&req) == ESP_OK);
+        assert(g_last_status == "503 Service Unavailable");
+        assert(g_last_response.find("capability_unavailable") != std::string::npos);
+
+        // Provision a placeholder CA (synthetic bytes, never anything
+        // resembling real key material -- same convention every other
+        // S5/S6 test in this repository already follows) so the request
+        // reaches the real validator this time. hal_tls_validate_
+        // certificate() always fails closed on host regardless of input
+        // -> 400 "candidate failed validation", and (unlike auth/
+        // password's own test, which CAN reach and prove its grant-
+        // ordering) no physical-presence grant is ever consulted here --
+        // the real validator call is an unconditional gate on host, the
+        // one honest limit this sub-slice's own evidence file names.
+        assert(
+            service::tls_identity_set_product_ca(
+                reinterpret_cast<const uint8_t*>("placeholder-ca\0"), 15U) ==
+            service::SecureStorageWriteResult::kWritten);
+        req.user_ctx = certificates->user_ctx;
+        g_request_body = "{\"certificate_pem_hex\":\"deadbeef00\",\"private_key_pem_hex\":\"deadbeef00\"}";
+        req.content_len = static_cast<int>(g_request_body.size());
+        clear_http_capture();
+        assert(certificates->handler(&req) == ESP_OK);
+        assert(g_last_status == "400 Bad Request");
+        // No grant was consumed by any of the above -- confirmed by
+        // factory-reset's own already-created kFactoryReset grant (from
+        // the block above) still being irrelevant here (different action
+        // class), and no kCertificateRotation grant was ever created in
+        // this test at all, yet nothing here ever asked for one (the
+        // validator gate rejected every attempt first).
     }
 
     // --- POST /api/v1/auth/logout: wrapped mutation-grade -- needs

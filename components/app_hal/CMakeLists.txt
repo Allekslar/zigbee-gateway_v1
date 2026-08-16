@@ -22,6 +22,7 @@ idf_component_register(
         "hal_time.c"
         "hal_tls_certificate_validator.c"
         "hal_button.c"
+        "hal_memory.c"
     EMBED_TXTFILES
         "ota_server_root_ca.pem"
     INCLUDE_DIRS "include"

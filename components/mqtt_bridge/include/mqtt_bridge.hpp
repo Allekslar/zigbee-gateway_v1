@@ -45,6 +45,11 @@ public:
     std::size_t publish_pending_publications() noexcept;
     std::size_t sync_snapshot(const service::MqttBridgeSnapshot& snapshot) noexcept;
     std::size_t drain_publications(MqttPublishedMessage* out, std::size_t capacity) noexcept;
+    // Allocates pending_publications_ on first need and reports whether the
+    // queue is usable. Safe to call repeatedly; see the member's own comment
+    // for why this queue is not a plain .bss array.
+    bool ensure_publication_queue() noexcept;
+    void release_publication_queue() noexcept;
 
 private:
     friend class MqttBridgeTestAccess;
@@ -97,7 +102,26 @@ private:
     service::MqttBridgeDeviceSnapshot sync_devices_scratch_[service::kServiceMaxDevices]{};
     uint16_t cached_device_count_{0};
     bool cache_initialized_{false};
-    MqttPublishedMessage pending_publications_[kMaxMqttPublicationsPerSync]{};
+    // Lifecycle-scoped, NOT permanently reserved .bss. At
+    // kMaxMqttPublicationsPerSync (192) x sizeof(MqttPublishedMessage) (452)
+    // this queue is ~85KB -- as a plain member array it made the whole
+    // MqttBridge object ~99KB of .bss, permanently reserved whether or not
+    // MQTT was ever used. Real HIL testing found that this single array is
+    // what starved the Wi-Fi driver of DMA-capable heap on the production +
+    // Flash-Encryption profile: only ~476 bytes remained free during
+    // association, so the driver could not allocate a buffer for its own
+    // management frames and every connection attempt failed (the driver's
+    // "m f auth"/"m f assoc req"/"alloc eb ... fail" messages are exactly
+    // that allocation failing). Allocated on demand instead -- in start(),
+    // i.e. only once the network is already up, which is precisely when the
+    // Wi-Fi association buffers are no longer needed -- and released in
+    // stop(). Capacity and drop-when-full semantics are unchanged; a failed
+    // allocation simply leaves the capacity at 0, which the existing
+    // capacity guards already treat as "queue full" (publications are
+    // skipped, the same graceful degradation this bridge already applies to
+    // any other publication-build failure).
+    MqttPublishedMessage* pending_publications_{nullptr};
+    std::size_t pending_publication_capacity_{0};
     std::size_t pending_publication_count_{0};
     service::ServiceRuntimeApi* runtime_{nullptr};
     std::atomic<uint32_t> published_message_count_{0};

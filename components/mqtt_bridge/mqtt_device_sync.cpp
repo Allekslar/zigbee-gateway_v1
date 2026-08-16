@@ -195,7 +195,7 @@ std::size_t MqttBridge::sync_snapshot(const service::MqttBridgeSnapshot& snapsho
 
     pending_publication_count_ = 0;
     auto enqueue_publication = [&](const MqttPublishedMessage& publication) noexcept -> bool {
-        if (pending_publication_count_ >= kMaxMqttPublicationsPerSync) {
+        if (!ensure_publication_queue() || pending_publication_count_ >= pending_publication_capacity_) {
             return false;
         }
         pending_publications_[pending_publication_count_++] = publication;
@@ -304,7 +304,7 @@ std::size_t MqttBridge::sync_snapshot(const service::MqttBridgeSnapshot& snapsho
 }
 
 std::size_t MqttBridge::drain_publications(MqttPublishedMessage* out, const std::size_t capacity) noexcept {
-    if (out == nullptr || capacity == 0U || pending_publication_count_ == 0U) {
+    if (out == nullptr || capacity == 0U || pending_publications_ == nullptr || pending_publication_count_ == 0U) {
         return 0U;
     }
 

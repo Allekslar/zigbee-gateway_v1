@@ -18,10 +18,11 @@ idf_component_register(
         "web_route_auth_dispatch.cpp"
         "web_handler_common.cpp"
         "web_v1_common.cpp"
+        "cert_rotation_self_test.cpp"
     INCLUDE_DIRS
         "include"
         "."
-    REQUIRES core service common app_hal esp_http_server esp_https_server esp_timer
+    REQUIRES core service common app_hal esp_http_client esp_http_server esp_https_server esp_timer
 )
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)

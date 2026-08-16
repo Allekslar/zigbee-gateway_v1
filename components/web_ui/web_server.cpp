@@ -11,6 +11,7 @@
 #include "esp_https_server.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "cert_rotation_state.hpp"
 #include "gateway_id.hpp"
 #include "hal_button.h"
 #include "hal_time.h"
@@ -90,12 +91,11 @@ namespace {
 
 constexpr const char* kTag = LOG_TAG_WEB_SERVER;
 
-// Generous fixed bound for a single leaf certificate/private key in PEM
-// form -- matches secure_storage_get_blob()'s host-mock ceiling
-// coincidentally; the real ESP_PLATFORM NVS blob path has no such fixed
-// limit of its own (bounded only by the NVS partition), this is purely
-// this call site's own defensive stack-buffer size.
-constexpr uint32_t kMaxCertOrKeyBytes = 4096U;
+// service::kTlsCertOrKeyMaxBytes (tls_provisioning_storage_port.hpp) is
+// the single source of truth for this bound -- plan #12's cert rotation
+// route/state machine need the identical value, so it no longer lives
+// only here as a private literal.
+constexpr uint32_t kMaxCertOrKeyBytes = service::kTlsCertOrKeyMaxBytes;
 
 httpd_config_t build_base_httpd_config() noexcept {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -220,21 +220,52 @@ bool start_production_https(const common::GatewayId& gateway_id, httpd_handle_t*
     // start_production_https() has exactly one call site
     // (WebServer::start(), itself called exactly once from app_main() on
     // the "main" task at boot).
+    // Plan #10/#11: chain-to-CA, exact DNS SAN (production mDNS host +
+    // ".local" -- build_gateway_mdns_host() alone does not include the
+    // suffix, hal_mdns.h's own mdns_hostname_set() appends it separately)
+    // and URI SAN ("urn:zgw:<gateway_id>"), expiry, and private-key/
+    // certificate pairing. Computed BEFORE the slot reads below (plan
+    // #12's confirm-or-rollback check needs these same expected values).
+    char mdns_host[32]{};
+    char dns_san[40]{};
+    char uri_san[32]{};
+    if (!service::build_gateway_mdns_host(gateway_id, mdns_host, sizeof(mdns_host)) ||
+        std::snprintf(dns_san, sizeof(dns_san), "%s.local", mdns_host) <= 0 ||
+        !service::build_gateway_uri_san(gateway_id, uri_san, sizeof(uri_san))) {
+        ESP_LOGE(kTag, "Production HTTPS listener: could not build expected SAN values -- refusing to start");
+        return false;
+    }
+
+    // Plan #12/FD-17: "retains the previous confirmed slot until one
+    // successful reboot/post-activation check completes." Runs once per
+    // boot, before the slot read below -- if a rotation is pending
+    // confirmation and the now-active slot's own material no longer
+    // validates (or was never readable), this reverts the active-slot
+    // reference to the previously confirmed slot BEFORE anything below
+    // ever reads it, matching "power loss or failed verification selects
+    // the last confirmed current slot before listener enablement"
+    // literally. A no-op (kNotRequired) on every device that has never
+    // rotated -- which is every device today, since nothing yet calls
+    // cert_rotation_activate() for real (see cert_rotation_state.hpp's
+    // own header comment on this sub-slice's scope).
+    (void)service::cert_rotation_confirm_pending(dns_san, uri_san);
+    const service::TlsCertificateSlot active_slot = service::cert_rotation_active_slot_for_listener_start();
+
     static uint8_t s_cert_bytes[kMaxCertOrKeyBytes];
     uint32_t cert_len = 0U;
-    if (service::tls_identity_get_certificate(
-            service::TlsCertificateSlot::kCurrent, s_cert_bytes, sizeof(s_cert_bytes), &cert_len) !=
+    if (service::tls_identity_get_certificate(active_slot, s_cert_bytes, sizeof(s_cert_bytes), &cert_len) !=
         service::SecureStorageStatus::kAvailable) {
-        ESP_LOGE(kTag, "Production HTTPS listener: current certificate unavailable -- refusing to start (fail closed)");
+        ESP_LOGE(
+            kTag, "Production HTTPS listener: active-slot certificate unavailable -- refusing to start (fail closed)");
         return false;
     }
 
     static uint8_t s_key_bytes[kMaxCertOrKeyBytes];
     uint32_t key_len = 0U;
-    if (service::tls_identity_get_private_key(
-            service::TlsCertificateSlot::kCurrent, s_key_bytes, sizeof(s_key_bytes), &key_len) !=
+    if (service::tls_identity_get_private_key(active_slot, s_key_bytes, sizeof(s_key_bytes), &key_len) !=
         service::SecureStorageStatus::kAvailable) {
-        ESP_LOGE(kTag, "Production HTTPS listener: current private key unavailable -- refusing to start (fail closed)");
+        ESP_LOGE(
+            kTag, "Production HTTPS listener: active-slot private key unavailable -- refusing to start (fail closed)");
         return false;
     }
 
@@ -243,21 +274,6 @@ bool start_production_https(const common::GatewayId& gateway_id, httpd_handle_t*
     if (service::tls_identity_get_product_ca(s_ca_bytes, sizeof(s_ca_bytes), &ca_len) !=
         service::SecureStorageStatus::kAvailable) {
         ESP_LOGE(kTag, "Production HTTPS listener: product CA unavailable -- refusing to start (fail closed)");
-        return false;
-    }
-
-    // Plan #10/#11: chain-to-CA, exact DNS SAN (production mDNS host +
-    // ".local" -- build_gateway_mdns_host() alone does not include the
-    // suffix, hal_mdns.h's own mdns_hostname_set() appends it separately)
-    // and URI SAN ("urn:zgw:<gateway_id>"), expiry, and private-key/
-    // certificate pairing.
-    char mdns_host[32]{};
-    char dns_san[40]{};
-    char uri_san[32]{};
-    if (!service::build_gateway_mdns_host(gateway_id, mdns_host, sizeof(mdns_host)) ||
-        std::snprintf(dns_san, sizeof(dns_san), "%s.local", mdns_host) <= 0 ||
-        !service::build_gateway_uri_san(gateway_id, uri_san, sizeof(uri_san))) {
-        ESP_LOGE(kTag, "Production HTTPS listener: could not build expected SAN values -- refusing to start");
         return false;
     }
 

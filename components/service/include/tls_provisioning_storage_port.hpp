@@ -48,6 +48,17 @@ enum class TlsCertificateSlot : uint8_t {
     kNext = 1,
 };
 
+// Single source of truth for the maximum PEM byte length this project
+// accepts for a certificate, private key or CA -- previously duplicated
+// as a private constant inside web_server.cpp's own anonymous namespace;
+// plan #12's cert_rotation_state.hpp/its rotation route both need the
+// exact same bound (the buffers they read/decode into must match what a
+// stored slot can actually hold), so it now lives here instead of being
+// a second hand-copied literal (the exact class of gap Section 3.1 of
+// docs/security/CONTROL_PLANE_SECURITY.md already flags for the Kconfig
+// range tables).
+constexpr uint32_t kTlsCertOrKeyMaxBytes = 4096U;
+
 // Private key / certificate, per slot. DER or PEM bytes -- this module has
 // no opinion on encoding, it only stores whatever bytes the (not yet
 // implemented) S6 consumer provides.

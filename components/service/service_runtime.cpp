@@ -16,6 +16,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "hal_memory.h"
 #include "sdkconfig.h"
 #endif
 
@@ -43,7 +44,30 @@ constexpr std::size_t kMaxProcessedEventsPerCycle = 64U;
 #ifdef ESP_PLATFORM
 constexpr const char* kRuntimeTaskName = "service_runtime";
 // NVS + network request processing can exceed 6KB on ESP32-C6 in AP provisioning flow.
-constexpr uint32_t kRuntimeTaskStackSize = 9216U;
+// Real HIL testing (Wi-Fi STA connect event -> persist_current_core_state() ->
+// CoreRegistry::snapshot_copy()'s own by-value CoreState local, ~2.5KB with
+// kMaxDevices=64) found the connected-event call chain overflows a 9216-byte
+// budget by ~832 bytes (Guru Meditation "Stack protection fault", real stack
+// bounds observed via UART coredump matching this task exactly). This path
+// was unreachable in every earlier HIL attempt (all prior boots crashed via
+// SoftAP fallback or STA auth-timeout before ever reaching a real "connected"
+// event), so the shortfall only surfaced once a board with reliable Wi-Fi
+// exercised it -- real measured peak need ~10048 bytes.
+//
+// This value was tuned three times against real hardware. 16384 fit a
+// non-production build but not the PRODUCTION + Flash-Encryption profile,
+// where only ~12.3KB of DMA-capable heap remained at this point in boot,
+// so xTaskCreateStatic() failed closed and service_runtime never started
+// at all. 11264 fit both, but was then itself overflowed (by ~1240 bytes)
+// on the network-up persistence path -- which only became reachable at
+// all once the real cause of that heap shortage was found and fixed:
+// MqttBridge's publication queue was holding ~85KB of permanently
+// reserved .bss (see mqtt_bridge.hpp). With that freed, this profile now
+// boots with ~144KB of heap instead of ~66KB, so a genuinely comfortable
+// stack is affordable again -- 16384 leaves real margin over the deepest
+// path measured so far (~12.5KB, save() -> probe_slot()) rather than
+// sitting ~1KB under a ceiling.
+constexpr uint32_t kRuntimeTaskStackSize = 16384U;
 constexpr UBaseType_t kRuntimeTaskPriority = 6U;
 constexpr TickType_t kRuntimeTaskPeriodTicks = pdMS_TO_TICKS(20);
 constexpr const char* kScanWorkerTaskName = "wifi_scan_worker";
@@ -62,6 +86,46 @@ bool should_start_ota_worker() noexcept {
 #else
     return false;
 #endif
+}
+
+// Real, hardware-found fix: plain xTaskCreate()'s stack allocator can
+// silently fall back to LP-RAM (0x50000000, a ~16KB region meant for
+// ULP/RTC-domain code, not general task stacks) when the preferred
+// internal-SRAM pool is fragmented enough at the moment of allocation --
+// xTaskCreate() has no way to refuse that fallback and returns pdPASS
+// either way. Found via a real "Stack protection fault" on real ESP32-C6
+// hardware, reported inside the "service_runtime" task
+// (kRuntimeTaskStackSize) with stack bounds landing inside the LP-RAM
+// region -- the first time this project's HIL testing ever exercised a
+// real, successful Wi-Fi station connection (every earlier HIL round
+// fell back to AP-only mode, consuming noticeably less internal SRAM by
+// this point in boot). xTaskCreateStatic() with a caller-supplied,
+// explicitly MALLOC_CAP_INTERNAL-allocated stack buffer makes an
+// internal-SRAM shortage fail loudly (task creation refused, the same
+// fail-closed contract every other allocation failure in this function
+// already has) instead of silently degrading into a memory region too
+// small to safely host a deeply-nested C++ call stack. On failure,
+// `*out_stack_buffer` is left untouched (nullptr) -- the caller must not
+// free it.
+TaskHandle_t create_task_pinned_to_internal_stack(
+    TaskFunction_t task_code,
+    const char* name,
+    uint32_t stack_size_bytes,
+    void* arg,
+    UBaseType_t priority,
+    StackType_t** out_stack_buffer,
+    StaticTask_t* tcb_buffer) noexcept {
+    StackType_t* stack_buffer = static_cast<StackType_t*>(hal_alloc_internal_sram(stack_size_bytes));
+    if (stack_buffer == nullptr) {
+        return nullptr;
+    }
+    TaskHandle_t handle = xTaskCreateStatic(task_code, name, stack_size_bytes, arg, priority, stack_buffer, tcb_buffer);
+    if (handle == nullptr) {
+        hal_free_internal_sram(stack_buffer);
+        return nullptr;
+    }
+    *out_stack_buffer = stack_buffer;
+    return handle;
 }
 #endif
 
@@ -1272,38 +1336,49 @@ bool ServiceRuntime::start() noexcept {
         return true;
     }
 
-    TaskHandle_t runtime_task = nullptr;
-    const BaseType_t task_ok = xTaskCreate(
-        &ServiceRuntime::runtime_task_entry,
-        kRuntimeTaskName,
-        kRuntimeTaskStackSize,
-        this,
-        kRuntimeTaskPriority,
-        &runtime_task);
-    if (task_ok != pdPASS) {
+    // `static`: xTaskCreateStatic() requires both the stack buffer and
+    // the StaticTask_t control block to remain valid for the task's
+    // whole lifetime, and this function has exactly one real call site
+    // (app_main(), once at boot) -- same `static`-is-safe-here precedent
+    // this project already applies elsewhere for exactly this reason.
+    static StaticTask_t s_runtime_task_tcb;
+    static StackType_t* s_runtime_task_stack = nullptr;
+    TaskHandle_t runtime_task = create_task_pinned_to_internal_stack(
+        &ServiceRuntime::runtime_task_entry, kRuntimeTaskName, kRuntimeTaskStackSize, this, kRuntimeTaskPriority,
+        &s_runtime_task_stack, &s_runtime_task_tcb);
+    if (runtime_task == nullptr) {
         runtime_task_handle_ = nullptr;
-        SR_LOGI("Failed to create service runtime task");
+        SR_LOGI("Failed to create service runtime task (internal-SRAM stack allocation or task creation failed)");
         return false;
     }
 
     runtime_task_handle_ = runtime_task;
 
-    TaskHandle_t scan_worker_task = nullptr;
-    const BaseType_t scan_task_ok = xTaskCreate(
-        &ScanManager::worker_task_entry,
-        kScanWorkerTaskName,
-        kScanWorkerTaskStackSize,
-        this,
-        kScanWorkerTaskPriority,
-        &scan_worker_task);
-    if (scan_task_ok != pdPASS) {
-        vTaskDelete(runtime_task);
-        runtime_task_handle_ = nullptr;
-        SR_LOGI("Failed to create Wi-Fi scan worker task");
-        return false;
+    // Non-fatal past this point: runtime_task (above) is the one worker
+    // this project's own real hardware testing found actually crashing
+    // boot outright (a request/reply path core devices depend on).
+    // scan_worker/rcp_worker degrade gracefully instead -- a WiFi-scan or
+    // RCP-update request simply never completes if its own worker never
+    // got created, the same "capability unavailable" posture this
+    // project already applies to MQTT/Matter/Zigbee when a resource or
+    // capability isn't there -- rather than halting the entire device at
+    // boot over a real, hardware-confirmed internal-SRAM shortage this
+    // deep in the boot sequence (Wi-Fi driver init alone, before any
+    // connection, was found to consume roughly 65KB of the ~77KB
+    // available at app_main() start -- see this project's own real HIL
+    // evidence for the exact numbers).
+    static StaticTask_t s_scan_worker_task_tcb;
+    static StackType_t* s_scan_worker_task_stack = nullptr;
+    TaskHandle_t scan_worker_task = create_task_pinned_to_internal_stack(
+        &ScanManager::worker_task_entry, kScanWorkerTaskName, kScanWorkerTaskStackSize, this,
+        kScanWorkerTaskPriority, &s_scan_worker_task_stack, &s_scan_worker_task_tcb);
+    if (scan_worker_task == nullptr) {
+        SR_LOGW(
+            "Wi-Fi scan worker not started: internal-SRAM stack allocation or task creation failed -- scan "
+            "requests will not complete until this resolves");
+    } else {
+        scan_worker_task_handle_ = scan_worker_task;
     }
-
-    scan_worker_task_handle_ = scan_worker_task;
 
     if (should_start_ota_worker()) {
         SR_LOGI("OTA worker deferred until first request");
@@ -1312,27 +1387,18 @@ bool ServiceRuntime::start() noexcept {
     }
 
     if (capabilities_.rcp_update_available) {
-        TaskHandle_t rcp_worker_task = nullptr;
-        const BaseType_t rcp_task_ok = xTaskCreate(
-            &RcpUpdateManager::worker_task_entry,
-            kRcpWorkerTaskName,
-            kRcpWorkerTaskStackSize,
-            this,
-            kRcpWorkerTaskPriority,
-            &rcp_worker_task);
-        if (rcp_task_ok != pdPASS) {
-            if (ota_worker_task_handle_ != nullptr) {
-                vTaskDelete(static_cast<TaskHandle_t>(ota_worker_task_handle_));
-                ota_worker_task_handle_ = nullptr;
-            }
-            vTaskDelete(scan_worker_task);
-            vTaskDelete(runtime_task);
-            scan_worker_task_handle_ = nullptr;
-            runtime_task_handle_ = nullptr;
-            SR_LOGI("Failed to create RCP update worker task");
-            return false;
+        static StaticTask_t s_rcp_worker_task_tcb;
+        static StackType_t* s_rcp_worker_task_stack = nullptr;
+        TaskHandle_t rcp_worker_task = create_task_pinned_to_internal_stack(
+            &RcpUpdateManager::worker_task_entry, kRcpWorkerTaskName, kRcpWorkerTaskStackSize, this,
+            kRcpWorkerTaskPriority, &s_rcp_worker_task_stack, &s_rcp_worker_task_tcb);
+        if (rcp_worker_task == nullptr) {
+            SR_LOGW(
+                "RCP update worker not started: internal-SRAM stack allocation or task creation failed -- RCP "
+                "update requests will not complete until this resolves");
+        } else {
+            rcp_update_worker_task_handle_ = rcp_worker_task;
         }
-        rcp_update_worker_task_handle_ = rcp_worker_task;
     } else {
         SR_LOGI("RCP worker not started: capability unavailable (no target backend configured)");
     }

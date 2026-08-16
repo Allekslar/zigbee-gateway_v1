@@ -32,6 +32,7 @@ static hal_zigbee_status_t s_mock_next_formation_status_once = HAL_ZIGBEE_STATUS
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "hal_memory.h"
 #include "log_tags.h"
 
 #if defined(CONFIG_ZB_ENABLED) && CONFIG_ZB_ENABLED
@@ -1025,14 +1026,34 @@ hal_zigbee_status_t hal_zigbee_init(void) {
         s_coex_enabled = false;
         set_join_window_state(false, 0U);
 
-        const BaseType_t task_ok = xTaskCreate(
+        // xTaskCreateStatic() + hal_alloc_internal_sram(), not plain
+        // xTaskCreate(): real HIL testing found this task's stack landing
+        // in LP-RAM (a ~15KB region shared with whatever else the Zigbee
+        // stack itself pulls from that same capability-matched pool),
+        // which then starved the stack's own "I/O buffer" allocation and
+        // hit a hard `abort()` in zb_memconfig.c. Same fix, same
+        // precedent as service_runtime.cpp's own real-hardware finding --
+        // see hal_memory.h's header comment. `static`: the buffer/TCB
+        // must outlive the task, and this is the one real call site.
+        static StaticTask_t s_stack_task_tcb;
+        static StackType_t* s_stack_task_stack = NULL;
+        if (s_stack_task_stack == NULL) {
+            s_stack_task_stack = (StackType_t*)hal_alloc_internal_sram(8192);
+            if (s_stack_task_stack == NULL) {
+                ESP_LOGE(kTag, "Failed to allocate Zigbee stack task stack (internal SRAM)");
+                return HAL_ZIGBEE_STATUS_ERR;
+            }
+        }
+
+        s_stack_task_handle = xTaskCreateStatic(
             zigbee_stack_task,
             "zigbee_main",
-            8192,
+            8192 / sizeof(StackType_t),
             NULL,
             5,
-            &s_stack_task_handle);
-        if (task_ok != pdPASS) {
+            s_stack_task_stack,
+            &s_stack_task_tcb);
+        if (s_stack_task_handle == NULL) {
             ESP_LOGE(kTag, "Failed to create Zigbee stack task");
             return HAL_ZIGBEE_STATUS_ERR;
         }
