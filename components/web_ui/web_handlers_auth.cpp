@@ -24,6 +24,7 @@
 #include "web_routes.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #ifdef ESP_PLATFORM
@@ -460,13 +461,43 @@ esp_err_t certificates_operations_post_handler_v1(httpd_req_t* req) {
     // project's single httpd worker task dispatches every registered
     // handler serially, never concurrently (session_store.hpp's own
     // established assumption).
-    static char body[2U * (service::kTlsCertOrKeyMaxBytes * 2U + 1U) + 128U]{};
+    // Heap-scoped for the duration of this request, NOT `static`. As plain
+    // `static` these six buffers were ~45KB of permanently reserved .bss --
+    // the single largest contributor to libweb_ui.a's own ~57KB .bss -- for
+    // scratch that is only touched while a rotation request is actually being
+    // served (rarely, and never at boot). Real HIL found that reservation
+    // starving `mbedtls_ssl_setup()`, which needs roughly 10KB contiguous per
+    // TLS session and was failing with MBEDTLS_ERR_SSL_ALLOC_FAILED (-0x7F00)
+    // so no HTTPS connection could be established at all. Same lifecycle-
+    // scoping already applied to MqttBridge's publication queue for the same
+    // reason (see mqtt_bridge.hpp). The references below keep every use site
+    // and every `sizeof(...)` in this function working unchanged.
+    struct CertRotationScratch {
+        char body[2U * (service::kTlsCertOrKeyMaxBytes * 2U + 1U) + 128U];
+        char cert_pem_hex[service::kTlsCertOrKeyMaxBytes * 2U + 1U];
+        char key_pem_hex[service::kTlsCertOrKeyMaxBytes * 2U + 1U];
+        uint8_t cert_pem[service::kTlsCertOrKeyMaxBytes];
+        uint8_t key_pem[service::kTlsCertOrKeyMaxBytes];
+        uint8_t ca_pem[service::kTlsCertOrKeyMaxBytes];
+    };
+    struct ScratchOwner {
+        CertRotationScratch* p{static_cast<CertRotationScratch*>(calloc(1U, sizeof(CertRotationScratch)))};
+        ~ScratchOwner() { free(p); }
+        ScratchOwner() = default;
+        ScratchOwner(const ScratchOwner&) = delete;
+        ScratchOwner& operator=(const ScratchOwner&) = delete;
+    } scratch;
+    if (scratch.p == nullptr) {
+        return send_api_v1_error(req, ApiV1ErrorCode::kNoCapacity);
+    }
+
+    auto& body = scratch.p->body;
     if (!read_request_body(req, body, sizeof(body))) {
         return send_api_v1_error(req, ApiV1ErrorCode::kInvalidRequest);
     }
 
-    static char cert_pem_hex[service::kTlsCertOrKeyMaxBytes * 2U + 1U]{};
-    static char key_pem_hex[service::kTlsCertOrKeyMaxBytes * 2U + 1U]{};
+    auto& cert_pem_hex = scratch.p->cert_pem_hex;
+    auto& key_pem_hex = scratch.p->key_pem_hex;
     if (!find_json_string_field(body, "certificate_pem_hex", cert_pem_hex, sizeof(cert_pem_hex)) ||
         cert_pem_hex[0] == '\0' ||
         !find_json_string_field(body, "private_key_pem_hex", key_pem_hex, sizeof(key_pem_hex)) ||
@@ -474,8 +505,8 @@ esp_err_t certificates_operations_post_handler_v1(httpd_req_t* req) {
         return send_api_v1_error(req, ApiV1ErrorCode::kInvalidRequest);
     }
 
-    static uint8_t cert_pem[service::kTlsCertOrKeyMaxBytes]{};
-    static uint8_t key_pem[service::kTlsCertOrKeyMaxBytes]{};
+    auto& cert_pem = scratch.p->cert_pem;
+    auto& key_pem = scratch.p->key_pem;
     uint32_t cert_len = 0U;
     uint32_t key_len = 0U;
     if (!decode_hex(cert_pem_hex, cert_pem, sizeof(cert_pem), &cert_len) ||
@@ -493,7 +524,7 @@ esp_err_t certificates_operations_post_handler_v1(httpd_req_t* req) {
         return send_api_v1_error(req, ApiV1ErrorCode::kInvalidRequest);
     }
 
-    static uint8_t ca_pem[service::kTlsCertOrKeyMaxBytes]{};
+    auto& ca_pem = scratch.p->ca_pem;
     uint32_t ca_len = 0U;
     if (service::tls_identity_get_product_ca(ca_pem, sizeof(ca_pem), &ca_len) !=
         service::SecureStorageStatus::kAvailable) {

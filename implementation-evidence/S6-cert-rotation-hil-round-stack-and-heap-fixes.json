@@ -45,20 +45,29 @@
   "changed_files": {
     "new": [
       "components/app_hal/hal_memory.c",
-      "components/app_hal/include/hal_memory.h"
+      "components/app_hal/include/hal_memory.h",
+      "docs/security/ADMIN_ENROLLMENT.md"
     ],
     "modified": [
       "components/app_hal/CMakeLists.txt (hal_memory.c added to SRCS)",
       "components/app_hal/hal_zigbee.c (zigbee_main task creation switched to xTaskCreateStatic()+hal_alloc_internal_sram(), Bug E)",
       "components/service/service_runtime.cpp (create_task_pinned_to_internal_stack() helper; all 3 task creations switched to xTaskCreateStatic(); scan-worker/RCP-worker creation made non-fatal; kRuntimeTaskStackSize tuned 9216 -> 16384 -> 11264 across Bugs A/D/F)",
       "main/app_main.cpp (g_runtime.start() call block moved to immediately after initialize_hal_adapter(), before the Wi-Fi autoconnect/AP-start block -- Bug A's real, permanent fix; all temporary [HIL-DIAG] diagnostics and the one-time real-credential Wi-Fi bootstrap block used to drive this HIL round removed afterward, along with their now-unused esp_heap_caps.h/esp_system.h/hal_nvs.h includes)",
-      "test/host/CMakeLists.txt (hal_memory.c added to APP_HAL_SOURCES for the host build)"
-    ]
+      "test/host/CMakeLists.txt (hal_memory.c added to APP_HAL_SOURCES for the host build)",
+      "components/web_ui/web_handlers_auth.cpp (certificates_operations_post_handler_v1(): six large statics grouped into one calloc/free RAII-owned CertRotationScratch; fixes mbedtls_ssl_setup -0x7F00)",
+      "components/mqtt_bridge/include/mqtt_bridge.hpp (kMaxMqttPublicationsPerSync 192 -> 48; pending_publications_ array -> pointer + capacity/count members; ensure/release queue declarations)",
+      "components/mqtt_bridge/mqtt_bridge.cpp (ensure_publication_queue()/release_publication_queue() implemented; claimed in start(), released last in stop())",
+      "components/mqtt_bridge/mqtt_device_sync.cpp (queue_overflowed tracking; cache commit withheld on overflow; drain guards on null queue)",
+      "components/service/persisted_state_store.cpp (probe_slot(): ~2.2KB stack WireRecord -> static scratch)",
+      "docs/security/CONTROL_PLANE_SECURITY.md (Section 2.13 cross-link to the enrollment runbook; Sections 2.16-2.17)",
+      "docs/process/POSTMORTEM_WIFI_HEAP_STARVATION.md (second act, Section 6.4, corrected Section 6.1, extended Section 7, lessons 9-11)"
+    ],
+    "note": "main/app_main.cpp carried a TEMPORARY manufacturing-provisioning hook during this round (mfg_pop + mfg_gateway_id). It has been REMOVED and the board reflashed clean; the file is now byte-identical to HEAD. The g_runtime.start() ordering previously attributed to this round was already present in HEAD."
   },
   "tests_and_checks": [
     {
       "check": "Full host suite",
-      "result": "109/109 passing, unchanged count -- every fix in this file is ESP_PLATFORM-only (task creation, stack sizing); host builds already exercise hal_memory.c's own host malloc()/free() branch via the existing service_runtime host tests."
+      "result": "109/109 passing. Re-run with CI's blocking sanitizer configuration (-fsanitize=address,undefined) after the MqttBridge ownership fix: 109/109, zero LeakSanitizer findings. An earlier non-sanitizer run of this same suite reported 109/109 while two MQTT tests were in fact leaking -- see mqtt_queue_capacity_and_overflow_safety.ownership_defect_found_by_ci."
     },
     {
       "check": "cppcheck --enable=warning,style --error-exitcode=1",
@@ -115,7 +124,72 @@
   },
   "unresolved_deviations": [],
   "unresolved_blockers": [
-    "The certificate-rotation route (S6 #12/FD-17) still has no live HIL exercise, but every device-side precondition is now met: the board boots stably with working Wi-Fi under the production profile and serves HTTPS on port 443 from persisted encrypted TLS material. What remains is purely a matter of driving a real request at it, which needs (a) network reachability -- on the extender SSID the board lands on the extender's own subnet (192.168.11.x) and is not reachable from this WSL2 environment, so the request must come from the Windows host, another device on that segment, or the board must join the main router's SSID -- and (b) a real physical button press by the user to mint the physical-presence grant the route requires."
+    "The certificate-rotation route (S6 #12/FD-17) has still not been exercised through a COMPLETE authenticated rotation. Its remaining preconditions are now all met and the earlier blockers in this slot are resolved: network reachability was fixed by moving the board onto the main router's SSID (it is at 192.168.178.143 and reachable from this environment, no longer stranded on the extender's 192.168.11.x subnet), the board boots stably under production + Flash Encryption, HTTPS serves from persisted encrypted TLS material, and an administrator now exists so a real session with the security_admin capability can be obtained. The route itself was confirmed reachable and responding -- it returned 401 unauthenticated over the network -- but the actual rotation (authenticated request carrying a new certificate/key pair, self-test, active-slot swap) was NOT driven. What remains is driving that request plus one physical button press for the presence grant.",
+    "TLS-INTERMITTENT-HANDSHAKE-REFUSAL (see open_defects) will make any such exercise flaky until it is understood; roughly one connection in five is refused at setup."
   ],
-  "releaseability": "The four bugs in this file are real, independently verified fixes with no known regressions (all re-tested on both the production+Flash-Encryption profile and the plain development profile after the Bug F correction). They represent genuine hardening of this project's boot-time task/stack management, found only by real hardware HIL testing, and are releasable on their own merits regardless of Bug C's outcome. Certificate rotation's own live HIL exercise remains the one item this whole investigative thread set out to reach and did not; it is deferred pending either a resolution to Bug C or a decision to accept a different board/profile combination for that specific test. No live production deployment yet (see memory project-not-yet-in-production.md)."
+  "releaseability": "The defects fixed in this file -- the four boot-time task/stack defects, Bug C's ~166KB .bss starvation, and the web_ui .bss starvation that blocked every TLS session -- are real, independently verified fixes with no known regressions, re-tested on both the production + Flash-Encryption profile and the plain development profile. Together they take this device from 'never associates, 10-16 crashes per 55s window' to a stable board that completes TLS handshakes, enrolls an administrator and serves authenticated control-plane requests -- the first time this project has done any of that over a real network. They are releasable on their own merits. Two items are explicitly NOT releasable-complete: the certificate-rotation route's own full authenticated exercise (see unresolved_blockers), which is what this investigative thread originally set out to reach, and the open intermittent TLS handshake refusal (see open_defects), whose suspected mechanism is recorded but untested. No live production deployment yet (see memory project-not-yet-in-production.md).",
+  "web_ui_bss_and_tls_session_fix": {
+    "status": "ROOT-CAUSED AND FIXED, verified on real hardware",
+    "symptom": "With Bug C fixed the board associated and served HTTPS, but every TLS connection failed inside mbedtls_ssl_setup() with -0x7F00 (MBEDTLS_ERR_SSL_ALLOC_FAILED). The device was reachable on the network and still could not complete a single handshake.",
+    "correction_notice": "An earlier reading in this same investigation credited the MqttBridge queue shrink (192 -> 48) with resolving -0x7F00. It did not. After the shrink the error still fired at 5.3s uptime, before MQTT was involved at all. That claim is superseded by this block.",
+    "root_cause": "The same class of defect as Bug C, one layer up: libweb_ui.a held 57780 bytes of .bss, of which 45188 were six `static` scratch buffers inside a single request handler -- certificates_operations_post_handler_v1() in components/web_ui/web_handlers_auth.cpp (request body, cert_pem_hex, key_pem_hex, and the decoded cert_pem/key_pem/ca_pem). They were static for a defensible reason (far too large for the handler task's stack), but that made them permanently resident for a route that runs a handful of times in a device's lifetime. A TLS session needs its buffers at handshake time and there was nothing left to give it.",
+    "fix": "The six buffers were grouped into one CertRotationScratch struct owned by an RAII holder allocated with calloc() on handler entry and freed by its destructor on every return path. `auto&` aliases preserve each original member name, so every use site and every sizeof(...) in the handler body is unchanged and the diff is confined to the declarations. A failed allocation returns 503 no_capacity via the existing golden error matrix rather than crashing.",
+    "verification": "On real hardware: mbedtls_ssl_setup errors 0. `curl --tls-max 1.2 --cacert <product CA>` against POST /api/v1/security/certificates/operations returned {\"schema_version\":1,\"error\":\"unauthenticated\"} with HTTP 401 -- the first real control-plane API response this project has served over a network.",
+    "changed_files": [
+      "components/web_ui/web_handlers_auth.cpp"
+    ]
+  },
+  "mqtt_queue_capacity_and_overflow_safety": {
+    "status": "DONE",
+    "what_changed": "kMaxMqttPublicationsPerSync reduced from 192 to 48 (~85KB -> ~21KB at 452 bytes per entry).",
+    "why_not_just_the_lifecycle_fix": "Moving the queue off .bss (Bug C's fix) was necessary but not sufficient: once allocated, 85KB still competed with the TLS session allocations above. 192 was also never a realistic figure -- it is the theoretical worst case kServiceMaxDevices * 3, i.e. every device publishing three topics on a single pass.",
+    "overflow_semantics": "At 48 entries overflow becomes a normal expected condition rather than an error, so it can no longer be silently dropped. sync_snapshot() now tracks a queue_overflowed flag set inside its enqueue_publication lambda and, when set, WITHHOLDS its cache commit (cache_initialized_ = false) instead of memcpy-ing the new snapshot into cached_devices_. The next sync pass therefore re-detects and republishes whatever was dropped. The cost of a burst larger than the queue is extra latency, not a lost publication.",
+    "drain_guard": "The drain path additionally guards on pending_publications_ == nullptr, so an unallocated queue is treated as empty rather than dereferenced.",
+    "changed_files": [
+      "components/mqtt_bridge/include/mqtt_bridge.hpp",
+      "components/mqtt_bridge/mqtt_bridge.cpp",
+      "components/mqtt_bridge/mqtt_device_sync.cpp"
+    ],
+    "ownership_defect_found_by_ci": {
+      "status": "FOUND BY CI, FIXED",
+      "what": "Converting pending_publications_ from a member array to an owned heap pointer gave MqttBridge a resource it did not manage: the class had no destructor, so any instance destroyed without a preceding stop() leaked the whole queue (21552 bytes = 48 x sizeof(MqttPublishedMessage)). Reported by LeakSanitizer in test_mqtt_device_sync and test_mqtt_bridge_commands, both of which call start() and let the bridge fall out of scope.",
+      "why_it_was_missed_locally": "The local verification run built the host suite WITHOUT sanitizers and reported 109/109. CI's blocking 'Host Unit Tests (ASan+UBSan)' job builds the same suite with -fsanitize=address,undefined; a leak is invisible to the former and fatal to the latter. Any claim of a clean host suite for a change that touches ownership must come from the sanitizer configuration.",
+      "severity_on_device": "None observed: g_mqtt is a global that outlives the process, so the destructor never runs on the device and the queue is never leaked there. The class was nonetheless incorrect.",
+      "fix": "Added ~MqttBridge() calling release_publication_queue(), plus explicitly deleted copy and move constructors/assignment (the atomic members already made the class non-copyable, but an owning raw pointer should say so directly rather than rely on that).",
+      "verification": "Host suite rebuilt with CI's exact sanitizer flags: 109/109 passing, 0 leaks. Real idf.py build clean on the production + Flash-Encryption profile after the header change."
+    }
+  },
+  "admin_enrollment_hil": {
+    "status": "DONE and verified on real hardware",
+    "why_this_was_reachable_only_now": "POST /api/v1/provisioning/enroll is the route that creates the first administrator credential; without it the control plane has no administrator and login can never return a session. It could not be exercised until the device both associated to Wi-Fi (Bug C) and could complete a TLS handshake (web_ui .bss fix).",
+    "manufacturing_preconditions_provisioned": "Two records in the kManufacturingProvisioning NVS namespace, neither of which any real workflow populates yet (S5 recorded this as BLOCKED_SECURITY_PROVISIONING -- no manufacturing/eFuse environment exists here): mfg_pop (32 bytes, via manufacturing_provisioning_set_proof_of_possession) and mfg_gateway_id (6 raw GatewayId bytes, via set_stored_manufacturing_gateway_id). Written by a TEMPORARY hook in main/app_main.cpp which has since been REMOVED and the board reflashed clean -- left in place it would rewrite both records every boot, turning the anti-cloning check into a no-op.",
+    "correction_notice": "mfg_gateway_id is the entire 'manufacturing record' the production enrollment gate checks -- 6 raw GatewayId bytes, NOT the eFuse-provisioning-template JSON record, despite the adjacent manufacturing_provisioning_*_efuse_record() API in tls_provisioning_storage_port.hpp. gateway_identity_verification.hpp states this explicitly. An earlier reading in this investigation named the eFuse API as the thing to provision; that was wrong.",
+    "gate_order_finding": "Gate order in provisioning_enroll_post_handler_v1 is: commissioning window (409 provisioning_not_active) -> body/fields (400 invalid_request) -> PoP match (401 unauthenticated) -> PHYSICAL-PRESENCE GRANT CONSUMED (403 physical_presence_required) -> GatewayId identity check, production profile only (503 capability_unavailable) -> verifier creation (503). The presence grant is consumed BEFORE the identity check, so a failed identity check burns a single-use 60-second button press. This cost a real press during bring-up: the attempt returned 503 rather than 403, which was itself the evidence that the grant had been valid and consumed.",
+    "verification": [
+      "Device-side log: `hal_nvs: set_blob ok, key='admin_verifier' len=52` and `secure_storage: wrote key='admin_verifier' value=[REDACTED 52 bytes]`.",
+      "Enrollment closes the commissioning window early per plan #3, so the following request returned 409 provisioning_not_active -- confirmation, not failure.",
+      "POST /api/v1/auth/login -> HTTP 200 {\"schema_version\":1,\"logged_in\":true} with Set-Cookie: zgw_session=...; Secure; HttpOnly; SameSite=Strict; Path=/api/v1.",
+      "GET /api/v1/auth/session -> HTTP 200 returning a csrf_token and the full capability set: read_status, control_device, manage_network, commission_device, remove_device, firmware_admin, security_admin, factory_reset.",
+      "Credential survived an app-partition reflash (encrypted NVS untouched): login re-verified after flashing the hook-free firmware."
+    ],
+    "secret_handling": "The password value itself is deliberately not recorded in this file or anywhere in the repository."
+  },
+  "open_defects": [
+    {
+      "id": "TLS-INTERMITTENT-HANDSHAKE-REFUSAL",
+      "status": "OPEN, mechanism UNTESTED",
+      "observation": "Roughly one connection in five is refused mid-handshake. Measured over ~20 sequential HTTPS requests on real hardware with no serial port attached.",
+      "client_side": "curl: (35) TLS connect error: error:0A000126:SSL routines::unexpected eof while reading",
+      "device_side": "E esp-tls-mbedtls: mbedtls_ssl_handshake returned -0x0050 (MBEDTLS_ERR_NET_RECV_FAILED); E esp_https_server: esp_tls_create_server_session failed, 0x0050; E httpd: httpd_accept_conn: session creation failed",
+      "suspected_mechanism": "components/web_ui/web_server.cpp sets max_open_sockets = 4 with lru_purge_enable = true and keep_alive_enable = true / keep_alive_idle = 5. A fifth connection evicts the least-recently-used socket; an eviction landing on an in-progress handshake would produce exactly this signature.",
+      "explicitly_not_verified": "Neither the socket limit nor the purge setting has been varied. This is a hypothesis and is recorded as one. It is NOT a memory symptom -- it persists with the .bss fixes above in place.",
+      "earlier_incorrect_reading": "An earlier round in this investigation concluded TLS was stable after 6/6 clean handshakes. That sample was taken in a way that hid the problem, and a separate set of apparent TLS failures in the same period were a measurement artifact: closing the serial port toggles DTR/RTS and reboots the board mid-request. Both readings are superseded by the measurement above, which involved no serial port at all.",
+      "operational_workaround": "Retry. The failure is at connection setup, so a retried request is not a duplicate operation."
+    }
+  ],
+  "documentation": {
+    "docs/security/ADMIN_ENROLLMENT.md": "NEW. Operational runbook for the admin enrollment path: full gate chain with failure tokens and HTTP codes, why the gate order costs a button press, the two manufacturing records that must be in storage first, the reboot-then-press sequencing, client-side gotchas (TLS 1.2 only, certificate CN, serial-capture reboot artifact), the absence of any credential recovery path, and the open TLS defect above.",
+    "docs/process/POSTMORTEM_WIFI_HEAP_STARVATION.md": "UPDATED. Added the 'second act' to the summary, a fifth .bss holder to Section 3, new Section 6.4 for the web_ui handler fix, corrected Section 6.1's now-stale claim that queue capacity stayed at 192, extended Section 7 with the end-to-end control-plane verification and the open TLS defect, and added lessons 9-11.",
+    "docs/security/CONTROL_PLANE_SECURITY.md": "UPDATED. Section 2.13 now cross-links the enrollment runbook. Sections 2.16-2.17 (added earlier this round) carry the boot-stability defects and the memory bug."
+  }
 }

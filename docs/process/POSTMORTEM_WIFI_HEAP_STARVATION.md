@@ -33,6 +33,13 @@ by one sync pass and drained to empty moments later.
 | Free heap at `app_main()` | 66 KiB | **148 KiB** |
 | DMA-capable heap during association | 280–476 B | tens of KB |
 
+**The same bug had a second act.** With Wi-Fi fixed, the device associated but
+every HTTPS request died in `mbedtls_ssl_setup()` with `-0x7F00`
+(`MBEDTLS_ERR_SSL_ALLOC_FAILED`). The cause was the identical mistake one layer
+up: **57 780 B of `.bss` in `libweb_ui.a`**, 45 188 of it six `static` scratch
+buffers inside a single request handler. Same class, same fix shape, found only
+because the first fix moved the failure somewhere new. Section 6.4.
+
 ---
 
 ## 2. The decoding insight that unlocked everything
@@ -107,6 +114,13 @@ This is why the bug looked board-specific and profile-specific when it was
 neither — it was latent everywhere, and only crossed the failure threshold on
 the tighter budget.
 
+**A fifth holder surfaced only after the first four were fixed.** Nothing in
+this table is a Wi-Fi or TLS component, so the same measurement repeated per
+static library found `libweb_ui.a` holding **57 780 B** — invisible while the
+device never got far enough to serve a request. Measuring at the point of
+failure, not once at the start of the investigation, is what caught it
+(Section 6.4).
+
 ---
 
 ## 4. Why it took so long: hypotheses tested and ruled out
@@ -180,16 +194,34 @@ longer needed. During association the 85 KB is simply not reserved.
 
 Deliberate properties:
 
-- **Capacity (192) and drop-when-full semantics are unchanged.** The existing
-  guards now compare against a `pending_publication_capacity_` member that is
-  `0` when unallocated, so a failed allocation degrades to skipping
-  publications — the same graceful degradation the bridge already applies to
-  any other publication-build failure.
+- **Drop-when-full semantics are unchanged.** The existing guards now compare
+  against a `pending_publication_capacity_` member that is `0` when
+  unallocated, so a failed allocation degrades to skipping publications — the
+  same graceful degradation the bridge already applies to any other
+  publication-build failure.
+- **Capacity was subsequently cut from 192 to 48** (~85 KB → ~21 KB). Moving
+  the queue off `.bss` was not sufficient on its own: once allocated it still
+  competed with the TLS session allocations of Section 6.4, and 192 was in any
+  case the theoretical worst case (`kServiceMaxDevices * 3`, every device
+  publishing three topics in one pass) rather than a realistic one. At 48,
+  overflow stops being an error and becomes an expected condition, so
+  `sync_snapshot()` now **withholds its cache commit** when the queue
+  overflowed (`cache_initialized_ = false`) — the next pass republishes
+  whatever was dropped. The cost of a burst larger than the queue is extra
+  latency, not a lost publication.
 - **Allocation is also attempted lazily from the two staging paths.** This is
   what keeps every existing host test working unmodified, since many call
   `sync_snapshot()` without ever calling `start()`.
 - **Release happens last in `stop()`**, after the worker task has exited — it
   is the only other writer, so releasing earlier would race.
+- **`MqttBridge` gained a destructor**, and this was a real defect rather than
+  tidiness. Giving the class an owned heap pointer without one meant any
+  instance destroyed without a preceding `stop()` leaked the entire queue.
+  CI's blocking ASan+UBSan job caught it (21 552 bytes in two MQTT tests); a
+  non-sanitizer run of the same suite reported a clean 109/109 and saw
+  nothing. The device never hit it — `g_mqtt` is a global that outlives the
+  process — but the class was wrong. Copy and move are now explicitly deleted
+  as well.
 - `components/mqtt_bridge` has no heap-allocation prohibition, unlike
   `components/matter_bridge` (INV-M040) or `core`/`service` (INV-H002).
   Verified by `check_arch_invariants.sh`.
@@ -225,6 +257,64 @@ budget produces a constant that is wrong twice.
 
 ---
 
+### 6.4 `certificates_operations_post_handler_v1()` statics → heap-owned scratch
+
+With Wi-Fi association fixed, the TLS server became reachable and immediately
+failed: `mbedtls_ssl_setup()` returned `-0x7F00`
+(`MBEDTLS_ERR_SSL_ALLOC_FAILED`) on every connection. A session needs its
+buffers at handshake time, and there was again nothing left to give it.
+
+`libweb_ui.a` held **57 780 B of `.bss`**, of which **45 188 B** were six
+`static` buffers in one request handler — the certificate-rotation route's
+request body, the hex-encoded certificate and key, and their decoded forms:
+
+```cpp
+static char body[...];
+static char cert_pem_hex[...];
+static char key_pem_hex[...];
+static uint8_t cert_pem[...];
+static uint8_t key_pem[...];
+static uint8_t ca_pem[...];
+```
+
+They were `static` for a legitimate reason — they are far too large for the
+handler task's stack. But that made them permanently resident for a route that
+runs perhaps a handful of times in a device's life.
+
+The fix groups all six into one struct owned by an RAII holder, allocated on
+entry and freed on return:
+
+```cpp
+struct CertRotationScratch { /* the same six members */ };
+struct ScratchOwner {
+    CertRotationScratch* p{static_cast<CertRotationScratch*>(calloc(1U, sizeof(CertRotationScratch)))};
+    ~ScratchOwner() { free(p); }
+    ScratchOwner(const ScratchOwner&) = delete;
+    ScratchOwner& operator=(const ScratchOwner&) = delete;
+} scratch;
+if (scratch.p == nullptr) {
+    return send_api_v1_error(req, ApiV1ErrorCode::kNoCapacity);
+}
+auto& body = scratch.p->body;   // ... and so on for each member
+```
+
+The `auto&` aliases are what keep the change small and safe: every use site and
+every `sizeof(...)` in the handler body stays exactly as it was, so the diff is
+confined to the declarations. Allocation failure is a normal `503 no_capacity`,
+not a crash.
+
+After this, `mbedtls_ssl_setup` errors went to **0**, and
+`curl --tls-max 1.2` returned `{"schema_version":1,"error":"unauthenticated"}`
+with HTTP 401 — the first real control-plane API response this project ever
+served over the network.
+
+**A correction worth recording:** the MQTT queue shrink of Section 6.1 was
+initially believed to be the fix for `-0x7F00` as well. It was not. After
+shrinking 192 → 48 the error still fired at 5.3 s, before MQTT was involved at
+all. Only the `.bss` measurement of `libweb_ui.a` identified the real holder.
+
+---
+
 ## 7. Verification
 
 Final build carried the configuration the product actually needs —
@@ -238,6 +328,19 @@ and Zigbee can run together — flashed to the same board that had failed 0/19:
 - mDNS advertising `https://zigbee-gateway-9f0020.local`
 - production HTTPS listener serving on port 443 from persisted encrypted TLS
   material
+
+With Section 6.4 in place, the control plane was then exercised end to end over
+the network: `mbedtls_ssl_setup` errors **0**, a full admin enrollment through
+`POST /api/v1/provisioning/enroll` (commissioning window, proof of possession,
+physical-presence grant, manufacturing-identity check), and a subsequent
+`POST /api/v1/auth/login` returning a session cookie with the complete
+capability set. Runbook: [`ADMIN_ENROLLMENT.md`](../security/ADMIN_ENROLLMENT.md).
+
+One defect remains open from that round: roughly **one connection in five is
+refused mid-handshake** (`unexpected eof` client-side, `-0x0050` device-side).
+It is not a memory symptom — the suspected mechanism is the HTTPS server's
+`max_open_sockets = 4` with `lru_purge_enable = true` — and it is **untested**.
+Recorded in `ADMIN_ENROLLMENT.md` Section 6.
 
 Static checks: 109/109 host tests (unchanged count — the lazy-allocation path
 kept every existing `MqttBridge` test working without modification), `cppcheck`
@@ -269,3 +372,23 @@ Sections 2.16–2.17.
    the underlying resource bug first.
 8. **Verify hypotheses on a known-good reference.** A second, working board
    turned an open-ended search into a two-log diff.
+9. **On a starved budget, fixing one consumer reveals the next.** Freeing
+   ~166 KB did not end the investigation — it moved the failure from Wi-Fi
+   association to `mbedtls_ssl_setup()`, where a second, unrelated 45 KB of
+   `.bss` was waiting (Section 6.4). Re-measure after every fix; treat a
+   *changed* failure as progress rather than as a new unrelated bug.
+10. **`static` chosen to escape a small stack is still permanent residency.**
+    Both of this post-mortem's `.bss` holders were defensible line by line. The
+    cost only appears when you total a whole library's `.bss`, which no code
+    review sees.
+11. **State plainly when a suspected fix was not the fix.** The MQTT shrink was
+    briefly credited with resolving `-0x7F00` and had not; leaving that
+    uncorrected would have pointed the next investigation at the wrong layer.
+12. **Moving a buffer from `.bss` to the heap moves it into an ownership
+    problem.** The array needed no destructor; the pointer that replaced it
+    did. Every such conversion should be checked against the rule of
+    three/five as part of the change, not after CI complains.
+13. **Verify ownership changes under the sanitizer configuration CI uses.** A
+    plain host build reported 109/109 on code that was leaking 21 KB per
+    process. "Tests pass" is only as strong as the configuration that ran
+    them.

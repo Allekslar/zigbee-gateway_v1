@@ -16,7 +16,18 @@
 #include "service_runtime_api.hpp"
 
 namespace mqtt_bridge {
-constexpr std::size_t kMaxMqttPublicationsPerSync = service::kServiceMaxDevices * 3U;
+// Deliberately NOT the theoretical worst case (kServiceMaxDevices * 3 == 192,
+// i.e. every device publishing three topics on one pass). At 452 bytes per
+// entry that would be ~85KB, which real HIL showed this device cannot afford:
+// as a plain .bss array it starved the Wi-Fi driver during association, and
+// even once moved to a lifecycle-scoped allocation it then starved
+// mbedtls_ssl_setup() of the memory a TLS session needs. 48 entries is ~21KB.
+// Overflow is a normal, expected condition at this size rather than an error:
+// sync_snapshot() detects it and withholds its cache commit, so the next pass
+// republishes whatever was dropped (see that function's own commit block).
+// The cost of a burst larger than the queue is therefore extra latency, not a
+// lost publication.
+constexpr std::size_t kMaxMqttPublicationsPerSync = 48U;
 constexpr uint32_t kMqttPowerOverrideWindowMs = 15000U;
 
 class MqttBridgeTestAccess;
@@ -36,6 +47,22 @@ struct PendingPowerOverride {
 
 class MqttBridge {
 public:
+    MqttBridge() noexcept = default;
+    // pending_publications_ is an owned heap allocation (see the member's
+    // own comment), so this class needs a destructor to be correct: an
+    // instance destroyed without a preceding stop() would otherwise leak
+    // the queue. On the device that never happens -- the bridge is a
+    // global that outlives the process -- but host tests construct and
+    // destroy bridges freely, and LeakSanitizer is right to object.
+    ~MqttBridge() noexcept { release_publication_queue(); }
+    // Owning a raw pointer means the compiler-generated copy/move would
+    // double-free. The atomic members already make this class
+    // non-copyable, but state it explicitly rather than relying on that.
+    MqttBridge(const MqttBridge&) = delete;
+    MqttBridge& operator=(const MqttBridge&) = delete;
+    MqttBridge(MqttBridge&&) = delete;
+    MqttBridge& operator=(MqttBridge&&) = delete;
+
     bool start() noexcept;
     void stop() noexcept;
     bool started() const noexcept;

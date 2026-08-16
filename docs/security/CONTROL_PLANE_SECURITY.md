@@ -23,7 +23,7 @@ accessor consumed by provisioning, Web parsing, rate limiting and audit
 storage."* This document's Section 2.1 is exactly that foundation --
 nothing else in S6 has started yet.
 
-## 2. What is implemented and verified (sub-slices 1-13: security invariants/bounded tunables/typed accessor, provisioning AP secret generation, provisioning-credentials remainder, session store + cookie/CSRF/CORS policy, production HTTPS listener, production mDNS host derivation, gateway identity self-consistency verification, TLS certificate chain/SAN/expiry/key validation, central authorization middleware + capability taxonomy + login/logout/session, physical-presence grant primitive, auth/password + provisioning/enroll + factory-reset policy stub, real button-to-grant wiring with HIL confirmation, certificate rotation active-slot state machine + bounded self-test + route (compile/link-verified, HIL pending) -- plan #1-23 in full; plus a live HIL round that found and fixed four real boot-time task/stack defects without yet reaching the certificate-rotation route itself)
+## 2. What is implemented and verified (sub-slices 1-13: security invariants/bounded tunables/typed accessor, provisioning AP secret generation, provisioning-credentials remainder, session store + cookie/CSRF/CORS policy, production HTTPS listener, production mDNS host derivation, gateway identity self-consistency verification, TLS certificate chain/SAN/expiry/key validation, central authorization middleware + capability taxonomy + login/logout/session, physical-presence grant primitive, auth/password + provisioning/enroll + factory-reset policy stub, real button-to-grant wiring with HIL confirmation, certificate rotation active-slot state machine + bounded self-test + route (compile/link-verified, HIL pending) -- plan #1-23 in full; plus a live HIL round that found and fixed four real boot-time task/stack defects, then two separate `.bss` starvation bugs that had been blocking Wi-Fi association and every TLS session, ending in the first authenticated control-plane exercise on real hardware -- a complete administrator enrollment and login, Sections 2.16-2.18; the certificate-rotation route answered `401 unauthenticated` over the network but a full authenticated rotation is still not driven)
 
 ### 2.1 `main/Kconfig.projbuild`'s new "Security" submenu + `security_bounds.hpp`/`.cpp`
 
@@ -1312,6 +1312,14 @@ written, every one of them would always return 403
 `physical_presence_required` against a real client -- nothing yet turned
 a real button press into a grant. Section 2.14 closes that gap.
 
+> The operational runbook for `provisioning/enroll` -- gate order and
+> failure-token meanings, the two manufacturing records that must be in
+> storage first, and the reboot-then-press sequencing that a real
+> operator gets wrong exactly once -- is
+> `docs/security/ADMIN_ENROLLMENT.md`. It was written against a live HIL
+> enrollment on real hardware, and records one still-unresolved defect
+> (intermittent TLS handshake refusals) found in the process.
+
 **`auth/password`**: wrapped mutation-grade (`kSecurityAdmin`). Verifies
 the CURRENT credential (`verify_admin_password()`, Section 2.5) *before*
 consuming the one-time grant -- a wrong-password attempt must never burn
@@ -1670,7 +1678,7 @@ real hardware either.
 
 Evidence: `implementation-evidence/S6-cert-rotation-state-and-route-completion.json`.
 
-### 2.16 Live HIL round for certificate rotation: four real boot-stability defects found and fixed; the route itself still not reached
+### 2.16 Live HIL round for certificate rotation: four real boot-stability defects found and fixed; the route not reached in *this* round (Sections 2.17-2.18 continue the thread)
 
 User authorized a live HIL round for Section 2.15's route (`AskUserQuestion`:
 "Так, робимо HIL зараз"). The route was never exercised: real hardware
@@ -1791,9 +1799,78 @@ advertising, and the production HTTPS listener correctly failing closed
 on absent certificate material. Heap at boot rose from 66 KiB to 148 KiB.
 
 The certificate-rotation route still has no live HIL exercise, but it is
-no longer blocked by connectivity -- only by this board's TLS identity
-material, which an earlier flash-erase during the investigation wiped and
-which needs re-provisioning.
+no longer blocked by connectivity. The board's TLS identity material --
+wiped by an earlier flash-erase during this same investigation -- has
+since been re-provisioned (fresh EC P-256 product CA and device leaf
+carrying the two SAN values this device's own validator requires), and
+Section 2.18 records what happened once the listener could actually
+complete a handshake.
+
+Evidence: `implementation-evidence/S6-cert-rotation-hil-round-stack-and-heap-fixes.json`.
+
+### 2.18 First authenticated control-plane exercise on real hardware
+
+With Section 2.17's Wi-Fi fix in place the device associated and served
+HTTPS, and immediately failed a second time: every TLS connection died in
+`mbedtls_ssl_setup()` with `-0x7F00` (`MBEDTLS_ERR_SSL_ALLOC_FAILED`).
+The cause was the same defect class one layer up -- `libweb_ui.a` held
+**57 780 bytes of `.bss`**, 45 188 of them six `static` scratch buffers
+inside `certificates_operations_post_handler_v1()` (Section 2.15's own
+route). They were `static` for a defensible reason, being far too large
+for the handler task's stack, but that made them permanently resident for
+a route that runs a handful of times in a device's life, and a TLS
+session had nothing left to allocate from. They are now grouped into one
+`calloc`/`free` RAII-owned struct claimed on handler entry, with
+`auto&` aliases preserving every use site and `sizeof(...)`; allocation
+failure returns `503 no_capacity` through the golden matrix rather than
+crashing.
+
+That unblocked the first real authenticated exercise of this stage's
+work:
+
+- `mbedtls_ssl_setup` errors **0**; the certificate-rotation route
+  answered over the network with `401 unauthenticated` -- confirming the
+  route is registered, reachable and correctly refusing an unauthenticated
+  caller, though a complete authenticated rotation still has not been
+  driven.
+- A full **administrator enrollment** through
+  `POST /api/v1/provisioning/enroll`, traversing every gate this stage
+  built: commissioning window (Section 2.5), proof of possession
+  (Section 2.4/2.5), the physical-presence grant minted by a real button
+  press (Sections 2.12/2.14), and the manufacturing GatewayId check
+  (Section 2.9). Device-side confirmation:
+  `set_blob ok, key='admin_verifier' len=52`.
+- `POST /api/v1/auth/login` then returned a session cookie with the
+  Section 2.6 attributes (`Secure; HttpOnly; SameSite=Strict;
+  Path=/api/v1`), and `GET /api/v1/auth/session` returned a CSRF token
+  and the full capability set (Section 2.11).
+
+**Section 2.9's fail-closed design was confirmed the hard way.** The
+production identity gate rejected enrollment with `capability_unavailable`
+until a manufacturing record existed. Both manufacturing records
+(`mfg_pop` and the 6-byte `mfg_gateway_id`) had to be written by a
+temporary hook standing in for the factory step this project cannot
+perform (`BLOCKED_SECURITY_PROVISIONING`, unchanged). **That hook has been
+removed and the board reflashed**; left in place it would rewrite both
+records on every boot, which would reduce the anti-cloning check to a
+no-op -- a cloned image would simply re-record whatever MAC it found
+itself running on.
+
+One ordering property is worth stating because it is a real operational
+cost: the presence grant is **consumed before** the identity check runs,
+so a failed identity check spends a single-use 60-second button press.
+The runbook -- gate order, failure tokens, preconditions and the
+reboot-then-press sequencing -- is
+[`docs/security/ADMIN_ENROLLMENT.md`](ADMIN_ENROLLMENT.md).
+
+**Open defect from this round.** Roughly one HTTPS connection in five is
+refused mid-handshake (`unexpected eof` client-side, `-0x0050` /
+`esp_tls_create_server_session failed` device-side). It is not a memory
+symptom -- it persists with both `.bss` fixes in place. The suspected
+mechanism is `web_server.cpp`'s `max_open_sockets = 4` together with
+`lru_purge_enable = true`, but **neither has been varied and the
+hypothesis is untested**. An earlier reading in this investigation
+declared TLS stable on a 6/6 sample; that is superseded.
 
 Evidence: `implementation-evidence/S6-cert-rotation-hil-round-stack-and-heap-fixes.json`.
 
@@ -1803,22 +1880,26 @@ Every other S6 required change remains unimplemented -- these four
 sub-slices are exactly the foundation and the first named removals the
 plan's own text calls for, nothing more. **"Provisioning and credentials"
 (#1-#6) is now fully done** (Section 2.4 for #1/#4/#6, Section 2.5 for
-#2/#3/#5) -- but note Section 2.5's own "nothing calls it yet" caveats:
-the `ProvisioningSecretProvider` port and the commissioning-window state
-machine both exist and are tested, but neither is wired into any real
-consumer (no enrollment flow reads the provisioning secret; no request
-handler gates behavior on the commissioning window being active) -- that
-wiring is deferred to the sub-slices below that actually need it.
+#2/#3/#5). Section 2.5's original "nothing calls it yet" caveat --
+that the `ProvisioningSecretProvider` port and the commissioning-window
+state machine existed and were tested but had no real consumer -- **no
+longer applies**: Section 2.13's `provisioning/enroll` route reads the
+provisioning secret and gates on the commissioning window being active,
+and Section 2.18 exercised both against real hardware end to end.
 
 - **HTTPS and sessions** (#7-#17): all 11 items implemented -- #7/#9/#10/
   #11/#13-#17 fully, #8 in its scoped, local-self-consistency form only
   (Section 2.9's own text is explicit that this is not the same guarantee
   as fleet-wide duplicate-enrollment detection, which remains out of
   reach without a manufacturing backend this project does not have), and
-  #12 (Section 2.15) real end to end but not yet HIL-exercised (compile/
-  link-verified only -- see that section's own honest-limits note on the
-  real, not-yet-measured resource-pressure question of running two
-  `httpd_ssl` listeners at once on real hardware). A live HIL round was
+  #12 (Section 2.15) real end to end but still not HIL-exercised as a
+  complete rotation -- the route is now confirmed registered and
+  reachable on hardware, answering `401 unauthenticated` over the network
+  (Section 2.18), but no authenticated request carrying a new
+  certificate/key pair has been driven through self-test and active-slot
+  swap; see also that section's own honest-limits note on the real,
+  not-yet-measured resource-pressure question of running two
+  `httpd_ssl` listeners at once on real hardware. A live HIL round was
   attempted (Section 2.16) and found/fixed four real, unrelated boot-time
   defects, then root-caused and fixed the Wi-Fi station failure that had
   blocked it (Section 2.17: ~166KB of permanently reserved `.bss` starving

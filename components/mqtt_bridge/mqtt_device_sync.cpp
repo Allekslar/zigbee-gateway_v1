@@ -194,8 +194,15 @@ std::size_t MqttBridge::sync_snapshot(const service::MqttBridgeSnapshot& snapsho
     }
 
     pending_publication_count_ = 0;
+    // Set if any publication in this pass could not be staged. Every call site
+    // below discards enqueue_publication()'s return value, so without this the
+    // cache commit at the end of this function would record the device as
+    // published and the dropped update would be lost until that device's state
+    // next changed. See the commit block at the end for how it is handled.
+    bool queue_overflowed = false;
     auto enqueue_publication = [&](const MqttPublishedMessage& publication) noexcept -> bool {
         if (!ensure_publication_queue() || pending_publication_count_ >= pending_publication_capacity_) {
+            queue_overflowed = true;
             return false;
         }
         pending_publications_[pending_publication_count_++] = publication;
@@ -294,6 +301,20 @@ std::size_t MqttBridge::sync_snapshot(const service::MqttBridgeSnapshot& snapsho
                 (void)enqueue_publication(availability);
             }
         }
+    }
+
+    if (queue_overflowed) {
+        // Commit nothing. The staging queue is intentionally smaller than the
+        // theoretical worst case (every device publishing on the same pass),
+        // so overflow is a normal, expected condition under a large burst --
+        // not an error. Leaving the cache uncommitted makes the very next sync
+        // pass redo this one from scratch and publish what was dropped, which
+        // is why shrinking the queue costs latency under load rather than
+        // correctness. Whatever was staged this pass is still drained and
+        // published normally; it is only the "already published" bookkeeping
+        // that is withheld.
+        cache_initialized_ = false;
+        return pending_publication_count_;
     }
 
     std::memcpy(cached_devices_, sync_devices_scratch_, sizeof(sync_devices_scratch_));
