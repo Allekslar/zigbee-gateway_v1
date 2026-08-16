@@ -16,7 +16,18 @@
 #include "service_runtime_api.hpp"
 
 namespace mqtt_bridge {
-constexpr std::size_t kMaxMqttPublicationsPerSync = service::kServiceMaxDevices * 3U;
+// Deliberately NOT the theoretical worst case (kServiceMaxDevices * 3 == 192,
+// i.e. every device publishing three topics on one pass). At 452 bytes per
+// entry that would be ~85KB, which real HIL showed this device cannot afford:
+// as a plain .bss array it starved the Wi-Fi driver during association, and
+// even once moved to a lifecycle-scoped allocation it then starved
+// mbedtls_ssl_setup() of the memory a TLS session needs. 48 entries is ~21KB.
+// Overflow is a normal, expected condition at this size rather than an error:
+// sync_snapshot() detects it and withholds its cache commit, so the next pass
+// republishes whatever was dropped (see that function's own commit block).
+// The cost of a burst larger than the queue is therefore extra latency, not a
+// lost publication.
+constexpr std::size_t kMaxMqttPublicationsPerSync = 48U;
 constexpr uint32_t kMqttPowerOverrideWindowMs = 15000U;
 
 class MqttBridgeTestAccess;
@@ -36,6 +47,22 @@ struct PendingPowerOverride {
 
 class MqttBridge {
 public:
+    MqttBridge() noexcept = default;
+    // pending_publications_ is an owned heap allocation (see the member's
+    // own comment), so this class needs a destructor to be correct: an
+    // instance destroyed without a preceding stop() would otherwise leak
+    // the queue. On the device that never happens -- the bridge is a
+    // global that outlives the process -- but host tests construct and
+    // destroy bridges freely, and LeakSanitizer is right to object.
+    ~MqttBridge() noexcept { release_publication_queue(); }
+    // Owning a raw pointer means the compiler-generated copy/move would
+    // double-free. The atomic members already make this class
+    // non-copyable, but state it explicitly rather than relying on that.
+    MqttBridge(const MqttBridge&) = delete;
+    MqttBridge& operator=(const MqttBridge&) = delete;
+    MqttBridge(MqttBridge&&) = delete;
+    MqttBridge& operator=(MqttBridge&&) = delete;
+
     bool start() noexcept;
     void stop() noexcept;
     bool started() const noexcept;
@@ -45,6 +72,11 @@ public:
     std::size_t publish_pending_publications() noexcept;
     std::size_t sync_snapshot(const service::MqttBridgeSnapshot& snapshot) noexcept;
     std::size_t drain_publications(MqttPublishedMessage* out, std::size_t capacity) noexcept;
+    // Allocates pending_publications_ on first need and reports whether the
+    // queue is usable. Safe to call repeatedly; see the member's own comment
+    // for why this queue is not a plain .bss array.
+    bool ensure_publication_queue() noexcept;
+    void release_publication_queue() noexcept;
 
 private:
     friend class MqttBridgeTestAccess;
@@ -97,7 +129,26 @@ private:
     service::MqttBridgeDeviceSnapshot sync_devices_scratch_[service::kServiceMaxDevices]{};
     uint16_t cached_device_count_{0};
     bool cache_initialized_{false};
-    MqttPublishedMessage pending_publications_[kMaxMqttPublicationsPerSync]{};
+    // Lifecycle-scoped, NOT permanently reserved .bss. At
+    // kMaxMqttPublicationsPerSync (192) x sizeof(MqttPublishedMessage) (452)
+    // this queue is ~85KB -- as a plain member array it made the whole
+    // MqttBridge object ~99KB of .bss, permanently reserved whether or not
+    // MQTT was ever used. Real HIL testing found that this single array is
+    // what starved the Wi-Fi driver of DMA-capable heap on the production +
+    // Flash-Encryption profile: only ~476 bytes remained free during
+    // association, so the driver could not allocate a buffer for its own
+    // management frames and every connection attempt failed (the driver's
+    // "m f auth"/"m f assoc req"/"alloc eb ... fail" messages are exactly
+    // that allocation failing). Allocated on demand instead -- in start(),
+    // i.e. only once the network is already up, which is precisely when the
+    // Wi-Fi association buffers are no longer needed -- and released in
+    // stop(). Capacity and drop-when-full semantics are unchanged; a failed
+    // allocation simply leaves the capacity at 0, which the existing
+    // capacity guards already treat as "queue full" (publications are
+    // skipped, the same graceful degradation this bridge already applies to
+    // any other publication-build failure).
+    MqttPublishedMessage* pending_publications_{nullptr};
+    std::size_t pending_publication_capacity_{0};
     std::size_t pending_publication_count_{0};
     service::ServiceRuntimeApi* runtime_{nullptr};
     std::atomic<uint32_t> published_message_count_{0};

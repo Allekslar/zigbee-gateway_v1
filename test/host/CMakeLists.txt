@@ -78,6 +78,7 @@ set(SERVICE_SOURCES
     ../../components/service/capability.cpp
     ../../components/service/route_authorization.cpp
     ../../components/service/physical_presence_grant.cpp
+    ../../components/service/cert_rotation_state.cpp
     ../../components/service/tuya_fingerprint.cpp
     ../../components/service/tuya_dp_parser.cpp
     ../../components/service/tuya_contact_sensor_plugin.cpp
@@ -95,6 +96,7 @@ set(APP_HAL_SOURCES
     ../../components/app_hal/hal_time.c
     ../../components/app_hal/hal_tls_certificate_validator.c
     ../../components/app_hal/hal_button.c
+    ../../components/app_hal/hal_memory.c
     ../../components/app_hal/hal_led.c
     ../../components/app_hal/hal_matter.c
     ../../components/app_hal/hal_nvs.c
@@ -127,6 +129,7 @@ add_library(web_ui_host STATIC
     ../../components/web_ui/web_handler_common.cpp
     ../../components/web_ui/web_v1_common.cpp
     ../../components/web_ui/web_route_auth_dispatch.cpp
+    ../../components/web_ui/cert_rotation_self_test.cpp
 )
 target_include_directories(web_ui_host PUBLIC
     ../../components/web_ui/include
@@ -300,6 +303,11 @@ add_executable(test_physical_presence_grant test_physical_presence_grant.cpp)
 target_link_libraries(test_physical_presence_grant PRIVATE service_host)
 zg_apply_component_compile_policy(test_physical_presence_grant)
 add_test(NAME test_physical_presence_grant COMMAND test_physical_presence_grant)
+
+add_executable(test_cert_rotation_state test_cert_rotation_state.cpp)
+target_link_libraries(test_cert_rotation_state PRIVATE service_host)
+zg_apply_component_compile_policy(test_cert_rotation_state)
+add_test(NAME test_cert_rotation_state COMMAND test_cert_rotation_state)
 
 add_executable(test_hal_tls_certificate_validator test_hal_tls_certificate_validator.cpp)
 target_link_libraries(test_hal_tls_certificate_validator PRIVATE service_host)

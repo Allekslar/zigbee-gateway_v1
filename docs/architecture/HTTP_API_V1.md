@@ -42,6 +42,23 @@ poll. The third (this update) implements that poll, via an
 - `GET /api/v1/operations/{operation_id}`
 
 **All 13 of the plan's canonical v1 routes are now implemented.** The
+list above is this document's S4 scope and is deliberately not the
+complete set of `/api/v1` routes the firmware serves. Stage S6 adds the
+control-plane routes -- `POST /api/v1/auth/login`, `/auth/logout`,
+`GET /api/v1/auth/session`, `POST /api/v1/auth/password`,
+`POST /api/v1/provisioning/enroll`,
+`POST /api/v1/system/factory-reset/operations` and
+`POST /api/v1/security/certificates/operations` -- together with the
+session/CSRF/capability middleware that wraps most of them. Those are
+specified in `docs/security/CONTROL_PLANE_SECURITY.md`; the enrollment
+route additionally has an operational runbook in
+`docs/security/ADMIN_ENROLLMENT.md`. They share this document's golden
+status/error matrix (Section 3.2), which is where their `401
+unauthenticated` / `403 physical_presence_required` / `409
+provisioning_not_active` / `503 capability_unavailable` tokens resolve to
+HTTP statuses.
+
+The
 legacy read-alias/`410`-legacy-mutation contract (plan #7/#8) and the
 bundled Web UI migration (plan #6) remain deferred, per FD-19/plan #29 (S4
 does not touch the production route-registration path at all) -- see

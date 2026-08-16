@@ -53,6 +53,7 @@ idf_component_register(
         "capability.cpp"
         "route_authorization.cpp"
         "physical_presence_grant.cpp"
+        "cert_rotation_state.cpp"
         "tuya_fingerprint.cpp"
         "tuya_dp_parser.cpp"
         "tuya_contact_sensor_plugin.cpp"

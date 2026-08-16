@@ -38,7 +38,18 @@ bool validate(const WireRecord& record, uint32_t read_len) noexcept {
 
 PersistedStateStore::SlotProbe PersistedStateStore::probe_slot(const char* key) const noexcept {
     SlotProbe probe{};
-    WireRecord record{};
+    // `static`, not a ~2.2KB stack local: save() below calls this twice while
+    // its OWN WireRecord-sized scratch is already live in its frame, so an
+    // ordinary local here put roughly 4.5KB on the stack at once and really
+    // did overflow the service_runtime task on hardware (a "Stack protection
+    // fault" resolved to exactly this function, on the network-up path that
+    // only became reachable once Wi-Fi association was fixed). Same reasoning
+    // and same fix already applied in load() and in
+    // state_persistence_coordinator.cpp: every caller of this store runs on
+    // the single service_runtime task, and the record is fully consumed into
+    // `probe` before returning, so no value has to survive across calls.
+    static WireRecord record;
+    record = WireRecord{};
     uint32_t read_len = 0U;
     const hal_nvs_status_t status = hal_nvs_get_blob(key, &record, sizeof(record), &read_len);
     if (status != HAL_NVS_STATUS_OK) {

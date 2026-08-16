@@ -1,0 +1,120 @@
+{
+  "plan_id": "zigbee_gateway_v1_remediation_implementation_plan",
+  "stage_id": "S6-cert-rotation-state-and-route-completion",
+  "stage_name": "S6 \"HTTPS and sessions\" #12 / FD-17: certificate rotation active-slot state machine, bounded local handshake self-test, and POST /api/v1/security/certificates/operations -- the full chain (decode, offline X.509 validation, live self-test, physical presence, staging-slot write, atomic activation, scheduled reboot) is now real and reachable. Compile/link-verified against the real esp32c6 target; not yet exercised via live HIL.",
+  "input_commit_sha": "2c158fd3dd673305f7ee4c61f20fea5dc251fff9",
+  "output_commit_sha": "2c158fd3dd673305f7ee4c61f20fea5dc251fff9",
+  "note_on_commits": "No new commit created; commits are only made on explicit user request. Builds directly on merge commit 2c158fd (PR #55, 'add physical presence grant and protected auth routes'), which landed the same session's earlier physical-presence-grant/button-wiring/auth-password/enroll/factory-reset sub-slices outside this conversation's own tool calls.",
+  "sequencing_note": "Built in two passes within the same session. Pass 1: user picked certificate rotation (#12) via AskUserQuestion over the other three remaining S6 clusters, then picked 'state machine + the route together' (policy half only) over a smaller and a larger option via a second AskUserQuestion -- landed as this file's original content. Pass 2: user said simply 'далі' (continue) -- interpreted, consistent with the immediately-preceding turn's own stated next step, as completing the deferred remainder: the bounded local handshake self-test, real atomic activation, and a scheduled reboot. Real recon (pass 1) found hal_ota.c already performs real client-side TLS (an esp_http_client HTTPS GET, CA-pinned via cert_pem, for OTA image download) -- reused directly for the self-test client rather than writing new raw mbedtls client code.",
+  "design_decisions": [
+    {
+      "decision": "A separately-persisted 'active-slot reference' (2 bits: active slot + pending-confirmation flag, one atomic u32 NVS write) decoupled from the two physical storage slots tls_provisioning_storage_port.hpp (S5 #13) already provides, rather than copying cert/key bytes between slots on rotation.",
+      "why": "Plan #12's own text: 'Certificate storage has encrypted current and next slots PLUS one atomic active-slot reference.' Copying bytes between slots on activation could tear across a power loss; flipping a single persisted enum value cannot -- it inherits atomicity from ESP-IDF's own NVS commit semantics, the exact reasoning reset_journal_storage_port.hpp already established for this codebase's own single-atomic-key precedent."
+    },
+    {
+      "decision": "A rotation always stages a new candidate into the COMPLEMENT of whatever slot is currently active -- no separate 'previous confirmed slot' field is tracked.",
+      "why": "Given the active-slot-reference design and the invariant that cert_rotation_activate() only ever accepts the current staging slot (rejects re-arming an already-pending rotation), the previously-confirmed slot is always exactly the complement of the now-pending active slot. Tracking it as a derived value rather than a third persisted field is simpler and cannot drift out of sync with the two bits that are actually stored."
+    },
+    {
+      "decision": "cert_rotation_confirm_pending_with_result(bool) is split out as a pure, host-testable core, separate from cert_rotation_confirm_pending() (the real entry point that calls hal_tls_validate_certificate()).",
+      "why": "hal_tls_validate_certificate() is ESP_PLATFORM-only real logic that fails closed unconditionally on host (Section 2.10's own established boundary -- no safe host-side X.509 substitute is trusted). Splitting the outcome-injection point is the same dependency-injection pattern commissioning_window.hpp's own explicit now_ms parameter already established for this codebase."
+    },
+    {
+      "decision": "Candidate certificate/private key are submitted as hex-encoded PEM text (JSON fields certificate_pem_hex/private_key_pem_hex), reusing the existing decode_hex() helper, rather than raw PEM text as a JSON string value.",
+      "why": "This project's own ad-hoc JSON reader (plan #24-27's cJSON-backed strict reader does not exist yet) does no string-escape handling at all -- PEM text contains embedded newlines. Hex-encoding sidesteps the whole problem and matches provisioning/enroll's own established convention for its proof-of-possession field."
+    },
+    {
+      "decision": "The bounded local self-test connects to 127.0.0.1 (loopback) but verifies the candidate's identity against this gateway's real production DNS SAN, via esp_http_client_config_t's own `common_name` field, decoupled from the `url`'s connection target.",
+      "why": "A self-test that only proved 'a TLS handshake to 127.0.0.1 works' would not actually prove the candidate presents the right identity for a real remote client. common_name is a real, documented ESP-IDF mechanism for exactly this split -- no custom SNI/hostname-override code was needed."
+    },
+    {
+      "decision": "The temporary self-test listener uses a deliberately minimal httpd_ssl_config_t (4096-byte stack, 1 URI handler, 1 open socket -- the esp_http_server library's own conservative default), not a copy of production's own 20480-byte/56-handler budget.",
+      "why": "This session already found a real heap-exhaustion bug (Section 2.14's own evidence) caused by underestimating a new task/listener's resource cost on this exact device. A second, much larger listener running concurrently with the live production one would be a much bigger, avoidable risk; the self-test serves exactly one trivial route to exactly one loopback client for at most a few hundred milliseconds, so its budget is sized to that, not copied from an unrelated, much busier listener."
+    },
+    {
+      "decision": "The route sends its HTTP response BEFORE scheduling the reboot, via a 2-second-delayed one-shot esp_timer rather than a synchronous esp_restart() call.",
+      "why": "An immediate esp_restart() inside the handler would tear the TCP connection down before esp_http_server could flush the response bytes over the socket, leaving the calling client with no confirmation the operation succeeded. The delay is dispatched from esp_timer's own shared system task (ESP_TIMER_TASK), costing no new task stack -- same reasoning already established for the periodic button-poll timer in web_server.cpp."
+    },
+    {
+      "decision": "The self-test runs BEFORE physical-presence grant consumption and the staging-slot write, using the in-memory candidate bytes directly (not re-read from storage).",
+      "why": "Mirrors this handler's own 'a bad candidate must never burn the grant' principle, already applied to the offline X.509 check: a candidate that fails a REAL handshake is just as unusable as one that fails the static check, and should not cost the installer their one-time grant either. Using the in-memory bytes avoids a redundant storage round-trip and any (here impossible, single-worker-task) race between writing and re-reading."
+    }
+  ],
+  "changed_files": {
+    "new": [
+      "components/service/include/cert_rotation_state.hpp",
+      "components/service/cert_rotation_state.cpp",
+      "components/web_ui/include/cert_rotation_self_test.hpp",
+      "components/web_ui/cert_rotation_self_test.cpp",
+      "test/host/test_cert_rotation_state.cpp"
+    ],
+    "modified": [
+      "components/service/include/tls_provisioning_storage_port.hpp (new shared kTlsCertOrKeyMaxBytes constant)",
+      "components/service/nvs_namespace_registry.cpp (kTlsIdentity namespace: 5 -> 6 key patterns, new 'tls_active_state' key)",
+      "components/service/CMakeLists.txt, test/host/CMakeLists.txt (cert_rotation_state.cpp and cert_rotation_self_test.cpp wired into both the real ESP-IDF component build(s) and the host test build; new test_cert_rotation_state executable)",
+      "components/web_ui/CMakeLists.txt (new esp_http_client REQUIRES dependency, needed by the self-test client)",
+      "components/web_ui/web_server.cpp (kMaxCertOrKeyBytes now aliases the shared constant; start_production_https() calls cert_rotation_confirm_pending() once per boot and reads cert_rotation_active_slot_for_listener_start() instead of a hardcoded TlsCertificateSlot::kCurrent)",
+      "components/web_ui/web_handlers_auth.cpp (certificates_operations_post_handler_v1() now runs the full chain -- decode, offline validate, bounded self-test, grant consume, staging write, activate, respond, schedule reboot -- registered as POST /api/v1/security/certificates/operations, wrapped kSecurityAdmin; top-of-file scope comment updated)",
+      "test/host/test_web_handlers_auth.cpp (coverage for every pre-validator rejection path on the new route)",
+      "docs/security/CONTROL_PLANE_SECURITY.md (Section 2.15 rewritten to describe the complete chain; Section 3's cluster-status text updated)"
+    ]
+  },
+  "real_defects_found_this_sub_slice": [
+    {
+      "defect": "Host test_cert_rotation_state assertion failure on the very first set_cert_rotation_state() call.",
+      "root_cause": "kTlsIdentity is an encryption_required=true namespace (Section 2.7 registry); the host secure_storage_port write gate correctly refuses any write to it unless hal_security_state_flash_encryption_enabled() reports encryption as verified-active, which defaults to false (fail closed) on host unless a test explicitly sets the mock.",
+      "how_found": "Real test execution (not a compile-time issue) -- ./build-host/test_cert_rotation_state aborted with a clear assertion line number.",
+      "fix": "Added hal_security_state_set_mock_flash_encryption_enabled(true) at the top of the test, matching test_tls_provisioning_storage_port.cpp's own already-established convention for the same namespace. Test code only; no production code change."
+    },
+    {
+      "defect": "Multiple real idf.py builds (dev, ZGW_PRODUCTION_BUILD=1, and separately test/target) each failed on their FIRST attempt in a fresh build directory: 'DRAM segment data does not fit... region dram0_0_seg overflowed by 46400 bytes' (dev/prod) or 'missing and no known rule to make it' against an esp32-only zboss library path (test/target).",
+      "root_cause": "Process mistake, not a code defect: each fresh build directory had no prior sdkconfig and no explicit idf.py set-target esp32c6 step, so ESP-IDF silently defaulted to its own default target (plain ESP32) instead of this project's real target.",
+      "how_found": "Real idf.py build output -- the object file path (project_elf_src_esp32.c.obj, esp32.peripherals.ld) and the esp32-only library path made the wrong target immediately identifiable, distinct from any genuine memory-budget regression.",
+      "fix": "Removed the build directories and re-ran with an explicit `idf.py -B <dir> set-target esp32c6` before `idf.py -B <dir> build` for each. All three (dev, production, test/target) then succeeded cleanly with zero code changes."
+    }
+  ],
+  "tests_and_checks": [
+    {
+      "check": "New host tests",
+      "detail": "test_cert_rotation_state.cpp: 13 scenarios covering the fresh/never-provisioned default, full read/write round trip across all 4 (slot, confirmation) combinations, activate() from steady state, activate() rejecting a non-staging slot (including mid-pending re-arm rejection), confirm_pending_with_result(true) confirming in place, confirm_pending_with_result(false) rolling back to the correct complement slot, no-op behavior when nothing is pending, a full two-rotation confirm-then-roll-back cycle, the real cert_rotation_confirm_pending() entry point's host-fails-closed rollback behavior, and null-pointer safety."
+    },
+    {
+      "check": "test_web_handlers_auth.cpp extension",
+      "detail": "POST /api/v1/security/certificates/operations coverage: missing JSON fields (400), malformed hex (400), missing mbedtls PEM trailing-NUL byte (400, caught before the real validator), product CA never provisioned (503, before the real validator is ever reached), and a well-formed candidate against a placeholder CA reaching the real validator (400, since hal_tls_validate_certificate() fails closed unconditionally on host). The self-test/activation/reboot path added in pass 2 is unreachable in these host tests (the offline validator's own unconditional host-fail-closed gate runs first), so it is compile/link-verified only, not host-exercised -- an explicitly named limit, not an oversight."
+    },
+    {
+      "check": "Full host suite",
+      "result": "109/109 passing (108 pre-existing + test_cert_rotation_state new executable; test_web_handlers_auth's own assertion count grew in place, not a new executable)."
+    },
+    {
+      "check": "cppcheck --enable=warning,style,performance,portability --error-exitcode=1",
+      "result": "Zero findings against cert_rotation_state.cpp, cert_rotation_self_test.cpp, web_handlers_auth.cpp, web_server.cpp."
+    },
+    {
+      "check": "check_arch_invariants.sh",
+      "result": "high=0, medium=0, low=0, suppressed=0."
+    },
+    {
+      "check": "Real idf.py build, development profile, esp32c6 target",
+      "result": "PASS. Pass 1 (state machine + route policy): 1205/1205 steps. Pass 2 (self-test + activation, new esp_http_client dependency): 1206/1206 steps, 32% flash headroom remaining -- confirmed the new component dependency links correctly with no size regression of concern."
+    },
+    {
+      "check": "Real idf.py build, ZGW_PRODUCTION_BUILD=1, esp32c6 target",
+      "result": "PASS. Pass 1: 1205/1205 steps. Pass 2: 1206/1206 steps, 32% flash headroom remaining."
+    },
+    {
+      "check": "Real idf.py build, test/target, esp32c6 target",
+      "result": "PASS (pass 1 only, re-verified not needed for pass 2 since cert_rotation_self_test.cpp introduces no test/target-visible surface -- test/target has no web_ui component at all). 1212/1212 steps, check_ota_slot_size.sh PASSED (66% usage)."
+    }
+  ],
+  "honest_scope_boundary": [
+    "No live HIL exercise of this route yet. Running a SECOND httpd_ssl listener concurrently with the already-live production one, on a device this same session already found to have a tight post-boot heap budget (Section 2.14's own real heap-exhaustion bug, found only by booting real hardware), is a genuine, not-yet-measured resource-pressure question -- compile/link success and a conservatively small self-test listener budget (4096-byte stack, 1 handler, 1 socket) are reasoned, not proven, mitigations.",
+    "Triggering this route for real also means a real, deliberate esp_restart() on hardware the user is actively relying on for other testing -- an outward-facing, not-easily-reversible action explicitly not taken without the user's own separate go-ahead, consistent with this session's standing practice for the physical button-press HIL round (Section 2.14).",
+    "The self-test's FAILURE path (a candidate that passes offline X.509 validation but fails the live handshake -- e.g. a corrupted key that still parses, or a runtime mbedtls incompatibility invisible to static parsing) has never been exercised against a real broken candidate on real hardware; only its success-path code exists and compiles.",
+    "No automated retry/backoff exists if a scheduled reboot is itself interrupted (e.g. power loss in the 2-second window before esp_restart() fires) -- the device would simply boot normally on next power-up with the activation already persisted as 'pending', and cert_rotation_confirm_pending() would run its real re-validation then, matching the design's own intended behavior, but this exact interruption timing has not been tested.",
+    "The manual candidate certificate/key an installer would submit to this route still has no real issuance pipeline (Section 2.10's own already-named gap) -- this sub-slice assumes the caller already has a validly-issued replacement in hand, the same assumption every other S6 TLS-identity sub-slice makes."
+  ],
+  "unresolved_deviations": [],
+  "unresolved_blockers": [],
+  "releaseability": "The full FD-17 chain (offline validation, live self-test, physical presence, atomic activation, scheduled reboot, boot-time confirm-or-rollback) is now real, wired end to end, and confirmed to compile/link against the real ESP32-C6 production and development profiles with healthy flash headroom. An installer can now actually rotate the production management certificate through this route. What remains before this can be considered releasable per this project's own verification bar is a live HIL round: real hardware confirmation that running the temporary self-test listener alongside the live production one does not exhaust heap, that the scheduled reboot actually occurs and the device comes back up serving the new certificate, and that a genuinely broken candidate is correctly rejected by the live self-test (not just the offline check) without disturbing the currently-active slot. No live production deployment yet (see memory project-not-yet-in-production.md)."
+}

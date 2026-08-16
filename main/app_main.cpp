@@ -78,6 +78,54 @@ extern "C" void app_main(void) {
         }
     }
 
+    // Plan-independent, real-hardware-found ordering fix: g_runtime.
+    // start() (creates the runtime/scan-worker/RCP-worker tasks) has no
+    // real dependency on Wi-Fi connectivity -- config_manager_.load()
+    // already ran in ServiceRuntime's own constructor, well before
+    // app_main() starts. Deliberately called HERE, before Wi-Fi
+    // autoconnect/AP start below, rather than after (its own original
+    // position): a real "Stack protection fault" was found on real
+    // ESP32-C6 hardware where this call's own task-stack allocation
+    // (hal_alloc_internal_sram(), MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT|
+    // MALLOC_CAP_DMA) failed -- confirmed via real heap diagnostics that
+    // a successful Wi-Fi STATION connection (this project's very first
+    // one ever exercised on real hardware, requested via a real user
+    // Wi-Fi network) consumes roughly 75KB of internal SRAM (station
+    // buffers, DHCP/ARP, lwIP) by this point in boot, leaving only ~2KB
+    // DMA-capable free where 9216 bytes are needed. Calling this before
+    // Wi-Fi starts lets these tasks claim their stacks while internal
+    // SRAM is still almost entirely free (~77KB observed).
+    if (!g_runtime.start()) {
+        const service::ConfigManager::LoadReport& config_report = g_runtime.config_load_report();
+        ESP_LOGE(
+            kTag,
+            "Service runtime start failed (config bootstrap status=%u from_schema=%" PRIu32 " to_schema=%" PRIu32 ")",
+            static_cast<unsigned>(config_report.status),
+            config_report.from_schema_version,
+            config_report.to_schema_version);
+        while (true) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+
+    const service::ConfigManager::LoadReport& config_report = g_runtime.config_load_report();
+    if (config_report.status == service::ConfigManager::LoadStatus::kMigrated) {
+        ESP_LOGI(
+            kTag,
+            "Config schema migration applied (%" PRIu32 " -> %" PRIu32 ")",
+            config_report.from_schema_version,
+            config_report.to_schema_version);
+    } else if (config_report.status == service::ConfigManager::LoadStatus::kFreshInstall) {
+        ESP_LOGI(kTag, "Config schema initialized for fresh install (%" PRIu32 ")", config_report.to_schema_version);
+    }
+    if (config_report.schema_repair_persist_failed) {
+        ESP_LOGW(
+            kTag,
+            "Config schema repair could not be persisted (from_schema=%" PRIu32 " to_schema=%" PRIu32 ")",
+            config_report.from_schema_version,
+            config_report.to_schema_version);
+    }
+
     const service::ServiceRuntime::BootAutoconnectResult autoconnect_result =
         g_runtime.autoconnect_from_saved_credentials();
 
@@ -167,37 +215,6 @@ extern "C" void app_main(void) {
         default:
             ESP_LOGW(kTag, "Auto-connect failed from saved credentials");
             break;
-    }
-
-    if (!g_runtime.start()) {
-        const service::ConfigManager::LoadReport& config_report = g_runtime.config_load_report();
-        ESP_LOGE(
-            kTag,
-            "Service runtime start failed (config bootstrap status=%u from_schema=%" PRIu32 " to_schema=%" PRIu32 ")",
-            static_cast<unsigned>(config_report.status),
-            config_report.from_schema_version,
-            config_report.to_schema_version);
-        while (true) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
-    }
-
-    const service::ConfigManager::LoadReport& config_report = g_runtime.config_load_report();
-    if (config_report.status == service::ConfigManager::LoadStatus::kMigrated) {
-        ESP_LOGI(
-            kTag,
-            "Config schema migration applied (%" PRIu32 " -> %" PRIu32 ")",
-            config_report.from_schema_version,
-            config_report.to_schema_version);
-    } else if (config_report.status == service::ConfigManager::LoadStatus::kFreshInstall) {
-        ESP_LOGI(kTag, "Config schema initialized for fresh install (%" PRIu32 ")", config_report.to_schema_version);
-    }
-    if (config_report.schema_repair_persist_failed) {
-        ESP_LOGW(
-            kTag,
-            "Config schema repair could not be persisted (from_schema=%" PRIu32 " to_schema=%" PRIu32 ")",
-            config_report.from_schema_version,
-            config_report.to_schema_version);
     }
 
     if (!g_web_server.start()) {

@@ -85,7 +85,41 @@ const service::MqttBridgeDeviceSnapshot* find_cached_device_by_device_id_hex(
 
 }  // namespace
 
+bool MqttBridge::ensure_publication_queue() noexcept {
+    if (pending_publications_ != nullptr) {
+        return true;
+    }
+
+    void* const buffer = calloc(kMaxMqttPublicationsPerSync, sizeof(MqttPublishedMessage));
+    if (buffer == nullptr) {
+        return false;
+    }
+
+    pending_publications_ = static_cast<MqttPublishedMessage*>(buffer);
+    pending_publication_capacity_ = kMaxMqttPublicationsPerSync;
+    pending_publication_count_ = 0U;
+    return true;
+}
+
+void MqttBridge::release_publication_queue() noexcept {
+    if (pending_publications_ == nullptr) {
+        return;
+    }
+
+    free(pending_publications_);
+    pending_publications_ = nullptr;
+    pending_publication_capacity_ = 0U;
+    pending_publication_count_ = 0U;
+}
+
 bool MqttBridge::start() noexcept {
+    // Claim the publication queue here rather than holding it in .bss for
+    // the device's whole uptime -- start() runs only once the network is
+    // already up, so this never competes with Wi-Fi association for
+    // internal SRAM (see the member's own comment for the real HIL finding).
+    // A failed allocation is not fatal: the capacity guards degrade to
+    // "skip publications", same as any other publication-build failure.
+    (void)ensure_publication_queue();
     reset_sync_cache();
 #ifdef ESP_PLATFORM
     transport_enabled_.store(start_transport(), std::memory_order_release);
@@ -113,6 +147,12 @@ void MqttBridge::stop() noexcept {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 #endif
+    // Deliberately last: the worker task above is the only other writer to
+    // this queue, so releasing it before that task has actually exited
+    // would race. Anything still staged at this point is discarded by
+    // design -- stop() already resets the sync cache, so the next start()
+    // republishes current state from scratch anyway.
+    release_publication_queue();
 }
 
 bool MqttBridge::started() const noexcept {
@@ -372,7 +412,7 @@ void MqttBridge::sync_device_state(const uint16_t short_addr, const bool on) noe
             return;
         }
         publication.retain = true;
-        if (pending_publication_count_ >= kMaxMqttPublicationsPerSync) {
+        if (!ensure_publication_queue() || pending_publication_count_ >= pending_publication_capacity_) {
             return;
         }
         pending_publications_[pending_publication_count_++] = publication;
